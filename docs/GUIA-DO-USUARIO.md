@@ -54,8 +54,12 @@ Na tela do **Orçamento**:
 2. **Horas de serviço:** o app calcula a mão de obra.
    Prefere dar um preço fechado? Toque em **"Prefiro digitar o valor fechado"**.
 3. **Peças:**
-   - coloque **quanto você paga** pelas peças;
-   - em **"Quanto você põe em cima da peça"**, já vem o seu número de sempre (ex.: 47%). Mude só se quiser, naquele orçamento;
+   - toque em **"+ Adicionar peça"** para cada peça: o **nome** (ex.: "Pastilha de freio"), a **quantidade** (ex.: 2, ou 4,5 litros de óleo) e **quanto você paga por unidade**;
+   - embaixo de cada peça aparece **quanto o cliente paga** por ela;
+   - errou? Toque na **lixeira**. Dá para **DESFAZER** logo depois;
+   - em **"Quanto você põe em cima da peça"**, já vem o seu número de sempre (ex.: 47%). Ele vale para **todas** as peças. Mude só se quiser, naquele orçamento;
+   - sem peças? Deixe a lista vazia: o orçamento fica só com a mão de obra;
+   - prefere um valor só? Toque em **"Prefiro digitar o valor das peças"**;
    - o app mostra **quanto o cliente paga pelas peças**.
 4. Veja o resultado:
    - **Cartão em 5x** (em cima): o preço cheio no cartão, já cobrindo a taxa da maquininha;
@@ -82,7 +86,7 @@ O à vista é o preço do cartão **com um desconto**. Assim o cliente vê que p
 1. Toque em **Copiar para WhatsApp**.
 2. Abra a conversa do cliente no WhatsApp e **cole**.
 
-O texto mostra só o que o cliente precisa ver: primeiro o **cartão** (5x, 10x), depois o **à vista** com o desconto (ex.: "— 5% de desconto"). **Nunca** mostra seu lucro, seus custos, a taxa nem quanto você ainda pode dar.
+O texto mostra só o que o cliente precisa ver: as **peças inclusas** (só nome e quantidade, ex.: "2× Pastilha de freio", **sem preço**), depois o **cartão** (5x, 10x) e o **à vista** com o desconto (ex.: "— 5% de desconto"). **Nunca** mostra seu lucro, seus custos, a taxa, o preço de cada peça nem quanto você ainda pode dar.
 
 Para começar outro, toque em **Novo orçamento**.
 
@@ -112,6 +116,7 @@ Cada cartão (Visa, Master, Elo, Amex…) tem uma taxa diferente na maquininha. 
 
 ## 6. Bom saber
 
+- **Ficou com dúvida em algum campo?** Toque no **"?"** ao lado do nome dele. Aparece uma explicação curta, com exemplo. Toque de novo (ou fora) para fechar.
 - **Tudo salva sozinho.** No topo aparece **"Salvo ✓"**.
 - Se aparecer **"Corrija o campo em vermelho"**, arrume o campo marcado. Enquanto isso, nada é salvo.
 - **Sem internet?** Dá para orçar com os últimos dados do aparelho (aparece **"Sem conexão: só orçamento"**). Gastos e ajustes voltam a funcionar quando a internet voltar.

@@ -14,7 +14,9 @@
 
 ## Resultados (07/11/2026)
 
-**Frontend: 72 de 72 · Backend (dados): 45 de 45 · API: 26 de 26 · Tela: 10 cenários + 58 verificações (desconto, engrenagem, PIN, desconto padrão), estável em 5 rodadas seguidas · PWA: install, modo avião e versão nova.**
+**Frontend: 76 de 76 · Backend (dados): 45 de 45 · API: 26 de 26 · Tela: 10 cenários + 94 verificações (desconto, engrenagem, PIN, desconto padrão, peças discriminadas, dicas "?", card "Ver outras formas", espaço entre os botões), estável em 4 rodadas seguidas · PWA: install, modo avião e versão nova.**
+
+> Pacote "dicas ? + peças discriminadas": `apps-script/` sem nenhuma mudança (D10); `sw.js` v3. Os casos D usam peças = 1 item 1 × 100 e continuam iguais.
 
 > Pacote "desconto à vista + engrenagem + PIN": `apps-script/` sem nenhuma mudança (D10). O cálculo novo está em `calcularPrecoComDesconto`.
 
@@ -51,6 +53,13 @@
 | P2 | Acréscimo 0% (e acréscimo vazio) | mesmo valor: 500,00 | ✅ |
 | P3 | 333,33 + 47% | 489,9951 sem arredondar no meio → 490,00 | ✅ |
 | P4 | Lucro nas peças = cobrar − pagar | 333,33 + 47% → 156,67; 8 h × 150 + peças 400 + 25% → à vista 1.700,00 · lucro 740,00 | ✅ |
+| P5 | Peças discriminadas 2 × 50 + 1 × 350 | 450 pagos; + 47% → cliente 661,50 (Node e tela) | ✅ |
+| P6 | Quantidade decimal 4,5 × 30 | 135 → cliente 198,45; "4,5" aceito; 0, vazio e "-1" recusados; na tela, qtd 0 mostra erro e a peça sai do total | ✅ |
+| P7 | Lista vazia | peças 0, sem erro; base = só a mão de obra (8 h × 150 = 1.200,00); na tela, a dica "Sem peças?" | ✅ |
+| P8 | Remover + desfazer; Novo orçamento | "Peça removida · DESFAZER"; volta no mesmo lugar ("Peça de volta."); depois de 6 s a remoção fica; nada salvo na planilha; "Novo orçamento" limpa a lista (tela) | ✅ |
+| P9 | WhatsApp com peças | "Peças inclusas:", "2× Pastilha de freio", "1× Disco de freio", "4,5× Óleo 5W30", sem nenhum "R$"; peça sem descrição não aparece mas entra no total; depois os cartões (Node e tela, texto copiado de verdade) | ✅ |
+| P10 | Modo "valor direto" | esconde a lista; P1–P4 continuam passando; WhatsApp sem lista; ao voltar, a lista está como antes (tela) | ✅ |
+| — | Rascunho | a lista volta igual depois de recarregar a página | ✅ |
 | — | `acrescimoPecasPadrao` lido fora do limite ("1500", "-1", "abc") | volta ao padrão 47; "0" → 0; "47,5" → 47,5; linha ausente → 47 | ✅ (back) |
 
 ### Texto do WhatsApp (W)
@@ -148,6 +157,9 @@ Com desconto 0, o à vista é igual à âncora (2.301,20).
 | **Primeiro acesso** (sem gastos) | abre direto em Configurações → Meus gastos, com a faixa; "voltar" leva ao orçamento ✅ |
 | **PIN** | desligado: a engrenagem não pede nada; ligar recusa PIN curto e PINs diferentes; ligado: a engrenagem pede o PIN; PIN errado não abre ("PIN errado. Tente de novo."); Esc volta; PIN certo abre; "avançar" do navegador não pula o PIN; "Esqueci o PIN" → desconectar apaga o PIN e **mantém o desconto padrão**; abrir o link de configuração de novo apaga o PIN, inclusive com o app já aberto na mesma aba (só muda o `#`) ✅ |
 | **Desconto padrão do aparelho** | nada salvo → 5; Ajustes mostra 5 e "Vale só para este aparelho."; 150 → erro e não grava; 7 → gravado; mudar no orçamento não muda o padrão; Novo orçamento começa com 7; valor inválido guardado → 5 ✅ |
+| **Card "Ver outras formas"** | parcelas "5": só o link, sem fundo, sem sombra e sem área reservada, a 16 px do bloco de cima (espaçamento normal); o 5x continua no card do cartão; aberto, a lista aparece num card normal. Parcelas "5,10": card normal com o 10x. Prints 390 e 1280 dos dois casos ✅ |
+| **Botões do fim do orçamento** | Copiar para WhatsApp · Compartilhar · Novo orçamento com 10 px entre eles (antes, "Novo orçamento" ficava colado) ✅ |
+| **Dicas "?"** | 11 botões com `aria-label` "O que é \"…\"?" e área de toque ≥ 44 px; o do Desconto à vista mostra o máximo do orçamento (7,57%); só um aberto por vez; novo toque, toque fora e Esc fecham; em Configurações o 1º Esc fecha só o balão e o 2º volta ao orçamento; texto do Imposto conferido ✅ |
 | **Desconto na tela** | card do cartão 5x 460,24 / 2.301,20; à vista 2.186,14 "· 5% de desconto"; faixa "ainda pode dar até 2,57% (R$ 59,14)"; 10x 239,15 / 2.391,50; detalhes somam o lucro (com "Diferença pelo desconto à vista" e imposto); piso; extra 2% → 2.140,12 / 0,57% (R$ 13,12); extra 5% → 2.071,08 + faixa vermelha "abre mão de R$ 55,92"; desconto 0 → 2.301,20 sem sufixo; 120 → erro; texto do WhatsApp copiado de verdade (área de transferência) na ordem certa e sem palavras proibidas; sem rolagem horizontal em 390 px ✅ |
 
 Nenhum erro de JavaScript em nenhum cenário. Os fluxos já existentes (cartões, Desfazer, link, manual, desconectar, offline, sem acesso) foram refeitos com a engrenagem no lugar das abas e continuam passando.

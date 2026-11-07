@@ -199,6 +199,40 @@ function calcularPecasCobrar(entrada) {
   return typeof entrada.pecasCobrar === 'number' ? entrada.pecasCobrar : pagar;
 }
 
+// ---------------- Peças discriminadas ----------------
+var MAX_PECAS = 30;
+var LIMITE_QTD_PECA = { min: 0, max: 9999 }; // e maior que zero
+var MENSAGEM_QTD_PECA = 'Quantidade maior que zero. Ex.: 2 ou 4,5';
+
+/** Quantidade de uma peça: obrigatória, maior que zero, aceita decimal ("4,5"). */
+function validarQtdPeca(texto) {
+  var r = validarNumeroCampo(texto, LIMITE_QTD_PECA, { vazioPermitido: false, mensagem: MENSAGEM_QTD_PECA });
+  if (r.erro) return { valor: null, erro: r.erro === MENSAGEM_NAO_NUMERO ? r.erro : MENSAGEM_QTD_PECA };
+  if (!(r.valor > 0)) return { valor: null, erro: MENSAGEM_QTD_PECA };
+  return r;
+}
+
+/** Quanto você paga pelas peças: Σ qtd × valor unitário (itens com número inválido contam 0). Sem arredondar. */
+function totalPecasItens(itens) {
+  return (itens || []).reduce(function (soma, it) {
+    var q = typeof it.qtd === 'number' && it.qtd > 0 ? it.qtd : 0;
+    var v = typeof it.valor === 'number' && it.valor > 0 ? it.valor : 0;
+    return soma + q * v;
+  }, 0);
+}
+
+/**
+ * Linhas "Peças inclusas" do WhatsApp, SEM valores: "2× Pastilha de freio", "4,5× Óleo 5W30".
+ * Item sem descrição (ou com quantidade inválida) não aparece (mas entra no cálculo, se tiver número).
+ */
+function linhasPecasWhatsApp(itens) {
+  return (itens || []).filter(function (it) {
+    return String(it.descricao || '').trim() !== '' && typeof it.qtd === 'number' && it.qtd > 0;
+  }).map(function (it) {
+    return numeroParaCampo(it.qtd, false) + '× ' + String(it.descricao).trim();
+  });
+}
+
 // ---------------- Cartões ----------------
 
 /** Faixa Unicode dos acentos combinantes (U+0300 a U+036F), escrita por código para ficar legível. */
@@ -411,14 +445,22 @@ function formatarPercentual(p) {
  * Sem quebra mão de obra/peças, sem custo, lucro, taxa, piso ou "ainda pode dar";
  * sem nome de cartão quando for "Não sei" (ou quando só há um cartão).
  * @param preco resultado de calcularPrecoComDesconto (opcional: sem ele, à vista = base)
+ * @param pecas itens [{descricao, qtd}] (opcional): seção "Peças inclusas:" sem valores
  */
-function textoWhatsApp(res, parametros, descricao, preco) {
+function textoWhatsApp(res, parametros, descricao, preco, pecas) {
   var linhas = [];
   var nome = String(parametros.nomeOficina || '').trim();
   linhas.push(nome ? '*Orçamento – ' + nome + '*' : '*Orçamento*');
   var desc = String(descricao || '').trim();
   if (desc) linhas.push(desc);
   linhas.push('');
+
+  var listaPecas = linhasPecasWhatsApp(pecas);
+  if (listaPecas.length) {
+    linhas.push('Peças inclusas:');
+    listaPecas.forEach(function (l) { linhas.push(l); });
+    linhas.push('');
+  }
 
   var cartao = '💳 Cartão' + (res.cartaoNoTexto ? ' ' + res.cartaoNoTexto : '');
   res.destaques.forEach(function (op) {
@@ -561,6 +603,37 @@ function casosDeTeste() {
         return { obtido: [centavos(r.lucroPecas), centavos(t6.lucroPecas), t6.aVista.totalCentavos, centavos(t6.aVista.lucro)],
                  esperado: [15667, 10000, 170000, 74000] };
       } },
+    { id: 'P5', descricao: 'Peças discriminadas: 2 × 50 + 1 × 350 = 450 pagos; + 47% → cliente paga 661,50',
+      executar: function () {
+        var pagar = totalPecasItens([{ qtd: 2, valor: 50 }, { qtd: 1, valor: 350 }]);
+        var r = soPecas(pagar, 47);
+        return { obtido: [centavos(pagar), centavos(r.pecasCobrar), r.aVista.totalCentavos], esperado: [45000, 66150, 66150] };
+      } },
+    { id: 'P6', descricao: 'Quantidade decimal: 4,5 × 30 = 135 → cliente 198,45; "4,5" aceito; 0, vazio e "-1" recusados',
+      executar: function () {
+        var pagar = totalPecasItens([{ qtd: 4.5, valor: 30 }]);
+        return { obtido: [centavos(pagar), centavos(soPecas(pagar, 47).pecasCobrar), validarQtdPeca('4,5').valor,
+                          validarQtdPeca('0').erro !== '', validarQtdPeca('').erro !== '', validarQtdPeca('-1').erro !== ''],
+                 esperado: [13500, 19845, 4.5, true, true, true] };
+      } },
+    { id: 'P7', descricao: 'Lista vazia → peças 0, sem erro; base = só a mão de obra (8 h × 150 = 1.200,00)',
+      executar: function () {
+        var pagar = totalPecasItens([]);
+        var r = calcularOrcamento({ modo: 'horas', horas: 8, pecasPagar: pagar, pecasModo: 'acrescimo', pecasAcrescimo: 47 }, paramsT6, [visa()], NAO_SEI, 0);
+        return { obtido: [pagar, centavos(r.pecasCobrar), r.aVista.totalCentavos], esperado: [0, 0, 120000] };
+      } },
+    { id: 'P9', descricao: 'WhatsApp: "Peças inclusas:" sem nenhum "R$"; "1×" aparece; item sem descrição não aparece; sem peças, sem a seção',
+      executar: function () {
+        var c = cenarioDesconto();
+        var itens = [{ descricao: 'Pastilha de freio', qtd: 2 }, { descricao: 'Disco de freio', qtd: 1 }, { descricao: '  ', qtd: 3 }, { descricao: 'Óleo 5W30', qtd: 4.5 }];
+        var texto = textoWhatsApp(c.res, { nomeOficina: 'CliniCar Motors Tech' }, 'Freio – Gol 2015', calcularPrecoComDesconto(c.res, c.params, 5, 0), itens);
+        var l = texto.split('\n');
+        var i = l.indexOf('Peças inclusas:');
+        var secao = l.slice(i, l.indexOf('', i));
+        var semPecas = textoWhatsApp(c.res, { nomeOficina: '' }, '', null, []);
+        return { obtido: [secao, /R\$/.test(secao.join(' ')), l[i + 5].indexOf('💳 Cartão em até 5x') === 0, /Peças inclusas/.test(semPecas)],
+                 esperado: [['Peças inclusas:', '2× Pastilha de freio', '1× Disco de freio', '4,5× Óleo 5W30'], false, true, false] };
+      } },
     { id: 'W4', descricao: 'WhatsApp: negrito no título e no à vista; cartão primeiro, à vista por último; sem a quebra mão de obra/peças e sem o acréscimo',
       executar: function () {
         var r = calcularOrcamento({ modo: 'horas', horas: 8, pecasPagar: 500, pecasModo: 'acrescimo', pecasAcrescimo: 47 },
@@ -645,10 +718,10 @@ function casosDeTeste() {
   ];
 }
 
-/** Cenário dos casos D: MO 12 h × 165; peças 100 + 47%; Visa (padrão InfinitePay); imposto 10%; gasto das horas 936,92. */
+/** Cenário dos casos D: MO 12 h × 165; peças = 1 item 1 × 100, + 47%; Visa (padrão InfinitePay); imposto 10%; gasto das horas 936,92. */
 function cenarioDesconto(cartoes) {
   var params = { valorHoraCobrado: 165, impostoPercentual: 10, parcelasDestaque: '5,10' };
-  var entrada = { modo: 'horas', horas: 12, pecasPagar: 100, pecasModo: 'acrescimo', pecasAcrescimo: 47 };
+  var entrada = { modo: 'horas', horas: 12, pecasPagar: totalPecasItens([{ qtd: 1, valor: 100 }]), pecasModo: 'acrescimo', pecasAcrescimo: 47 };
   var res = calcularOrcamento(entrada, params, cartoes || [cartaoDeTeste('Visa/Master', VISA_TESTE)], NAO_SEI, 936.92 / 12);
   return { res: res, params: params };
 }

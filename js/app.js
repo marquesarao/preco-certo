@@ -28,7 +28,8 @@ var nav = { tela: 'orcamento', aba: 'gastos', abaPin: 'gastos' }; // tela: 'orca
 var ui = { cartao: 0, adicionandoCartao: false, outroAberto: false }; // tela "Seus cartões"
 var SUGESTOES_CARTAO = ['Elo', 'Amex', 'Hipercard', 'Visa', 'Mastercard', 'Cabal', 'Banescard', 'Sorocred'];
 var ultimoResultado = null;
-var ultimoPreco = null;        // calcularPrecoComDesconto do último render (vai para o WhatsApp)
+var ultimasPecas = [];        // peças lidas no último render [{descricao, qtd, valor}] (vão para o WhatsApp, sem valores)
+var ultimoPreco = null;       // calcularPrecoComDesconto do último render (vai para o WhatsApp)
 var timerAviso = null;
 
 // ------------------------------------------------------------------
@@ -425,9 +426,12 @@ function orcamentoVazio() {
     horasTexto: '', valorTexto: '', horasFechadoTexto: '',
     pecasPagarTexto: '', pecasModo: 'acrescimo', acrescimoTexto: null, pecasCobrarTexto: '',
     descontoTexto: null, extraTexto: '',   // descontoTexto null = segue o padrão deste aparelho
+    pecas: [],                             // [{descricao, qtdTexto, valorTexto}] (modo acréscimo)
     bandeira: NAO_SEI
   };
 }
+
+function pecaVazia() { return { descricao: '', qtdTexto: '1', valorTexto: '' }; }
 
 function carregarOrcamentoSalvo() {
   var o = lerStorage(CHAVE_ORCAMENTO);
@@ -436,7 +440,82 @@ function carregarOrcamentoSalvo() {
   Object.keys(base).forEach(function (k) { if (typeof o[k] === 'string') base[k] = o[k]; });
   if (base.modo !== 'horas' && base.modo !== 'fechado') base.modo = 'horas';
   if (base.pecasModo !== 'acrescimo' && base.pecasModo !== 'valor') base.pecasModo = 'acrescimo';
+  if (Array.isArray(o.pecas)) {
+    base.pecas = o.pecas.filter(function (p) { return p && typeof p === 'object'; }).slice(0, MAX_PECAS).map(function (p) {
+      return {
+        descricao: typeof p.descricao === 'string' ? p.descricao : '',
+        qtdTexto: typeof p.qtdTexto === 'string' ? p.qtdTexto : '1',
+        valorTexto: typeof p.valorTexto === 'string' ? p.valorTexto : ''
+      };
+    });
+  } else if (base.pecasModo === 'acrescimo' && String(base.pecasPagarTexto).trim() !== '') {
+    // Rascunho da versão anterior (um campo só): vira uma peça 1 × valor, sem perder o que estava digitado.
+    base.pecas = [{ descricao: '', qtdTexto: '1', valorTexto: base.pecasPagarTexto }];
+  }
   orc = base;
+}
+
+// ---------------- Peças discriminadas ----------------
+/** Desenha as linhas de peças (só ao carregar, adicionar, remover ou começar um novo orçamento). */
+function renderPecas() {
+  var html = orc.pecas.map(function (p, i) {
+    var nome = esc(p.descricao || 'peça');
+    return '<div class="peca-linha" data-peca="' + i + '">' +
+      '<div class="entrada peca-desc"><input type="text" data-peca-campo="descricao" data-indice="' + i + '" maxlength="80"' +
+      ' placeholder="Peça (ex.: Pastilha de freio)" aria-label="Descrição da peça" autocomplete="off" value="' + esc(p.descricao) + '"></div>' +
+      '<div class="entrada peca-qtd"><input type="text" class="num" inputmode="decimal" data-peca-campo="qtdTexto" data-indice="' + i + '"' +
+      ' placeholder="Qtd" aria-label="Quantidade de ' + nome + '" autocomplete="off" value="' + esc(p.qtdTexto) + '"></div>' +
+      '<span class="peca-vezes" aria-hidden="true">×</span>' +
+      '<div class="entrada com-prefixo peca-valor"><span class="prefixo">R$</span>' +
+      '<input type="text" class="num" inputmode="decimal" data-peca-campo="valorTexto" data-formato="dinheiro" data-indice="' + i + '"' +
+      ' placeholder="0,00" aria-label="Valor unitário que você paga por ' + nome + '" autocomplete="off" value="' + esc(p.valorTexto) + '"></div>' +
+      '<button type="button" class="btn-remover" data-remover-peca="' + i + '" aria-label="Remover ' + nome + '">' + icone('i-lixeira') + '</button>' +
+      '<p class="erro"></p>' +
+      '<p class="peca-cliente"></p>' +
+      '</div>';
+  }).join('');
+  $('lista-pecas').innerHTML = html;
+  $('pecas-cabecalho').hidden = orc.pecas.length === 0;
+  $('pecas-vazia').hidden = orc.pecas.length > 0;
+  $('btn-adicionar-peca').hidden = orc.pecas.length >= MAX_PECAS;
+}
+
+/** Lê e valida as peças (mostra o erro de cada linha). @return [{descricao, qtd, valor}] */
+function lerPecas() {
+  var msgValor = 'Digite um valor igual ou maior que zero.';
+  return orc.pecas.map(function (p, i) {
+    var q = validarQtdPeca(p.qtdTexto);
+    var v = validarNumeroCampo(p.valorTexto, LIMITE_VALOR_ORCAMENTO, { vazioPermitido: true, mensagem: msgValor });
+    var linha = document.querySelector('.peca-linha[data-peca="' + i + '"]');
+    if (linha) {
+      var inQtd = linha.querySelector('[data-peca-campo="qtdTexto"]');
+      var inValor = linha.querySelector('[data-peca-campo="valorTexto"]');
+      [[inQtd, q.erro], [inValor, v.erro]].forEach(function (par) {
+        par[0].classList.toggle('invalido', !!par[1]);
+        if (par[1]) par[0].setAttribute('aria-invalid', 'true'); else par[0].removeAttribute('aria-invalid');
+      });
+      linha.querySelector('.erro').textContent = q.erro || v.erro || '';
+    }
+    return { descricao: p.descricao, qtd: q.valor, valor: v.valor };
+  });
+}
+
+function adicionarPeca() {
+  if (orc.pecas.length >= MAX_PECAS) return;
+  orc.pecas.push(pecaVazia());
+  gravarStorage(CHAVE_ORCAMENTO, orc);
+  renderPecas();
+  renderOrcamento();
+  var campo = document.querySelector('[data-indice="' + (orc.pecas.length - 1) + '"][data-peca-campo="descricao"]');
+  if (campo) campo.focus();
+}
+
+function onPecaInput(el) {
+  var p = orc.pecas[Number(el.dataset.indice)];
+  if (!p) return;
+  p[el.dataset.pecaCampo] = el.value;
+  gravarStorage(CHAVE_ORCAMENTO, orc);
+  renderOrcamento();
 }
 
 /** Texto do acréscimo deste orçamento: o digitado, ou o padrão de Ajustes enquanto ele não mexeu. */
@@ -456,6 +535,7 @@ function preencherOrcamento() {
     var k = el.dataset.orc;
     el.value = k === 'acrescimoTexto' ? textoAcrescimo() : k === 'descontoTexto' ? textoDesconto() : (orc[k] || '');
   });
+  renderPecas();
 }
 
 function lerCampoOrcamento(id, texto, lim, msg) {
@@ -469,13 +549,16 @@ function montarEntrada() {
   var msgValor = 'Digite um valor igual ou maior que zero.';
   var fechado = orc.modo === 'fechado';
   var porAcrescimo = orc.pecasModo === 'acrescimo';
+  ultimasPecas = porAcrescimo ? lerPecas() : [];
   return {
     modo: orc.modo,
     horas: fechado
       ? lerCampoOrcamento('orc-horas-fechado', orc.horasFechadoTexto, LIMITE_HORAS_SERVICO, msgHoras)
       : lerCampoOrcamento('orc-horas', orc.horasTexto, LIMITE_HORAS_SERVICO, msgHoras),
     valorFechado: fechado ? lerCampoOrcamento('orc-valor', orc.valorTexto, LIMITE_VALOR_ORCAMENTO, msgValor) : null,
-    pecasPagar: lerCampoOrcamento('orc-pecas-pagar', orc.pecasPagarTexto, LIMITE_VALOR_ORCAMENTO, msgValor),
+    pecasPagar: porAcrescimo
+      ? totalPecasItens(ultimasPecas)
+      : lerCampoOrcamento('orc-pecas-pagar', orc.pecasPagarTexto, LIMITE_VALOR_ORCAMENTO, msgValor),
     pecasModo: orc.pecasModo,
     pecasAcrescimo: porAcrescimo ? lerCampoOrcamento('orc-acrescimo', textoAcrescimo(), LIMITE_ACRESCIMO, MENSAGENS_PARAMETROS.acrescimoPecasPadrao) : null,
     pecasCobrar: porAcrescimo ? null : lerCampoOrcamento('orc-pecas-cobrar', orc.pecasCobrarTexto, LIMITE_VALOR_ORCAMENTO, msgValor)
@@ -527,9 +610,20 @@ function renderOrcamento() {
   $('info-horas-estimadas').textContent = res.horasEstimadas
     ? 'Horas estimadas pelo valor da sua hora: ' + formatarHoras(res.horas)
     : '';
-  $('info-pecas-cliente').innerHTML = res.pecasPagar > 0
-    ? 'Cliente paga pelas peças: <strong>' + esc(formatarBRL(res.pecasCobrar)) + '</strong>'
-    : '';
+  // Peças: "Cliente paga" em cada linha e os totais do card
+  if (orc.pecasModo === 'acrescimo') {
+    var fator = 1 + (typeof entrada.pecasAcrescimo === 'number' ? entrada.pecasAcrescimo : 0) / 100;
+    ultimasPecas.forEach(function (p, i) {
+      var el = document.querySelector('.peca-linha[data-peca="' + i + '"] .peca-cliente');
+      var pagaLinha = totalPecasItens([p]);
+      if (el) el.textContent = pagaLinha > 0 ? 'Cliente paga: ' + formatarBRL(pagaLinha * fator) : '';
+    });
+    $('pecas-totais').hidden = !(res.pecasPagar > 0);
+    $('pecas-totais').innerHTML = res.pecasPagar > 0
+      ? '<span>Você paga: <strong>' + esc(formatarBRL(res.pecasPagar)) + '</strong></span>' +
+        '<span>Cliente paga: <strong>' + esc(formatarBRL(res.pecasCobrar)) + '</strong></span>'
+      : '';
+  }
 
   var temValor = res.aVista.totalCentavos > 0;
   $('orc-vazio').hidden = temValor;
@@ -542,6 +636,7 @@ function renderOrcamento() {
   var extra = lerCampoOrcamento('orc-extra', orc.extraTexto, LIMITE_DESCONTO, msgDesconto);
   var preco = calcularPrecoComDesconto(res, d.parametros, desconto, extra);
   ultimoPreco = preco;
+  atualizarDicaDesconto();
 
   // Preço cheio no cartão (âncora) + chips do cartão do cliente
   renderChipsBandeira(d.cartoes, res.cartao);
@@ -599,6 +694,11 @@ function renderOrcamento() {
 
   // Outras formas (sem repetir as em destaque)
   $('outras-formas').hidden = res.outras.length === 0 && res.destaques.length > 0;
+  // Só a âncora em destaque (ex.: parcelas "5"): nada de card vazio, só o link "Ver outras formas…".
+  var soLink = demais.length === 0;
+  $('cards-destaque').hidden = soLink;
+  $('card-cartao').classList.toggle('card-so-link', soLink);
+  $('card-cartao').hidden = res.semCartoes || (soLink && $('outras-formas').hidden);
   $('lista-outras').innerHTML = res.outras.length
     ? res.outras.map(function (op) {
         var esquerda = op.forma === 'Débito' ? 'Débito' : op.parcelas + 'x de ' + formatarCentavos(op.parcelaCentavos);
@@ -657,10 +757,11 @@ function trocarModoPecas(modo) {
   orc.pecasModo = modo;
   gravarStorage(CHAVE_ORCAMENTO, orc);
   renderOrcamento();
-  $(modo === 'acrescimo' ? 'orc-acrescimo' : 'orc-pecas-cobrar').focus();
+  $(modo === 'acrescimo' ? 'btn-adicionar-peca' : 'orc-pecas-pagar').focus();
 }
 
 function novoOrcamento() {
+  if (desfazer.tipo === 'peca' && desfazer.item) finalizarRemocao(); // a peça removida não volta no orçamento novo
   orc = orcamentoVazio();
   apagarStorage(CHAVE_ORCAMENTO);
   preencherOrcamento();
@@ -674,7 +775,9 @@ function novoOrcamento() {
 // ---------------- Copiar e compartilhar ----------------
 function textoAtual() {
   if (!ultimoResultado || !estado.dados) return '';
-  return textoWhatsApp(ultimoResultado, estado.dados.parametros, orc.descricao, ultimoPreco);
+  // Lista de peças só no modo de lista (no "valor total direto" não há lista).
+  return textoWhatsApp(ultimoResultado, estado.dados.parametros, orc.descricao, ultimoPreco,
+    orc.pecasModo === 'acrescimo' ? ultimasPecas : []);
 }
 
 /**
@@ -788,10 +891,17 @@ function adicionarGasto(tipo, descricao) {
  * Remoção com "Desfazer" (gasto ou cartão): some na hora e mostra a barra por 6 s.
  * O salvamento só dispara quando a barra some (ou junto com a próxima alteração).
  */
-function listaDoTipo(tipo) { return tipo === 'cartao' ? estado.dados.cartoes : estado.dados.gastos; }
+function listaDoTipo(tipo) {
+  if (tipo === 'peca') return orc.pecas;
+  return tipo === 'cartao' ? estado.dados.cartoes : estado.dados.gastos;
+}
+
+var NOMES_REMOCAO = { gasto: ['Gasto removido', 'Gasto de volta.'], cartao: ['Cartão removido', 'Cartão de volta.'], peca: ['Peça removida', 'Peça de volta.'] };
 
 function redesenharDoTipo(tipo) {
-  if (tipo === 'cartao') renderAjustes(); else renderGastos();
+  if (tipo === 'peca') { gravarStorage(CHAVE_ORCAMENTO, orc); renderPecas(); }
+  else if (tipo === 'cartao') renderAjustes();
+  else renderGastos();
   renderOrcamento();
 }
 
@@ -800,11 +910,11 @@ function removerComDesfazer(tipo, indice) {
   desfazer.tipo = tipo;
   desfazer.item = listaDoTipo(tipo).splice(indice, 1)[0];
   desfazer.indice = indice;
-  remocoesNaoSalvas++;
+  if (tipo !== 'peca') remocoesNaoSalvas++; // peça é só do rascunho deste aparelho: nada a salvar na planilha
   if (tipo === 'cartao') ui.cartao = Math.min(indice, estado.dados.cartoes.length - 1);
   redesenharDoTipo(tipo);
   $('aviso').hidden = true;
-  $('texto-desfazer').textContent = tipo === 'cartao' ? 'Cartão removido' : 'Gasto removido';
+  $('texto-desfazer').textContent = NOMES_REMOCAO[tipo][0];
   $('barra-desfazer').hidden = false;
   desfazer.timer = setTimeout(finalizarRemocao, TEMPO_DESFAZER_MS);
 }
@@ -827,14 +937,16 @@ function desfazerRemocao() {
   if (tipo === 'cartao') { ui.cartao = posicao; ui.adicionandoCartao = false; }
   $('barra-desfazer').hidden = true;
   redesenharDoTipo(tipo);
-  if (remocoesNaoSalvas > 0) {
+  if (tipo === 'peca') {
+    // só o rascunho do orçamento mudou (já gravado em redesenharDoTipo)
+  } else if (remocoesNaoSalvas > 0) {
     remocoesNaoSalvas--;                  // esta remoção nunca foi salva: voltar não precisa salvar
     if (remocoesNaoSalvas > 0) alterou(); // ainda há remoção anterior pendente
     else atualizarStatusSalvamento();
   } else {
     alterou();                            // a remoção já tinha ido num salvamento: salvar a volta
   }
-  mostrarAviso(tipo === 'cartao' ? 'Cartão de volta.' : 'Gasto de volta.');
+  mostrarAviso(NOMES_REMOCAO[tipo][1]);
 }
 
 function onGastoInput(el) {
@@ -1234,6 +1346,102 @@ function desligarPin() {
 }
 
 // ------------------------------------------------------------------
+// Dicas "?" — abrem por toque/clique (não por "passar o mouse", que não existe no celular).
+// Uma aberta por vez; fecham com novo toque, toque fora ou Esc.
+// ------------------------------------------------------------------
+var DICAS = {
+  acrescimo: { alvo: 'label[for="p-acrescimoPecasPadrao"]', nome: 'Acréscimo padrão nas peças',
+    texto: 'Quanto você põe em cima do preço que paga pela peça. Ex.: paga R$ 100 com 47%, o cliente paga R$ 147. Cada orçamento novo começa com este número. Dá para mudar só naquele orçamento, no campo "Quanto você põe em cima da peça".' },
+  imposto: { alvo: 'label[for="p-impostoPercentual"]', nome: 'Imposto',
+    texto: 'A porcentagem de imposto sobre o que o cliente paga (nota fiscal). O app tira esse imposto do seu lucro, no à vista e no cartão. É MEI? Deixe 0 e coloque o DAS em Meus gastos, porque o DAS é um valor fixo por mês.' },
+  parcelas: { alvo: 'label[for="p-parcelasDestaque"]', nome: 'Parcelas que aparecem no orçamento',
+    texto: 'Quais parcelas do cartão aparecem em destaque no orçamento e no WhatsApp. Ex.: "5,10" mostra 5x e 10x. A primeira (5x) é o preço cheio do cartão, e o desconto à vista é calculado em cima dela. As demais formas ficam em "Ver outras formas de pagamento".' },
+  nomeOficina: { alvo: 'label[for="p-nomeOficina"]', nome: 'Nome da oficina',
+    texto: 'Aparece no título do texto do WhatsApp: "*Orçamento – CliniCar Motors Tech*". Se ficar vazio, o título fica só "*Orçamento*".' },
+  horasCobradas: { alvo: 'label[for="p-horasCobradasPorDia"]', nome: 'Horas que você cobra por dia',
+    texto: 'Das horas que você trabalha, quantas viram serviço cobrado do cliente? O resto vai em orçamento, busca de peça, espera… Normalmente 6 de 8. Quanto menor esse número, mais a sua hora precisa valer.' },
+  valorHora: { alvo: 'label[for="p-valorHoraCobrado"]', nome: 'Quanto você vai cobrar por hora',
+    texto: 'Quanto você cobra por hora de serviço. Precisa ser maior que "Sua hora precisa valer no mínimo", logo acima: a diferença é o seu lucro em cada hora. Ex.: mínimo R$ 33,08 e você cobra R$ 165, sobram R$ 131,92 por hora.' },
+  desconto: { alvo: 'label[for="orc-desconto"]', nome: 'Desconto à vista', texto: function () {
+    var ate = ultimoPreco && ultimoPreco.temAncora
+      ? 'Neste orçamento, até ' + formatarPercentual(Math.round(ultimoPreco.maximo * 100) / 100) + ' você não perde nada'
+      : 'Até a taxa do cartão em destaque você não perde nada';
+    return 'Desconto para quem paga no Pix ou dinheiro, em cima do preço do cartão. ' + ate +
+      ', porque não paga a maquininha. Já vem com o seu número de sempre (Ajustes → Este aparelho).';
+  } },
+  extra: { alvo: 'label[for="orc-extra"]', nome: 'Desconto extra',
+    texto: 'Se o cliente pedir um pouco mais. Soma com o desconto à vista (5% + 2% = 7%). O app mostra até onde dá para ir sem mexer no seu lucro e avisa em vermelho se passar disso.' },
+  cartoes: { alvo: '#titulo-cartoes', nome: 'Seus cartões',
+    texto: 'As taxas que a maquininha cobra em cada parcela (Débito, 1x … 12x). Copie da calculadora de taxas do app da maquininha, um cartão de cada vez. Campo vazio = essa parcela não aparece no orçamento. Vazio é diferente de 0: 0 quer dizer "sem taxa".' },
+  descontoPadrao: { alvo: 'label[for="desconto-padrao"]', nome: 'Desconto à vista padrão',
+    texto: 'O desconto que todo orçamento novo já traz para Pix ou dinheiro. Ex.: 5. Vale só para este aparelho: outro celular pode usar outro número. Em cada orçamento dá para mudar só naquele.' },
+  pin: { alvo: '#rotulo-pin', nome: 'Proteger com PIN',
+    texto: 'Pede 4 números para abrir Meus gastos e Ajustes neste aparelho. Serve para ninguém mexer sem querer: não é uma senha forte. Esqueceu? Na tela do PIN, toque em "Esqueci o PIN".' }
+};
+
+function textoDaDica(chave) {
+  var t = DICAS[chave].texto;
+  return typeof t === 'function' ? t() : t;
+}
+
+/** Põe o botão "?" ao lado de cada rótulo e o balão (escondido) logo abaixo. */
+function montarDicas() {
+  Object.keys(DICAS).forEach(function (chave) {
+    var alvo = document.querySelector(DICAS[chave].alvo);
+    if (!alvo || alvo.parentNode.classList.contains('rotulo-dica')) return;
+    var linha = document.createElement('div');
+    linha.className = 'rotulo-dica' + (alvo.classList.contains('card-titulo') ? ' de-titulo' : '');
+    alvo.parentNode.insertBefore(linha, alvo);
+    linha.appendChild(alvo);
+    var botao = document.createElement('button');
+    botao.type = 'button';
+    botao.className = 'btn-dica';
+    botao.id = 'btn-dica-' + chave;
+    botao.dataset.dica = chave;
+    botao.setAttribute('aria-label', 'O que é "' + DICAS[chave].nome + '"?');
+    botao.setAttribute('aria-expanded', 'false');
+    botao.setAttribute('aria-controls', 'dica-' + chave);
+    botao.innerHTML = '<span aria-hidden="true">?</span>';
+    linha.appendChild(botao);
+    var balao = document.createElement('div');
+    balao.className = 'balao-dica';
+    balao.id = 'dica-' + chave;
+    balao.setAttribute('role', 'note');
+    balao.hidden = true;
+    // Nos dois campos lado a lado (desconto e extra), o balão vai embaixo dos dois, na largura toda do card.
+    var lado = linha.closest('.campos-desconto');
+    if (lado) lado.parentNode.insertBefore(balao, lado.nextSibling);
+    else linha.parentNode.insertBefore(balao, linha.nextSibling);
+  });
+}
+
+function alternarDica(chave) {
+  var balao = $('dica-' + chave);
+  var abrir = balao.hidden;
+  fecharDicas(false);
+  if (!abrir) return;
+  balao.textContent = textoDaDica(chave);
+  balao.hidden = false;
+  $('btn-dica-' + chave).setAttribute('aria-expanded', 'true');
+}
+
+/** Fecha a dica aberta. @return true se havia uma aberta */
+function fecharDicas(devolverFoco) {
+  var aberta = document.querySelector('.btn-dica[aria-expanded="true"]');
+  if (!aberta) return false;
+  aberta.setAttribute('aria-expanded', 'false');
+  $('dica-' + aberta.dataset.dica).hidden = true;
+  if (devolverFoco) aberta.focus();
+  return true;
+}
+
+/** A dica do desconto à vista depende do orçamento: atualiza se estiver aberta. */
+function atualizarDicaDesconto() {
+  var b = $('dica-desconto');
+  if (b && !b.hidden) b.textContent = textoDaDica('desconto');
+}
+
+// ------------------------------------------------------------------
 // Autoteste (?teste=1)
 // ------------------------------------------------------------------
 function verificarModoTeste() {
@@ -1268,6 +1476,7 @@ function ligarEventos() {
     else if (el.dataset.gastoCampo) onGastoInput(el);
     else if (el.dataset.taxaCampo) onTaxaInput(el);
     else if (el.dataset.cartaoNome) onNomeCartaoInput(el);
+    else if (el.dataset.pecaCampo) onPecaInput(el);
     else if (el.dataset.orc) onOrcamentoInput(el);
   });
 
@@ -1291,7 +1500,9 @@ function ligarEventos() {
     if (ds.ir) { abrirConfig(ds.ir, true); return; }
     if (ds.adicionar) { adicionarGasto(ds.adicionar, ''); return; }
     if (ds.sugestao) { adicionarGasto(ds.tipo, ds.sugestao); return; }
+    if (ds.dica) { alternarDica(ds.dica); return; }
     if (ds.remover !== undefined) { removerComDesfazer('gasto', Number(ds.remover)); return; }
+    if (ds.removerPeca !== undefined) { removerComDesfazer('peca', Number(ds.removerPeca)); return; }
     if (ds.editarCartao !== undefined) { editarCartao(Number(ds.editarCartao)); return; }
     if (ds.acao === 'adicionar-cartao') { abrirAdicionarCartao(); return; }
     if (ds.sugestaoCartao !== undefined) {
@@ -1395,7 +1606,14 @@ function ligarEventos() {
   window.addEventListener('hashchange', function () {
     if (window.location.hash.indexOf('#cfg=') === 0) processarLinkDeConfiguracao();
   });
+  $('btn-adicionar-peca').addEventListener('click', adicionarPeca);
+  // Dica aberta: toque/clique fora fecha.
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest || e.target.closest('.btn-dica, .balao-dica')) return;
+    fecharDicas(false);
+  });
   document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && fecharDicas(true)) return; // Esc fecha primeiro a dica aberta
     if (e.key !== 'Escape' || nav.tela === 'orcamento' || document.body.classList.contains('sem-conexao')) return;
     if (!$('caixa-copia').hidden) return; // Esc fecha primeiro a caixa de copiar, se aberta
     voltarAoOrcamento(true);
@@ -1436,6 +1654,7 @@ function ligarEventos() {
 // ------------------------------------------------------------------
 function iniciar() {
   $('logo-carregando').src = $('logo').src;
+  montarDicas();
   ligarEventos();
   carregarOrcamentoSalvo();
   preencherOrcamento();

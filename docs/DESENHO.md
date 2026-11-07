@@ -181,8 +181,10 @@ Colunas: `Cartão` | `Débito (%)` | `1x (%)` | `2x (%)` | … | `12x (%)`. As t
 - **valor fechado:** o valor digitado. Se as horas ficarem vazias, `horas = valor ÷ valorHoraCobrado`, com o aviso "horas estimadas pelo valor da sua hora".
 
 **Peças:**
-- **acréscimo (modo padrão):** `cliente paga = paga × (1 + acréscimo/100)`. Ex.: 500 + 47% = 735,00 e 333,33 + 47% = 489,9951, exibido como 490,00. Acréscimo vazio conta como 0%.
-- **valor direto** (link "Prefiro digitar o valor das peças"): o valor digitado; se ficar vazio, usa o que ele paga.
+- **lista de peças (modo padrão):** cada item tem descrição, quantidade (decimal, maior que 0; padrão 1) e valor unitário que ele paga (≥ 0). `peças pagas = Σ qtd × unitário` (`totalPecasItens`); item com número inválido conta 0 e mostra o erro na linha. Lista vazia = sem peças (só mão de obra), sem erro. Até 30 itens.
+- **acréscimo** (um só para o orçamento inteiro, vale para todos os itens): `cliente paga = paga × (1 + acréscimo/100)`. Ex.: 500 + 47% = 735,00 e 333,33 + 47% = 489,9951, exibido como 490,00. Acréscimo vazio conta como 0%.
+- **valor direto** (link "Prefiro digitar o valor das peças"): esconde a lista e volta aos dois campos de antes ("quanto você paga" e "quanto vai cobrar"; vazio = o que ele paga).
+- Todo o resto (base, âncora, desconto, lucro, piso) usa esses totais, sem outra mudança.
 - `lucroPecas = cobrar − pagar` (sem arredondar).
 - `aVista = maoDeObra + pecasCobrar`.
 
@@ -347,16 +349,20 @@ No notebook, os campos ficam à esquerda e os resultados à direita.
   - "Qual serviço / veículo?";
   - "Quantas horas de serviço?", com "Mão de obra: R$ …" embaixo, que só aparece quando há horas;
   - link "Prefiro digitar o valor fechado" (valor com R$ e horas opcionais).
-- **Card "Peças":**
-  - "Peças – quanto você paga" (R$);
-  - "Quanto você põe em cima da peça" (%), que começa com o acréscimo padrão de Ajustes e pode ser mudado só naquele orçamento;
-  - embaixo, "Cliente paga pelas peças: R$ 735,00";
-  - link "Prefiro digitar o valor das peças", que troca para o valor direto (o link de volta é "Prefiro usar o acréscimo (%)").
+- **Card "Peças"** (lista):
+  - cada linha: Descrição | Qtd | Valor unitário que você paga (R$) | lixeira (SVG). Na tela larga (≥ 560 px), numa linha só, com cabeçalho "Peça · Qtd · Valor unit. (você paga)". No celular, a descrição e a lixeira em cima e "Qtd × R$ valor" embaixo, sem rolagem lateral em 390 px;
+  - embaixo de cada linha, discreto: "Cliente paga: R$ X" (= qtd × unitário × (1 + acréscimo/100));
+  - "+ Adicionar peça" (a peça nova começa com quantidade 1). Lista vazia mostra "Sem peças? Deixe vazio: o orçamento fica só com a mão de obra.";
+  - remover mostra "Peça removida · DESFAZER" por 6 s (como nos gastos). Nada vai para a planilha: a lista é só do rascunho do orçamento neste aparelho (`localStorage`); "Novo orçamento" limpa;
+  - "Quanto você põe em cima da peça" (%), um só para o orçamento inteiro, com a ajuda "Vale para todas as peças deste orçamento.". Começa com o acréscimo padrão de Ajustes e pode ser mudado só naquele orçamento;
+  - totais: "Você paga: R$ X · Cliente paga: R$ Y";
+  - link "Prefiro digitar o valor das peças", que esconde a lista e mostra o valor total direto, como antes (o link de volta é "Prefiro usar o acréscimo (%)", e a lista volta como estava).
+  - Rascunho da versão anterior (campo único preenchido): vira uma peça "1 × valor", sem perder o que estava digitado.
 - **Resultados:**
   - **card do cartão (âncora)**, com detalhe laranja à esquerda: "Cartão em 5x", "5× de R$ 460,24" e "Total R$ 2.301,20", mais os chips "Não sei · Visa/Master · Elo…" (só com 2 ou mais cartões) e a ajuda "Não sabe o cartão do cliente? Deixe em 'Não sei': o preço cobre qualquer bandeira.";
   - **card à vista:** "R$ 2.186,14 · 5% de desconto", com os campos "Desconto à vista" (%) e "Desconto extra que vou dar (opcional)" (%), ambos de 0 a 99 e com erro na hora. Sem âncora, os campos somem e aparece "Cadastre a taxa do cartão em Ajustes para oferecer desconto à vista.";
   - **só para o mecânico:** faixa verde "Se o cliente pedir mais: ainda pode dar até 2,57% (R$ 59,14) sem mexer no seu lucro." ou, acima do máximo, faixa vermelha "Com esse desconto você abre mão de R$ 55,92 do seu lucro.";
-  - **demais parcelas em destaque** (sobre a base), em blocos leves, e "Ver outras formas de pagamento", sem repetir as parcelas em destaque;
+  - **demais parcelas em destaque** (sobre a base), em blocos leves, e "Ver outras formas de pagamento", sem repetir as parcelas em destaque. Quando **só a âncora** está em destaque (ex.: parcelas "5"), não há card vazio: aparece **só o link** "Ver outras formas de pagamento", com o espaçamento normal entre os blocos; aberto, a lista aparece num card normal. Sem outras formas, nem o link aparece;
   - **card de lucro** (sobre o à vista oferecido): valor verde (vermelho com "Esse preço não cobre seus gastos do mês"). Em "Ver detalhes":
     - Mão de obra;
     - "Gasto das suas 8 horas: − R$ 430,77" (nenhuma multiplicação visível);
@@ -372,14 +378,37 @@ No notebook, os campos ficam à esquerda e os resultados à direita.
 *Orçamento – {nomeOficina}*          (ou *Orçamento* sem nome)
 {serviço/veículo}
 
+Peças inclusas:                      (só se houver peças na lista)
+2× Pastilha de freio
+1× Disco de freio
+4,5× Óleo 5W30
+
 💳 Cartão em até 5x: R$ … (5x de R$ …)
 💳 Cartão em até 10x: R$ … (10x de R$ …)
 💵 À vista (Pix/dinheiro): *R$ …* — 5% de desconto
 ```
+- **"Peças inclusas"** lista as peças **sem nenhum valor**: "2× …", "1× …", "4,5× …". Peça sem descrição não aparece (mas entra no cálculo). No modo "valor total direto" não há lista.
 - Com desconto 0, o à vista fica sem o "— N% de desconto".
 - A quebra "Mão de obra / Peças" foi **removida** (com ela, `valoresWhatsApp` e os casos W1–W3).
 - Com um cartão **escolhido** (2 ou mais cartões cadastrados), a linha vira "💳 Cartão Cabal em até 5x: …". Com "Não sei", ou com um único cartão, não há nome.
-- **Nunca** contém "ainda", "lucro", "taxa", "piso" nem "prejuízo", nem custo ou acréscimo.
+- **Nunca** contém valores de peças ou de mão de obra, "ainda", "lucro", "taxa", "piso" nem "prejuízo", nem custo ou acréscimo.
+
+### 6.1.1 Dicas "?"
+Botão redondo "?" ao lado do rótulo (área de toque de 44 px; `aria-label` "O que é \"…\"?"; `aria-expanded`). Toque ou clique abre um balão logo abaixo (nos dois campos de desconto lado a lado, embaixo dos dois). Abre **por toque, não por passar o mouse** (que não existe no celular). Só um aberto por vez; fecha com novo toque, toque fora ou **Esc** (em Configurações, o 1º Esc fecha o balão e o 2º volta ao orçamento). A frase curta embaixo de cada campo continua. Os textos ficam em `DICAS` (`js/app.js`):
+
+| Onde | "?" de | Texto do balão |
+|---|---|---|
+| Ajustes → Outros ajustes | Acréscimo padrão nas peças | Quanto você põe em cima do preço que paga pela peça. Ex.: paga R$ 100 com 47%, o cliente paga R$ 147. Cada orçamento novo começa com este número. Dá para mudar só naquele orçamento, no campo "Quanto você põe em cima da peça". |
+| Ajustes → Outros ajustes | Imposto | A porcentagem de imposto sobre o que o cliente paga (nota fiscal). O app tira esse imposto do seu lucro, no à vista e no cartão. É MEI? Deixe 0 e coloque o DAS em Meus gastos, porque o DAS é um valor fixo por mês. |
+| Ajustes → Outros ajustes | Parcelas que aparecem no orçamento | Quais parcelas do cartão aparecem em destaque no orçamento e no WhatsApp. Ex.: "5,10" mostra 5x e 10x. A primeira (5x) é o preço cheio do cartão, e o desconto à vista é calculado em cima dela. As demais formas ficam em "Ver outras formas de pagamento". |
+| Ajustes → Outros ajustes | Nome da oficina | Aparece no título do texto do WhatsApp: "*Orçamento – CliniCar Motors Tech*". Se ficar vazio, o título fica só "*Orçamento*". |
+| Meus gastos → Sua rotina | Horas que você cobra por dia | Das horas que você trabalha, quantas viram serviço cobrado do cliente? O resto vai em orçamento, busca de peça, espera… Normalmente 6 de 8. Quanto menor esse número, mais a sua hora precisa valer. |
+| Meus gastos | Quanto você vai cobrar por hora | Quanto você cobra por hora de serviço. Precisa ser maior que "Sua hora precisa valer no mínimo", logo acima: a diferença é o seu lucro em cada hora. Ex.: mínimo R$ 33,08 e você cobra R$ 165, sobram R$ 131,92 por hora. |
+| Orçamento | Desconto à vista | Desconto para quem paga no Pix ou dinheiro, em cima do preço do cartão. Neste orçamento, até {máximo}% você não perde nada, porque não paga a maquininha. Já vem com o seu número de sempre (Ajustes → Este aparelho). *(o máximo é o deste orçamento; sem âncora: "Até a taxa do cartão em destaque…")* |
+| Orçamento | Desconto extra | Se o cliente pedir um pouco mais. Soma com o desconto à vista (5% + 2% = 7%). O app mostra até onde dá para ir sem mexer no seu lucro e avisa em vermelho se passar disso. |
+| Ajustes → Seus cartões (título) | Seus cartões | As taxas que a maquininha cobra em cada parcela (Débito, 1x … 12x). Copie da calculadora de taxas do app da maquininha, um cartão de cada vez. Campo vazio = essa parcela não aparece no orçamento. Vazio é diferente de 0: 0 quer dizer "sem taxa". |
+| Ajustes → Este aparelho | Desconto à vista padrão | O desconto que todo orçamento novo já traz para Pix ou dinheiro. Ex.: 5. Vale só para este aparelho: outro celular pode usar outro número. Em cada orçamento dá para mudar só naquele. |
+| Ajustes → Este aparelho | Proteger com PIN | Pede 4 números para abrir Meus gastos e Ajustes neste aparelho. Serve para ninguém mexer sem querer: não é uma senha forte. Esqueceu? Na tela do PIN, toque em "Esqueci o PIN". |
 
 ### 6.2 Meus gastos
 - **Cards "Gastos da oficina" e "Gastos de casa":**
@@ -447,6 +476,12 @@ Ficam em `js/calculo.js` (`casosDeTeste()`). Rodam no app com `?teste=1` e em No
 | C7 | Migração: Visa preenchida + Elo só no 5x | 2 cartões, valores idênticos, vazios preservados, cópia "Taxas (antigo)" |
 | C8 | WhatsApp com "Cabal" / "Não sei" | contém "Cartão Cabal" / sem nome de cartão |
 | P1–P4 | Peças com acréscimo | 735,00 · 0% = mesmo valor · 489,9951 → 490,00 · lucro nas peças = cobrar − pagar |
+| P5 | Peças discriminadas: 2 × 50 + 1 × 350 | 450 pagos; + 47% → cliente 661,50 |
+| P6 | Quantidade decimal: 4,5 × 30 | 135 → cliente 198,45; 0, vazio e "-1" recusados |
+| P7 | Lista vazia | peças 0, sem erro; base = só mão de obra |
+| P8 | Remover peça + Desfazer; "Novo orçamento" | a peça volta no mesmo lugar; nada salvo na planilha; a lista fica vazia (tela) |
+| P9 | WhatsApp com peças | "Peças inclusas:" sem nenhum "R$"; "1×" aparece; peça sem descrição não aparece |
+| P10 | Modo "valor direto" | continua como antes (P1–P4); sem lista no WhatsApp (tela) |
 | W4 | Texto do WhatsApp | negrito; cartão primeiro, à vista por último; sem quebra mão de obra/peças; acréscimo não aparece (W1–W3 removidos com a quebra) |
 | D1 | Âncora: Visa 5x 7,57% sobre a base 2.127 (12 h × 165 + peças 100 + 47%) | Total 2.301,20 · 5× 460,24 |
 | D2 | Desconto 5% | à vista 2.186,14 |
@@ -477,13 +512,23 @@ O clasp e o GitHub Actions foram **removidos** (`.github/workflows/deploy.yml`, 
 - **Primeira vez em uma planilha que já usava o app antigo:** apagar o `Index.html` do projeto Apps Script e substituir o "Código.gs". As abas e os dados não mudam, e a migração da aba Taxas continua valendo.
 - Passo a passo: `docs/DEPLOY.md`.
 
-## 9. Fatias
+## 9. Próximas fases (registradas, **não implementadas**)
+
+1. **Imposto "por dentro" ou "por fora"**, escolhido em Ajustes:
+   - "por dentro" é o atual: o imposto é **descontado do lucro**;
+   - "por fora": o imposto é **somado ao preço** para preservar o lucro.
+2. **Histórico de orçamentos:** aba "Orçamentos", com a situação de cada um e as ações reabrir e duplicar.
+3. **Sincronismo por registro entre aparelhos**, no padrão do Pendências.
+4. **Desconto à vista padrão salvo na planilha.** Hoje ele é guardado por aparelho, no `localStorage`.
+
+## 10. Fatias
 1. Desenho ✅
 2. Backend ✅
 3. Frontend ✅ (Parte 2: novo visual, acréscimo nas peças e cartões cadastráveis ✅)
 4. **Arquitetura Pendências:** tela no GitHub Pages, Apps Script como API, PWA e link de configuração (aguardando aprovação)
 5. Testes de cálculo: autoteste completo (T14, T15)
 6. Documentação final (`GUIA-DO-USUARIO.md` já existe; o `DEPLOY.md` cobre a instalação)
-7. **Desconto à vista negociável + engrenagem/Configurações + PIN opcional** (só frontend; `apps-script/` sem mudança; `sw.js` v2) (aguardando aprovação)
+7. **Desconto à vista negociável + engrenagem/Configurações + PIN opcional** (só frontend; `apps-script/` sem mudança; `sw.js` v2) ✅
+8. **Dicas "?" + peças discriminadas** (só frontend; `apps-script/` sem mudança; `sw.js` v3) (aguardando aprovação)
 
 Cada fatia termina com uma parada para revisão. O commit local só é feito depois da aprovação.

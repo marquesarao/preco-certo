@@ -137,29 +137,41 @@
 
         <div class="card">
           <h2 class="card-titulo">Peças</h2>
-          <div class="campo">
-            <label for="orc-pecas-pagar">Peças – quanto você paga</label>
-            <div class="entrada com-prefixo">
-              <span class="prefixo">R$</span>
-              <input id="orc-pecas-pagar" class="num" type="text" inputmode="decimal" data-orc="pecasPagarTexto" autocomplete="off" placeholder="0,00">
-            </div>
-            <p class="erro"></p>
-          </div>
 
+          <!-- Modo padrão: lista de peças (descrição, quantidade, valor unitário que você paga) + acréscimo único -->
           <div id="bloco-acrescimo">
-            <div class="campo">
+            <div class="pecas-cabecalho" id="pecas-cabecalho" aria-hidden="true">
+              <span>Peça</span><span>Qtd</span><span></span><span>Valor unit. (você paga)</span><span></span>
+            </div>
+            <div id="lista-pecas"></div>
+            <p class="ajuda" id="pecas-vazia">Sem peças? Deixe vazio: o orçamento fica só com a mão de obra.</p>
+            <button type="button" class="btn-adicionar" id="btn-adicionar-peca">
+              <svg class="ic" aria-hidden="true"><use href="#i-mais"/></svg>Adicionar peça
+            </button>
+
+            <div class="campo" style="margin-top:16px">
               <label for="orc-acrescimo">Quanto você põe em cima da peça</label>
               <div class="entrada com-sufixo">
                 <input id="orc-acrescimo" class="num" type="text" inputmode="decimal" data-orc="acrescimoTexto" autocomplete="off" placeholder="0">
                 <span class="sufixo">%</span>
               </div>
               <p class="erro"></p>
-              <p class="info" id="info-pecas-cliente"></p>
+              <p class="ajuda">Vale para todas as peças deste orçamento.</p>
             </div>
+            <div class="total-linha pecas-totais" id="pecas-totais" hidden></div>
             <button type="button" class="link" id="ir-pecas-valor">Prefiro digitar o valor das peças</button>
           </div>
 
+          <!-- Alternativa: valor total direto (como antes), sem lista -->
           <div id="bloco-pecas-valor" hidden>
+            <div class="campo">
+              <label for="orc-pecas-pagar">Peças – quanto você paga</label>
+              <div class="entrada com-prefixo">
+                <span class="prefixo">R$</span>
+                <input id="orc-pecas-pagar" class="num" type="text" inputmode="decimal" data-orc="pecasPagarTexto" autocomplete="off" placeholder="0,00">
+              </div>
+              <p class="erro"></p>
+            </div>
             <div class="campo">
               <label for="orc-pecas-cobrar">Peças – quanto vai cobrar do cliente</label>
               <div class="entrada com-prefixo">
@@ -377,7 +389,7 @@
       <div class="grade-2 grade-ajustes">
         <div class="coluna">
           <div class="card">
-            <h2 class="card-titulo">Seus cartões</h2>
+            <h2 class="card-titulo" id="titulo-cartoes">Seus cartões</h2>
             <p class="ajuda" style="margin:0 0 16px">Cadastre os cartões que você aceita e copie as taxas da calculadora da sua maquininha.</p>
             <div class="chips" id="chips-cartoes" role="radiogroup" aria-label="Cartão que você está editando"></div>
             <p class="ajuda" id="sem-cartoes" hidden>Nenhum cartão cadastrado. Toque em "Adicionar cartão".</p>
@@ -486,7 +498,7 @@
       <hr class="separador">
       <div class="linha-pin">
         <div>
-          <p class="rotulo" style="margin:0">Proteger configurações com PIN</p>
+          <p class="rotulo" id="rotulo-pin" style="margin:0">Proteger configurações com PIN</p>
           <p class="ajuda" id="pin-situacao" style="margin:2px 0 0">Desligado</p>
         </div>
         <button type="button" class="btn btn-fantasma btn-curto" id="btn-pin-ligar">Ligar</button>

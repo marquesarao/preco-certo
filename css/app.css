@@ -122,6 +122,7 @@ fieldset[disabled] { opacity: 0.55; }
   transition: background var(--transicao), border-color var(--transicao), color var(--transicao);
 }
 .btn + .btn { margin-top: 10px; }
+#orc-resultado + .btn { margin-top: 10px; } /* "Novo orçamento" fica fora do bloco de resultados */
 .btn-primario { border: 0; background: var(--verde); color: #fff; font-size: 16px; font-weight: 600; }
 .btn-primario:hover { background: var(--verde-escuro); }
 .btn-fantasma { border: 1px solid var(--borda); background: #fff; color: var(--texto-2); }
@@ -305,3 +306,59 @@ body.sem-conexao #btn-engrenagem, body.sem-conexao #status { display: none !impo
 .btn-curto { width: auto; height: 44px; padding: 0 18px; }
 input.pin { letter-spacing: 0.4em; }
 #pin-novo { margin-top: 12px; }
+
+/* ---------- Peças discriminadas (orçamento) ---------- */
+/* Celular: descrição + lixeira em cima; "Qtd × Valor unitário" embaixo. Tela larga: tudo numa linha. */
+.peca-linha {
+  display: grid; gap: 8px; align-items: center; margin-bottom: 12px;
+  grid-template-columns: 76px 14px minmax(0, 1fr) 44px;
+  grid-template-areas: "desc desc desc rem" "qtd vezes valor ." "erro erro erro erro" "cli cli cli cli";
+}
+.peca-linha .peca-desc { grid-area: desc; }
+.peca-linha .peca-qtd { grid-area: qtd; }
+.peca-linha .peca-vezes { grid-area: vezes; text-align: center; color: var(--texto-3); }
+.peca-linha .peca-valor { grid-area: valor; }
+.peca-linha .btn-remover { grid-area: rem; }
+.peca-linha .erro { grid-area: erro; margin: 0; }
+.peca-linha .erro:empty { display: none; }
+.peca-linha .peca-cliente { grid-area: cli; margin: 0; font-size: 13px; color: var(--texto-3); }
+.peca-linha .peca-cliente:empty { display: none; }
+.pecas-cabecalho { display: none; }
+@media (min-width: 560px) {
+  .peca-linha, .pecas-cabecalho {
+    grid-template-columns: minmax(0, 1fr) 64px 12px 132px 44px;
+    grid-template-areas: "desc qtd vezes valor rem" "erro erro erro erro erro" "cli cli cli cli cli";
+  }
+  .pecas-cabecalho { display: grid; gap: 8px; margin-bottom: 6px; font-size: 13px; font-weight: 500; color: var(--texto-3); }
+  .peca-linha { padding-bottom: 0; }
+}
+.pecas-totais { margin-top: 12px; flex-wrap: wrap; gap: 4px 16px; }
+.pecas-totais span { white-space: nowrap; }
+.pecas-totais strong { color: var(--texto); }
+
+/* ---------- Dicas "?" (abrem por toque/clique; uma por vez) ---------- */
+.rotulo-dica { display: flex; align-items: center; gap: 2px; margin: 0 0 6px; }
+.rotulo-dica > label, .rotulo-dica > .rotulo, .rotulo-dica > .card-titulo { margin: 0; }
+.card-titulo + .balao-dica, .rotulo-dica.de-titulo { margin-bottom: 12px; }
+.btn-dica {
+  flex: none; display: inline-grid; place-items: center; width: 44px; height: 44px; margin: -12px -10px -12px -6px;
+  padding: 0; border: 0; background: none; cursor: pointer; color: var(--laranja-escuro);
+}
+.btn-dica span {
+  display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
+  border: 1.5px solid currentColor; font-size: 12px; font-weight: 700; line-height: 1;
+}
+.btn-dica[aria-expanded="true"] span { background: var(--laranja); border-color: var(--laranja); color: #fff; }
+.btn-dica:focus-visible { outline: none; }
+.btn-dica:focus-visible span { box-shadow: 0 0 0 4px var(--laranja-foco); }
+.balao-dica {
+  position: relative; margin: 4px 0 10px; padding: 10px 12px; border-radius: 10px;
+  background: var(--laranja-claro); border: 1px solid #f6d3ad; color: var(--texto); font-size: 14px; line-height: 1.45;
+}
+.balao-dica[hidden] { display: none; }
+.campos-desconto + .balao-dica { margin: 12px 0 0; }
+
+/* Só a âncora em destaque (ex.: parcelas "5"): o card das parcelas vira só o link "Ver outras formas…".
+   Aberto, volta a ser um card normal com a lista. */
+.card.card-so-link:not(:has(details[open])) { background: none; box-shadow: none; padding: 0 4px; }
+.card-so-link details { margin-top: 0; }
