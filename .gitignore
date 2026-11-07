@@ -1,0 +1,15 @@
+# Credenciais e vínculo local do clasp (nunca versionar)
+.clasprc.json
+.clasp.json
+
+# Dependências e arquivos locais
+node_modules/
+.vscode/
+.idea/
+*.log
+*.tmp
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+desktop.ini
