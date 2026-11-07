@@ -4,194 +4,291 @@
 <base target="_top">
 <meta charset="utf-8">
 <meta name="theme-color" content="#0e0e0e">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
 <style>
-  /* Identidade visual: CliniCar Motors Tech (preto, laranja e prata).
-     Verde e vermelho ficam reservados para lucro e prejuízo. */
+  /* =====================================================================
+     Identidade CliniCar Motors Tech — visual leve (referência: banco digital).
+     Laranja só como acento. Verde = lucro / botão principal. Vermelho = prejuízo.
+     Hierarquia por peso e tamanho; 700 só nos valores principais.
+     ===================================================================== */
   :root {
     --preto: #0e0e0e;
-    --laranja: #ed8a1f;          /* laranja do logo */
-    --laranja-escuro: #a85a00;   /* texto laranja sobre branco (contraste ≥ 4,5:1) */
-    --laranja-claro: #fff3e3;
-    --prata: #c9ccd1;
-    --verde: #1b7a3a;
-    --verde-escuro: #145c2b;
+    --laranja: #ed8a1f;
+    --laranja-escuro: #a85a00;
+    --laranja-claro: #fff1e3;
+    --laranja-foco: rgba(237, 138, 31, 0.18);
+    --prata: #aeb3ba;
+    --verde: #1a7f37;
+    --verde-escuro: #146c2e;
     --vermelho: #c62828;
-    --texto: #1a1a1a;
-    --suave: #4a4f57;
-    --fundo: #f2f2f2;
+    --vermelho-claro: #fdecec;
+    --texto: #1f2328;
+    --texto-2: #4b5563;
+    --texto-3: #6b7280;
+    --fundo: #f5f6f8;
     --card: #ffffff;
-    --borda: #c3c7cd;
-    --foco: #ed8a1f;
-    --faixa: #fff3e3;
-    --faixa-borda: #ed8a1f;
+    --borda: #d9dce1;
+    --borda-suave: #eceef1;
+    --cinza-chip: #f0f1f3;
+    --sombra: 0 1px 3px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.04);
+    --fonte: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --transicao: 160ms ease;
   }
   * { box-sizing: border-box; }
-  html { font-size: 18px; -webkit-text-size-adjust: 100%; }
+  html { font-size: 16px; -webkit-text-size-adjust: 100%; }
   body {
-    margin: 0;
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-    color: var(--texto);
-    background: var(--fundo);
-    line-height: 1.4;
+    margin: 0; font-family: var(--fonte); font-weight: 400; color: var(--texto);
+    background: var(--fundo); line-height: 1.5; -webkit-font-smoothing: antialiased;
   }
   [hidden] { display: none !important; }
+  button, input, select, textarea { font-family: inherit; }
 
-  /* Topo e abas */
-  .topo { position: sticky; top: 0; z-index: 10; background: var(--preto); border-bottom: 3px solid var(--laranja); }
-  .topo-linha { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 16px 0; max-width: 720px; margin: 0 auto; }
-  .marca { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.05rem; color: #fff; }
-  .logo { width: 44px; height: 44px; border-radius: 50%; display: block; flex: none; }
-  .status { border: 0; background: none; font-size: 0.9rem; color: var(--prata); padding: 4px 0; text-align: right; font-family: inherit; }
-  .status.status-erro { color: #ff9e93; font-weight: 700; text-decoration: underline; cursor: pointer; }
-  .status.status-ok { color: #8fe0a0; }
-  .status.status-alerta { color: #ff9e93; font-weight: 700; }
-  .abas { display: flex; max-width: 720px; margin: 0 auto; }
-  .abas button {
-    flex: 1; min-height: 56px; border: 0; background: none; cursor: pointer;
-    font-size: 0.9rem; font-weight: 700; color: var(--prata); font-family: inherit;
-    border-bottom: 4px solid transparent; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  /* Ícones SVG de traço */
+  .ic { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+  .ic-sm { width: 18px; height: 18px; }
+
+  /* ---------------- Topo ---------------- */
+  .topo { position: sticky; top: 0; z-index: 10; background: var(--preto); border-bottom: 2px solid var(--laranja); }
+  .topo-linha { max-width: 1040px; margin: 0 auto; padding: 12px 16px 6px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .marca { display: flex; align-items: center; gap: 12px; color: #fff; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+  .logo { width: 52px; height: 52px; border-radius: 50%; display: block; flex: none; }
+  .status { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; padding: 4px 0; font-size: 13px; color: var(--prata); }
+  .status.status-ok { color: #86d69a; }
+  .status.status-alerta { color: #ffb4a9; }
+  .status.status-erro { color: #ffb4a9; text-decoration: underline; cursor: pointer; }
+  .ponto { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: pulsar 1s ease-in-out infinite; }
+  @keyframes pulsar { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+  .abas { max-width: 1040px; margin: 0 auto; display: flex; padding: 0 8px; }
+  .aba {
+    flex: 1; min-height: 50px; display: flex; align-items: center; justify-content: center; gap: 8px;
+    border: 0; border-bottom: 3px solid transparent; background: none; cursor: pointer;
+    color: var(--prata); font-size: 15px; font-weight: 500; transition: color var(--transicao), border-color var(--transicao);
   }
-  .abas .icone { font-size: 1.2rem; line-height: 1; }
-  .abas button[aria-selected="true"] { color: #fff; border-bottom-color: var(--laranja); }
-
-  main { max-width: 720px; margin: 0 auto; padding: 16px 16px 96px; }
-  h2 { font-size: 1.15rem; margin: 28px 0 10px; }
-  h2:first-child { margin-top: 4px; }
-
-  /* Campos */
-  .campo { margin: 0 0 16px; }
-  label, .rotulo { display: block; font-weight: 700; margin-bottom: 6px; }
-  input[type="text"], select, textarea {
-    width: 100%; min-height: 52px; font-size: 1.1rem; padding: 10px 12px; font-family: inherit;
-    border: 2px solid var(--borda); border-radius: 10px; background: #fff; color: var(--texto);
+  .aba:hover { color: #fff; }
+  .aba[aria-selected="true"] { color: #fff; border-bottom-color: var(--laranja); }
+  .aba[aria-selected="true"] .ic { color: var(--laranja); }
+  @media (max-width: 420px) {
+    .aba { flex-direction: column; gap: 2px; font-size: 13px; min-height: 56px; }
   }
+
+  /* ---------------- Estrutura ---------------- */
+  main { max-width: 720px; margin: 0 auto; padding: 20px 16px 120px; }
+  .grade-2 > .coluna { min-width: 0; }
+  @media (min-width: 900px) {
+    main { max-width: 1040px; padding-top: 28px; }
+    .grade-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+    .grade-ajustes { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+  }
+  .card { background: var(--card); border-radius: 16px; box-shadow: var(--sombra); padding: 20px; margin-bottom: 16px; }
+  .card-titulo { margin: 0 0 16px; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+  .separador { height: 1px; background: var(--borda-suave); margin: 16px 0; border: 0; }
+  @media (max-width: 480px) { .card { padding: 16px; } }
+
+  /* ---------------- Campos ---------------- */
+  .campo { margin-bottom: 16px; }
+  .campo:last-child { margin-bottom: 0; }
+  label, .rotulo { display: block; margin: 0 0 6px; font-size: 14px; font-weight: 500; color: var(--texto-2); }
+  .entrada { position: relative; }
+  .entrada input, .modal textarea {
+    width: 100%; height: 48px; padding: 0 14px; font-size: 16px; font-weight: 400; color: var(--texto);
+    background: #fff; border: 1px solid var(--borda); border-radius: 12px; outline: none;
+    transition: border-color var(--transicao), box-shadow var(--transicao);
+  }
+  .entrada input::placeholder { color: #9aa0a8; }
+  .entrada input:focus, .modal textarea:focus { border-color: var(--laranja); box-shadow: 0 0 0 4px var(--laranja-foco); }
+  .entrada input.invalido { border-color: var(--vermelho); box-shadow: 0 0 0 4px rgba(198, 40, 40, 0.10); }
+  .com-prefixo input { padding-left: 42px; }
+  .com-sufixo input { padding-right: 38px; }
+  .prefixo, .sufixo { position: absolute; top: 50%; transform: translateY(-50%); color: var(--texto-3); font-size: 15px; pointer-events: none; }
+  .prefixo { left: 14px; }
+  .sufixo { right: 14px; }
   input.num { font-variant-numeric: tabular-nums; }
-  input::placeholder { color: #8a8f96; }
-  input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible, summary:focus-visible {
-    outline: 3px solid var(--foco); outline-offset: 2px;
-  }
-  input.invalido { border-color: var(--vermelho); background: #fff5f5; }
-  .erro { color: var(--vermelho); font-weight: 700; margin: 6px 0 0; }
+  .erro { margin: 6px 0 0; font-size: 13px; font-weight: 500; color: var(--vermelho); }
   .erro:empty { display: none; }
-  .ajuda { color: var(--suave); margin: 6px 0 0; font-size: 0.95rem; }
-  .info { margin: 8px 0 0; font-weight: 700; }
+  .ajuda { margin: 6px 0 0; font-size: 13px; color: var(--texto-3); }
+  .info { margin: 8px 0 0; font-size: 14px; color: var(--texto-2); }
   .info:empty { display: none; }
+  .info strong { font-weight: 600; color: var(--texto); }
+  .info strong.positivo { color: var(--verde); }
+  .info strong.negativo { color: var(--vermelho); }
   fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
-  fieldset[disabled] { opacity: 0.6; }
+  fieldset[disabled] { opacity: 0.55; }
 
-  /* Botões */
+  /* ---------------- Botões ---------------- */
   .btn {
-    display: flex; align-items: center; justify-content: center; width: 100%;
-    min-height: 56px; padding: 12px 16px; margin-top: 12px;
-    font-size: 1.1rem; font-weight: 800; font-family: inherit; text-decoration: none; cursor: pointer;
-    border: 2px solid var(--preto); border-radius: 12px; background: #fff; color: var(--preto);
+    display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 52px;
+    border-radius: 12px; font-size: 15px; font-weight: 500; text-decoration: none; cursor: pointer;
+    transition: background var(--transicao), border-color var(--transicao), color var(--transicao);
   }
-  /* Botão do WhatsApp continua verde (combinado no desenho e reconhecível). */
-  .btn-principal { background: var(--verde); border-color: var(--verde); color: #fff; font-size: 1.2rem; min-height: 64px; }
+  .btn + .btn { margin-top: 10px; }
+  .btn-primario { border: 0; background: var(--verde); color: #fff; font-size: 16px; font-weight: 600; }
+  .btn-primario:hover { background: var(--verde-escuro); }
+  .btn-fantasma { border: 1px solid var(--borda); background: #fff; color: var(--texto-2); }
+  .btn-fantasma:hover { border-color: #b9bec6; background: #fafbfc; color: var(--texto); }
+  .btn-perigo { border: 1px solid var(--vermelho); background: #fff; color: var(--vermelho); }
   .btn[disabled] { opacity: 0.5; cursor: default; }
-  .btn-perigo { border-color: var(--vermelho); color: var(--vermelho); }
   .link {
-    background: none; border: 0; padding: 10px 0; min-height: 48px; cursor: pointer;
-    color: var(--laranja-escuro); font-weight: 700; text-decoration: underline; font-size: 1rem; font-family: inherit; text-align: left;
+    display: inline-flex; align-items: center; min-height: 44px; padding: 0; border: 0; background: none; cursor: pointer;
+    color: var(--laranja-escuro); font-size: 14px; font-weight: 500; text-decoration: none; text-align: left;
   }
+  .link:hover { text-decoration: underline; }
+  .link-inline { min-height: 0; font-size: inherit; }
+  .btn-adicionar {
+    display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0; margin-top: 4px;
+    border: 0; background: none; color: var(--laranja-escuro); font-size: 15px; font-weight: 500; cursor: pointer;
+  }
+  .btn-adicionar:hover { text-decoration: underline; }
+  .btn-remover {
+    width: 44px; height: 48px; display: grid; place-items: center; border: 0; border-radius: 10px;
+    background: none; color: var(--texto-3); cursor: pointer; transition: color var(--transicao), background var(--transicao);
+  }
+  .btn-remover:hover, .btn-remover:active { color: var(--vermelho); background: var(--vermelho-claro); }
+  :focus-visible { outline: 2px solid var(--laranja); outline-offset: 2px; }
+  .entrada input:focus-visible { outline: none; }
 
-  /* Cards */
-  .card { background: var(--card); border: 1px solid var(--borda); border-radius: 14px; padding: 16px; margin: 16px 0; }
-  .card-titulo { font-weight: 800; font-size: 1.05rem; }
-  .valor-grande { font-size: 2rem; font-weight: 800; margin-top: 4px; font-variant-numeric: tabular-nums; }
-  .valor-medio { font-size: 1.6rem; font-weight: 800; margin-top: 4px; font-variant-numeric: tabular-nums; }
-  .total { color: var(--suave); font-weight: 700; margin-top: 2px; }
-  .card-avista { border: 2px solid var(--laranja); border-left-width: 8px; }
-  .positivo { color: var(--verde-escuro); }
-  .negativo { color: var(--vermelho); }
-  .card-negativo { border: 2px solid var(--vermelho); background: #fff5f5; }
-  .alerta { color: var(--vermelho); font-weight: 800; margin: 8px 0 0; }
-  .pequeno { color: var(--suave); font-size: 0.95rem; margin: 8px 0 0; }
-  .faixa { background: var(--faixa); border: 1px solid var(--faixa-borda); border-radius: 12px; padding: 12px 16px; font-weight: 700; margin: 0 0 16px; }
-  .faixa-discreta { font-weight: 600; padding: 8px 12px; background: #f7f7f7; border-color: var(--prata); color: var(--suave); }
-  .dica { color: var(--suave); background: #fff; border: 2px dashed var(--borda); border-radius: 12px; padding: 16px; margin: 16px 0; }
-
-  /* Chips */
-  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+  /* ---------------- Chips ---------------- */
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
   .chip {
-    min-height: 48px; padding: 8px 16px; border-radius: 999px; cursor: pointer;
-    border: 2px solid var(--borda); background: #fff; color: var(--texto);
-    font-size: 1rem; font-weight: 700; font-family: inherit;
+    height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--borda); background: #fff;
+    color: var(--texto-2); font-size: 14px; font-weight: 500; cursor: pointer;
+    transition: background var(--transicao), border-color var(--transicao), color var(--transicao);
   }
-  .chip[aria-checked="true"] { background: var(--laranja); border-color: var(--laranja); color: var(--preto); }
-  .chip-sugestao { border-style: dashed; }
+  .chip:hover { border-color: #b9bec6; }
+  .chip[aria-checked="true"] { background: var(--laranja-claro); border-color: var(--laranja); color: var(--laranja-escuro); }
+  .chip-sugestao { border-color: transparent; background: var(--cinza-chip); font-weight: 400; }
+  .chip-sugestao:hover { background: #e6e8eb; border-color: transparent; }
+  .sugestoes { margin: 4px 0 8px; }
+  .sugestoes:empty { display: none; }
 
-  /* Listas */
-  details { margin: 12px 0; }
-  summary { cursor: pointer; min-height: 48px; display: flex; align-items: center; font-weight: 700; color: var(--laranja-escuro); }
-  .lista-formas { list-style: none; padding: 0; margin: 0; background: #fff; border: 1px solid var(--borda); border-radius: 12px; }
-  .lista-formas li { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; padding: 12px 16px; border-bottom: 1px solid var(--borda); }
-  .lista-formas li:last-child { border-bottom: 0; }
-  .lista-formas .forma { font-weight: 700; }
-  .detalhes { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; margin: 8px 0 0; }
-  .detalhes dt { color: var(--suave); }
-  .detalhes dd { margin: 0; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
-
-  /* Gastos */
-  .gasto-linha { display: grid; grid-template-columns: 1fr 52px; grid-template-areas: "desc desc" "valor remover" "erro erro"; gap: 8px; margin-bottom: 16px; }
-  .gasto-linha .gasto-desc { grid-area: desc; }
-  .gasto-linha .gasto-valor { grid-area: valor; }
-  .gasto-linha .btn-remover { grid-area: remover; }
-  .gasto-linha .erro { grid-area: erro; margin: 0; }
-  @media (min-width: 560px) {
-    .gasto-linha { grid-template-columns: 1fr 10rem 52px; grid-template-areas: "desc valor remover" "erro erro erro"; margin-bottom: 10px; }
+  /* ---------------- Faixas e avisos ---------------- */
+  .faixa { margin: 0 0 16px; padding: 12px 16px; border-radius: 12px; background: var(--laranja-claro); color: #7a4300; font-size: 14px; }
+  .faixa-discreta { background: #eceef1; color: var(--texto-2); }
+  .dica {
+    display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;
+    padding: 32px 20px; margin-bottom: 16px; border: 1px dashed var(--borda); border-radius: 16px; color: var(--texto-3); font-size: 14px;
   }
-  .btn-remover { min-height: 52px; min-width: 52px; border: 2px solid var(--borda); border-radius: 10px; background: #fff; font-size: 1.2rem; cursor: pointer; }
-  .subtotal { text-align: right; margin: 8px 0 0; }
-
-  /* Taxas */
-  .taxa-linha { display: grid; grid-template-columns: 5rem 1fr 1.5rem; grid-template-areas: "rot inp pct" "erro erro erro"; align-items: center; gap: 4px 10px; margin-bottom: 10px; }
-  .taxa-linha label { grid-area: rot; margin: 0; }
-  .taxa-linha input { grid-area: inp; }
-  .taxa-linha .pct { grid-area: pct; font-weight: 700; }
-  .taxa-linha .erro { grid-area: erro; margin: 0; }
-  .confirma { background: #fff; border: 2px solid var(--vermelho); border-radius: 12px; padding: 16px; margin-top: 12px; }
-
-  /* Avisos */
+  .dica .ic { width: 28px; height: 28px; color: var(--prata); }
   .toast {
-    position: fixed; left: 16px; right: 16px; bottom: 16px; max-width: 688px; margin: 0 auto; z-index: 30;
-    background: #222; color: #fff; padding: 14px 16px; border-radius: 12px; font-weight: 700; text-align: center;
+    position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 30;
+    width: calc(100% - 32px); max-width: 480px; padding: 14px 16px; border-radius: 14px;
+    background: var(--texto); color: #fff; font-size: 15px; text-align: center; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   }
-  .barra-desfazer { display: flex; justify-content: space-between; align-items: center; gap: 12px; text-align: left; }
+  .barra-desfazer { display: flex; align-items: center; justify-content: space-between; gap: 12px; text-align: left; }
   .barra-desfazer button {
-    min-height: 48px; padding: 8px 16px; border-radius: 10px; cursor: pointer;
-    background: none; border: 2px solid var(--laranja); color: var(--laranja);
-    font-size: 1rem; font-weight: 800; font-family: inherit;
+    min-height: 44px; padding: 0 8px; border: 0; background: none; cursor: pointer;
+    color: var(--laranja); font-size: 14px; font-weight: 600; letter-spacing: 0.04em;
   }
-  .modal { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.55); display: flex; align-items: center; justify-content: center; padding: 16px; }
-  .modal-corpo { background: #fff; border-radius: 14px; padding: 16px; width: 100%; max-width: 560px; max-height: 90vh; overflow: auto; }
-  .modal-corpo textarea { min-height: 240px; }
-  .carregando { text-align: center; padding: 48px 16px; color: var(--suave); font-weight: 700; }
-  .logo-grande { width: 160px; height: 160px; border-radius: 50%; display: block; margin: 0 auto 16px; }
 
-  /* Autoteste */
-  .teste table { width: 100%; border-collapse: collapse; background: #fff; font-size: 0.9rem; }
-  .teste th, .teste td { border: 1px solid var(--borda); padding: 6px 8px; text-align: left; vertical-align: top; word-break: break-word; }
-  .teste .ok { color: var(--verde-escuro); font-weight: 800; }
-  .teste .falha { color: var(--vermelho); font-weight: 800; }
+  /* ---------------- Valores ---------------- */
+  .titulo-valor { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; color: var(--texto-2); }
+  .titulo-valor .ic { color: var(--laranja); }
+  .valor-grande { margin-top: 4px; font-size: 32px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; font-variant-numeric: tabular-nums; }
+  .positivo { color: var(--verde); }
+  .negativo { color: var(--vermelho); }
+  .card-avista { border-left: 4px solid var(--laranja); }
+  .card-negativo { background: var(--vermelho-claro); }
+  .alerta { margin: 8px 0 0; font-size: 14px; font-weight: 500; color: var(--vermelho); }
+  .pequeno { margin: 8px 0 0; font-size: 14px; color: var(--texto-3); }
+
+  /* Parcelas */
+  .parcela { margin-top: 12px; padding: 14px 16px; border-radius: 12px; background: #f8f9fa; }
+  .parcela .titulo-valor .ic { color: var(--texto-3); }
+  .parcela-valor { margin-top: 2px; font-size: 28px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.25; font-variant-numeric: tabular-nums; }
+  .parcela-total { font-size: 14px; color: var(--texto-3); }
+
+  /* Ver mais */
+  details { margin-top: 12px; }
+  summary {
+    display: flex; align-items: center; gap: 6px; min-height: 44px; cursor: pointer; list-style: none;
+    color: var(--laranja-escuro); font-size: 14px; font-weight: 500;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary .ic { width: 18px; height: 18px; transition: transform var(--transicao); }
+  details[open] > summary .ic { transform: rotate(180deg); }
+  .lista-formas { list-style: none; margin: 4px 0 0; padding: 0; }
+  .lista-formas li { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; padding: 12px 0; border-top: 1px solid var(--borda-suave); font-size: 15px; }
+  .lista-formas .forma { font-weight: 500; }
+  .lista-formas .total-li { color: var(--texto-3); }
+  .detalhes { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; margin: 8px 0 0; font-size: 14px; }
+  .detalhes dt { color: var(--texto-2); }
+  .detalhes dd { margin: 0; text-align: right; font-weight: 500; font-variant-numeric: tabular-nums; }
+
+  /* ---------------- Meus gastos ---------------- */
+  .gasto-linha { display: grid; grid-template-columns: minmax(0, 1fr) 132px 44px; gap: 8px; align-items: start; margin-bottom: 10px; }
+  .gasto-linha .erro { grid-column: 1 / -1; margin: 0; }
+  @media (min-width: 560px) { .gasto-linha { grid-template-columns: minmax(0, 1fr) 150px 44px; } }
+  .total-linha { display: flex; justify-content: space-between; align-items: baseline; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--borda-suave); font-size: 14px; color: var(--texto-2); }
+  .total-linha strong { font-size: 16px; font-weight: 600; color: var(--texto); font-variant-numeric: tabular-nums; }
+  .resumo-linha { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 14px; color: var(--texto-2); }
+  .resumo-linha strong { font-size: 18px; font-weight: 600; color: var(--texto); font-variant-numeric: tabular-nums; }
+
+  /* ---------------- Ajustes ---------------- */
+  .taxas-grade { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 16px; }
+  @media (min-width: 900px) {
+    .taxas-grade { grid-template-columns: 1fr 1fr; grid-template-rows: repeat(7, auto); grid-auto-flow: column; column-gap: 24px; }
+  }
+  .taxa-linha { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 4px 12px; }
+  .taxa-linha label { margin: 0; color: var(--texto); }
+  .taxa-linha input { height: 44px; }
+  .taxa-linha .erro { grid-column: 1 / -1; margin: 0; }
+  .confirma { margin-top: 12px; padding: 16px; border-radius: 12px; background: var(--vermelho-claro); font-size: 14px; width: 100%; }
+  .confirma p { margin: 0 0 12px; }
+  .painel { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--borda-suave); }
+  .chip-adicionar { display: inline-flex; align-items: center; gap: 6px; border-style: dashed; color: var(--laranja-escuro); }
+  .chip-adicionar .ic { width: 16px; height: 16px; }
+  .acoes-cartao { display: flex; flex-direction: column; align-items: flex-start; margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--borda-suave); }
+  .link-perigo { gap: 6px; color: var(--vermelho); }
+  .link .ic { flex: none; }
+  .dica-discreta { margin: 0 0 16px; padding: 12px 16px; border-radius: 12px; background: #eceef1; color: var(--texto-2); font-size: 14px; }
+
+  /* ---------------- Carregando, modal, autoteste ---------------- */
+  .carregando { padding: 56px 16px; text-align: center; color: var(--texto-3); font-size: 15px; }
+  .logo-grande { width: 120px; height: 120px; border-radius: 50%; display: block; margin: 0 auto 16px; }
+  .modal { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0, 0, 0, 0.5); }
+  .modal-corpo { width: 100%; max-width: 560px; max-height: 90vh; overflow: auto; padding: 20px; border-radius: 16px; background: #fff; }
+  .modal textarea { height: 240px; padding: 12px 14px; resize: vertical; }
+  .teste table { width: 100%; border-collapse: collapse; background: #fff; font-size: 13px; }
+  .teste th, .teste td { padding: 6px 8px; border: 1px solid var(--borda); text-align: left; vertical-align: top; word-break: break-word; }
+  .teste .ok { color: var(--verde); font-weight: 600; }
+  .teste .falha { color: var(--vermelho); font-weight: 600; }
 </style>
 </head>
 <body>
 
+<!-- Ícones (traço, 24×24). Usados com <svg class="ic"><use href="#i-…"/></svg>. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-calc" viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8"/><path d="M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"/></symbol>
+    <symbol id="i-recibo" viewBox="0 0 24 24"><path d="M4 2v20l2-1.5L8 22l2-1.5L12 22l2-1.5L16 22l2-1.5L20 22V2l-2 1.5L16 2l-2 1.5L12 2l-2 1.5L8 2 6 3.5Z"/><path d="M8 8h8M8 12h8M8 16h5"/></symbol>
+    <symbol id="i-ajustes" viewBox="0 0 24 24"><path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3"/><path d="M14 2v4M8 10v4M16 18v4"/></symbol>
+    <symbol id="i-dinheiro" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></symbol>
+    <symbol id="i-cartao" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/></symbol>
+    <symbol id="i-mensagem" viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></symbol>
+    <symbol id="i-compartilhar" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></symbol>
+    <symbol id="i-novo" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
+    <symbol id="i-lixeira" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6"/></symbol>
+    <symbol id="i-mais" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-abrir" viewBox="0 0 24 24"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+    <symbol id="i-seta" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  </defs>
+</svg>
+
 <header class="topo">
   <div class="topo-linha">
-    <span class="marca"><img class="logo" id="logo" alt="CliniCar Motors Tech" src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAQDAwQDAwQEAwQFBAQFBgoHBgYGBg0JCggKDw0QEA8NDw4RExgUERIXEg4PFRwVFxkZGxsbEBQdHx0aHxgaGxr/2wBDAQQFBQYFBgwHBwwaEQ8RGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhr/wAARCADwAPADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD5hBp1MFOBrYkXNGaKKACg0U0mmIKaadWJqviWz03cgP2i4H/LNDwPqe1DdhGvWVfa/YWGVlmEkg/gj+Y/4CuL1HxDfallXk8qE/8ALOPgfj61lVDn2KsdRd+M5nJFlbpEP70h3H8ulY1zrWoXX+uupMeinaPyFUKKhtsdhSSxyxJPqaSiikMKKKKACgEg5BwaKKALkGrXtt/qrmQD0JyPyNatt4rmUgXUKSDuV+U/4Vz1FNNoVjurXW7K8wFl8tz/AAycfr0rQNea1fstYu7HAjk3x/3H5H/1qtT7icTuaaazbDXra9IRz5Ex/hY8H6GtIjFWncgbTaeRTSKYDKaRTzTD1oAaRTTTjTSKBnTA06mCnZqShaXNJmigAzmorm6hs4WmupFiiXqT/L3NV9T1S30m3M1yck8Ig6ufb/GvOdV1e51afzLlsIPuRj7qj/PepbsFjU1nxZPfbobHdb2/Qn+N/qew9q5yiiobuUFFFFIAooooAKKKKACiiigAooooAKKKKACiiigArX03XprTEdxmaDpyfmX6H+lZFFNOwHoMFxFdRCW3cOh7jt9aca4WyvprCXzIG/3lPRh712NhqEWoRb4uGH3kPVa0UrkNWLBppp1NPWqJGkU00402gZ0INOzUQNOBqCySqWqapDpVqZ5zk9EQHlz6VJc3UdpBJPcMFjQZJ/pXm2rapLqt200vCjiNM8KvpSbsFiPUNQn1O5ae6bcx6Dso9BVWiioGFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFTW1zJaTLLA21x+RHoahooA7iwv49QhEkfysOHT+6f8ACrB61w9leSWM6yxfRl7MPSu0guI7qFZYTlGH5e1ap3IasPNNNKaQ0xG0DTgajzWV4h1P+zrAiNsTzZVPYdz/AJ9ai5oc/wCKNX+23P2WBv8AR4TyR/E3r+HSufooqACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAK1NE1D7JP5cp/cyHB/2T61l0U1oB3x60hrO0W++12uyQ5li4PuOxrRNarUzNYGvP9dv/wC0NQkZTmKP5I/oO/411ut3v2LTZnU4dxsT6n/62a8/rJmgUUUUgCiiigAoooxQAUUu0+lOQLuHmA474OKAGUVqwPoox9ptdQb12XKD+aGtW3uPBikfatN15x32ahCP/aVRKTj0bNIwUvtJHK4oxXotnqPwsBH23QfFJH+xqkB/9pCtiDWfgqv+u8NeLm+uoxH+QFcksVKP/LqT+7/M6I4aMv8Al5H8f8jyLBor2zwn8L9O+Kvil7nwnpV5oHgqzKrLPczmWadupUHpuPoOFHXJ6+pePv2bNI1yxE3g1I9F1KCMKsRJME4A4DdSrf7XfuO9cFfPMFhq0aNV2b3/ALvrY7aOUYqvSlVpq6W3n6HyDXovwS8MWvinx7bWmqWyXdnDbyzzRSDKsAuBn/gTCvUfBX7KVzOqXPjrUDa55+xWRDP/AMCkPA/AH617r4Q+EnhzwU8k3hvSvs9w8flyXDyNJIy5BIJJwOQDwB0rysz4kwVOlOlRnzSaaTWy+f8Akejl+R4mVWFWtFKKd7Pd/L/M5lPhL4NyCfDOnED/AKZH/Gvj7x9oq+HvGmvaZEnlxW17IsaAYCpnKj8iK/RSPTgxwuCfQHNea+Pf2efDPjq+udTuJbvS9Ynx5lxA+5WIAALRtx0A6EV83k3EEcLWksXNuLXm7M97Nsq+tUY/VopNPyVz4Ror1rxn+zx4y8K6jBBY2TeILS6lEVvc2KlssegdTyh9zx7131t+yVdnwfcTXerIPFTASQWyEG3XHWJn6lj/AHhwD6jmvvqmc5fShCo6qtLb+unnfY+KhleNqSlBU3eO/wDXU+Z6Kt6npl3o9/c2GqW0lpeW0hjmhlXDIw6giqleummro81pp2YUUUUxBRRRQBb027+x3cchPyH5X+hrsjzXBV12j3P2mwTccvH8h/Dp+lXF9CWU/FlzungtweEXe31P/wBYfrXO1c1Wf7TqNxJ1G8gfQcf0qnUFBRRRQAUUUUAFSwziLrFHJ/vgmoqfHG0rhYxlj0GcUAaltraWxB/srTZsf89YWP8A7NWnB4zihPPhnw9L/wBdLRz/ACesmHw5qVwcQ26sf+uyD+taMPgHxDOQIrBST63MQ/m1Yz9l9p/idEPbfZX4GqnxHt0I/wCKJ8JMPexl/wDjtXY/inaoB/xb/wAGtj/qHyf/AByuW1Dwdq2lELqUdtbMeitewlj+AYmpNI8L+KL1h/Yumak/cNFE6j8+BXPKjhmuZ7er/wAzeE8SpcqTv6f8A7W3+MUCgLH8OPBr/TTGJ/8AQq0T8XIru0ntn+FvhwpNG0bNBYujAEYyCOQfQ1Dpngz4rxqrrqF1pSKOGuNUEYH/AI9W7baZ8RbYgXPxP02yPcPre4j9K8upHBp3jZ/9vS/S56tNYxq0lJf9ux/Wxq/s1/EWfQ9ZHgjxDDNFaX7mTTfMQhoZiMlMEfdcDr2I9zX1e0kcSs77URAWZmOAAOpJ7CvlrwV4a8VaL4tn8T2niDwn4v1y4h8oSXl+7Oo4BKFehwNv0zV741+IfibqnhU6U/hGfTLORib+6064+1JMg6KNo3IueTkc8ds18fmuW08yzGMqMoxUrczv16tJ2b/Vnv4HFTwOCaqxb5b206dLtXX+RN8Tf2pItOnm0z4cxQ3cqErJqk67o8/9Mk/i/wB5uPQHrXzlr3xC8VeJ5ml13xBqN6T/AAtcMEH0QYUfgK5tlKkhhgjgg9q6Lwp4C8ReN52i8MaVPfbDiSQYWNP952wo+ma+8wOU4PL4KNGCv3erfzPjcXmOJxkm6ktOy2MaHU722k8y3vLiKQHO5JWU5+oNeleDf2g/G3hOWNZtSbXLBT81rqDGXj/Zf7yn8ce1aNx+y38SYrTz7bS7W+YDJhtr6NpPyJGfwzXkuqaVfaJfz2GsWc9hfW7bZYLiMxuh9Cp5FdtfC0MTHkrQUl5o5qWIrUJc1OTTPvz4b/FjRPiVp7zaS7WuoQqDdWErDzI/cH+JP9ofiBXa+Zk4Ffm14a8Saj4T1u01fQ7hre9tn3Iw6MO6sO6kcEV96+GPEmn/ABF8GwajAGS11K3aK4iVyGiYgrImRyCMnB9MGvyvPMhjl9RVaX8OT9bP9fI/RcnzV4+Dpz+Nfj/XU+Tv2hfHGl+NPHD/ANhwQGDTo/srXqL812wPJJ7qOi+3PcV5JW9408Mz+D/FGqaJdEs1lOUV/wC+nVG/FSD+NYNfqWDpUqGGhTpO8Ulb0PzzF1KlXETnUVpNu4UUUV1nKFFFFABWx4en2XMkJPEi5H1H/wBbNY9T2UvkXcMn91xn6d6a3AhJJJJ6mkoopAFFFWtP1G40u4W4sXEc65CsVDYyMdCCKH5DVr6lWiugXxlrTyLuu0bkcPBHj8fl6V3p0TVdWFrPa3mi6e7jFxE7QSID2ZCATg+h6Vz1K3svit9//APQo4SOIT9m22vL/gnkVS29tNdyrDaxSTytwqRqWY/gK9ul+Hs9xZbPsNhr8xIKzRNHZoh7jKfM30OKzZ/B/j61ja30m00/RoTwUsriOJmHu5O8/ia51jqUtFJfN/0/wOieV1qbvJNryV/+B+LOY0z4X6nO0R1u5tNDSQ/Il1IPNb6Rjn88Vdhh+H+j4wupeJrhepH+jw5/HBx+dQr8MPHdteRX40a5upY5VcSxypLkg56hjWFqXgjxJZzyG40DUoVLEgG2Y4GfYUKUKzs6qfkml/wfxJalh4+7Qs+8k3/kvwO0h+IQsOPDujaFoS9n8rz5fz4FV7rx5qV+CNS8TajIh6x28i26/wDjgz+tebXFlc2hxdW8sJ9JIyv86greOGoRd1FN93r+LOWeNxMlZzaXZaL7lY7xtU0WRy9zF9rc/wAVzO8p/U04a9okYwun2IH/AFwU/wBK4GiulabHG3fc7SfVdBmzmxtkPrGpQj8sVqaN8T9b8KOH8L+JtTsVXGIJJDPD9Nj5Feb0VnUpU60eWpFNeauXCpOk7wdn5HtMvxb8LeOG8r4q+EbaW5bj+2NEH2a4H+0yHh/x/KvV/AOrX/h/SIx8PLqw+IHha2GTaQqtnqdqpOTuj4Eh9yMn1r5Q0GCG41a0iuxEYGfD+cZAmP8AaMYLY+gJrvYPCevvqNpqPw20XX7O9idgzW8cxiGMbXjlZVO1ucqwyMd88eZKgsL/AAJ8i7PWP4u6+TXoelTqvEr99Dm81pL8NH8z7k+HXxE8PeM5Tb6RemLU4v8AX6bdoYLqE9wYm5P1GRTf2m/gzp/xH+FmqeILa2RPFHhu0a8t7lE+ee3QZlhfuw25ZfQrxwTXk/h3wpqvjbw3DL8XNHSz8RWsuLW/tXEN2qgDD74z8rZ7dOOldfB45+KPhTw3rXh1IrL4iaZqGnz2dtdXdwLS+tfMjZMyNgrMAG9mOOornw+d4apUdKq1GS87xfo/87HTXyXEwgqlJOUX5WkvVf5H58V9Lfsq6/IY/EGhyMTEnl3kQJ6EnY/5/J+VeW3PwL+IFrnd4cuJQO8Usb/yaux+EOn6x8MPEN9qHivw3r8cM1mYIzbWDS/MXU5OO2FozSVDG4GpTpyUnbRJrceV0q+ExsJ1IOK6tp2tY6v47/CXXfF/iK31vwrZx3ebRYrlPOVHLqTggMRn5SB+FfPPiLwlrfhK4ig8R6bcadLKC0YlXG8DgkEcH8K+ttS+OnhXS4i9ymsB/wDnk2mvGw+u7A/Wvn34y/Eqw+JF/pc2k2dzaRWMUkZ+0FcvuYHOBnHSuDJa2YpQoVqVoJWv18uv6HfnVDL/AHq9Kpebe3Tz6HmNFFFfXHyAUUUUAFFFFABRRRQAUUUUAFWLG0e/u4reMqrSNjc5wqjuSfQDJP0qvVnT/Ka9gS6uGtbaRwk0ypvKRk4Yhe+BnjvQNb6nqfg2x8T+NLpPB/wjglhsw266vi3lGQngyyyf8s144Uc4Hc19d+C/2APCy6fHcfEHxNqmualMoZxYOIIUJ7AsGZvqcfSvANL+Pvg74cafDpnw+0e/vYbfkPMVtxO/eRz8zMx+gx0GBX0D+zJ+13N8RvGDeD/GGnWely3UbPpU1u7EM6jJibcTklQSCMdDxRTp06e27NKlapUtzPbbsjzv4zfsleJvhBaP4q+C2tarqel2/wA93Ys2bmBf7wC8Sp6jbkehr5n8Ta4vjq2m1qTNp4ltEUX8aMRHdRDCiVF/hdeAy9MfMMYNfs+6LKjJINyOpVh6g18gfE79nvwf4r1m/wDttrJpGsJI6HUdPIjeQHvImNr5B5JGT60p4eDmqiXvd/0HGvNQdNv3X0/U/OZ55ZOJJHYejMTUdfVF3+xFr1xcFfDvifT72M5KrPbSxyY9woYUg/YR8dYy+s6Og/2kuP8A43V8rMbnyxRX1P8A8MLeLl/1vinw9F/vfaB/7SpG/Yd8Rp/rPG/hVPq9x/8AGqOVgfLNFfULfsUayn+s8f8AhFfrJP8A/G6Yf2L9THX4i+Dv+/0//wAbo5WB802t/dWLb7K4mtn/AL0UhQ/mKuSeJdZmGJdWv3H+1dOf619ATfsdaxG22Dxp4cvD6W7St/7IKIf2L/GNzn7NfwTgd47SZh/KpcL7opSktmfO7avft9+9uW+szf401dSvEOUu7hT7St/jX0iv7Efjlv8Al6iX/espx/7LUy/sNeOm6ajZD/etrgf+yUcnkHPLufO1n4i1KGVPM1XUo4gfm8m6ZW/DnFdppvxUm0oKtnc+J53B48zXuP8AvnyzXrNt+wx4xluRDceItDtsEb94mDL/AMBKCvqD4Gfse+C/hpPBrWuTDxd4jiw0UtxCFt7dvWOIk5b/AGmJx2ArKeGp1dJROiniq1HWEjwHw7e/Ee/02GXU/DlpaQzKHjGs6gyzMpHBKLHkZ/2gDUl74Mu9cyNZ+H2jaoTwW069j838A6xn9a+qfjJ4WWy0fUtctIhJ9ltprnb6siFsH2JFfmDrvxc8aeIPMW91+7hgcn9xaN9njx6YTGR9c1yPKsHF3jFp+Ta/U71nONatOSkuzSf6HpGr/DHwJqOpXWmWOoXnhjXbdtsunXnLo2M42seeCPusetef658Jda0yWZdNeDWhECXS1YiZR6mFsP8AkDXBtI7uXdi7sclmOSTXSad431K2gjtb+VtQtIuYRJIRLbn+9FKPmQ/Q49QaI0K9F+5Ucl2lr+OgSxWDxCtVpKMu8dPw1X3HNujRuySKUZTgqwwQfSm1oa3qk2s6lNe3UhmmlxukZQrPgYy2OC3qe55rPrvV7ankSSUny7BRRRTJCigjBwaKACiiigAooooAK7z4KveQ/FfwhPpofzoNThlYoPuorZcn225z7Vb+G+vfDrSInHxB8Nahq955uY54bn90qYHBiyuTnPO4/SvddK+MPwt0yDytEmTRoSMGKPSWiOPQlFOfxJqkl3A+/vCPiOLXLFAWBmUevUV5R8VvFmg+F9bv73xFq1npdtuVA9xKF3sFAIUdWP0Br5h1H9r6z8IadNF4AWXVNVZSIbm5hMcEB/vFT8zkemAPU9q+UvE3irWfGWsXGr+KNRuNU1G4YtJNO+T9AOgHsMCrcrbCsffGkftf/D3wxeyvZ6rcXe9Nj406UqRnPBODW8P27/ALDElxcY9tMkP/ALNX5o0VPOwsfpHcftqfDG7z515fJn+7pT//ABdZk/7V3wius+bqusLn+7o5/wDi6/O+ijmYz7/n/aO+Ctx9/XtfUnrjRf8A7Os6T46fBCU5/wCEj8Rr9NEH/wAXXwjRRzsD7sT45/BOJg0fifxKrDoRoo/+Lrfsf2t/htoJU6Rr+sXG3p9o0pk/kxr89KKOdgfo8f29PCoOBtYeptJhmnJ+3r4T/wCWgA+lnMa/N+ijnYrH6IXX7ZHgHWdTF1falc2x2BAF06XaoH5nvXs3ww+MnhTxrcRL4b1+y1Fj9+FZNsqA9zG2G/SvyJqxY391pl3Dd6dczWl1CweKaFyjow7hhyDRzsZ+5uoafb6pZXFlfxCa2uI2ilQ91IwR+Rr8yPGv7Ffi/wAPeKNSitr3Tl8OLMzWd5JKxdoScqDGATuA4Pb3r0r4Qft9x6VoMGlfF3TL7U7y2UJHqtgELzKOnmxkqN3+0Dz3FYXxo/brn8Wae+lfDXQ30eJwQ2pagVkuAP8Apmgyq/Ulvwqm4sR8/wDxN+HWh/Du1tbJdfl1TxFK4eW3W3EccMODy3zEhicYB7ZJA4z5pU13dz31zLc3s0lxczOXklkYszsepJPJNQ1kxhRRRQAUUUUAWb+LybyZOwYkfQ81WrY8QQbZo5gOHXafqKx6BsKKKKBHu37Kvwo0j4neP5n8YwtceG9Gt/tN1CJCguJGO2OIsMEAncxxg4QjvX214ptv2ePh+tlF4t8K+C9I+0q32YT6WrtIFxk5CseMjk+teD/s6eDtT8O/Du2vIYik+tyfbGOOTH92MfkC3/Aq+ePj94vm8V/EW+RpvOttKH2GHDZXKE7yPq5b8hQB9u/8J1+yn/0DfAf/AIJj/wDG68h0HRvh98YP2plk8J+H9Fi+HXhrT1llhtLFYra+cLwXTA3bpZAORysdfF9fZH7M3g7UdE8CyazFCUm1ubzFYrgmGMlU/AnefyoA639sG2+G/gr4ZQ2XhPwV4b0zXtbvVihubTT4o5YYY/nkZWAyMnYufRjXwVXsP7SPiufxB8QpdOlm82HRIxaKAcgSfek/Hcdp/wB2vIYonmkSOFS8jsFVVGSSegoA+yf2Kfhf4Z1jR/EXijx9oWna5byypY6dBqFusqKV+eWQBuM8ouf96q37RXhrwl4r+Nvgf4b/AA78OaP4fjyjarPptokJbzWDNuKj+CFN3/AjXpHgrw1ffD7wNpumybbeDTbMy3bdAGwXlY/ju/KvG/gJZ6n448eeLPiHMjO7StBbuw6NJyQP92MKv0agD7RX4afCCMKqfDrwoyKAo3aZESQOOTjr718DWXwRhi/agj8DTxmTQI9U+1liMhtOH70Z+qYT6mvo648ZXFt48sfB8kgGo3envep83Ta2AuPUqHb/AIDV/wD4Ra4/4SceJBB/xNhYfYPN/wCmW/fj65/SgC/+0Hp3wq8A/CXxHqul/D/wpb6vPD9i0549LiDJPL8odeOqruf/AICKy/2X/g/4HsvhFpF5458KaLrut6zI98ZdRs0meKFsCJAWHA2qGx6vXh/x0l1Px38RvCfw7ikMhEiz3Kqfus/OT/uxKT/wKvYfH2vX/gDwFquqIRbRWFoIbRegDkBIlH0JH5UAeF+L9B8NfET43+K5vDOiWGl+EtFdbK2tdPgEEUzp8pYheu5g7Z7jbV3U9E8CeGngi8QW2k2DzKWjWW3yWUcE8A11XwX8ESaV4I0+S5Q/bdTJvJi3U7/u5/4Dj8zXzh8YPEaeJPHmpy2zh7O0b7JbEHgonBI+rbj+NfIwrSzTH1KUJtQh2+787n2n7vKsvhNwTnLuv62R7FBefCUY3zaD+Nqf/ia5/wAK+CdC+J3xR1V9LtIB4U0iJAFtk8tLhui5xg8tuPrha8Br7k/Zx8LJ4Y+Gtrd3EYW91mQ3khI5Ef3Yx/3yN3/AqzzX/hGwkq0KknKXuq777v7kZ4Gs82xEac6cVGOrst7dPvK+t+Gfhh4MFonimw0HS/tCsYBPa5LhcZPAJ7jk1r+FfC3wr8XQ3E3hzS9B1WO2ZVmaGxGEJzgfMo9DVf4mfBGy+JuuQ6pq+s6jaeRbrBDbwwoURQSSRnuSSTW98PPA2nfDfQDo2kTy3KyXDTyzzAK7scDkDjgACvjauKpSwSlDETdZ2uruy79P13PpaeHrPFOMqMVT6OyueMftF6D4d0tPDfhfwf4e02z1rVroO0ltbKsgTOxFyBkBmY/9816z/wAK7+H3hPw5E2s6Dopt9NtUW5vbm0Vi20AM7HGSSf515P4SmHxK/aA1fxE/73S/DylLU9srmOP8zvf8K9R+IvivwhpWnRaZ8QJoxZaicrbukjiTYQcnZyADjrXo4r6zBYfAqUnJLmlytuTb1t8kceFp0Z+2xbUUm7Rvtppf5sxLHUPgpqt7b2OmWnhm5u7iQRwxJp/zOxOAB8lL8S/BXgbSvAfiC8m8OaXaGG0cxS29usUiynhNrDvuIrW0j4feDdGu7bVtC0GzguYl823ni3MQCvVck5yDx9a8H+Ofxh0/xdp0Xh/w0Z3tUnEt3PLGYw5XIVAp5wCSSTjkCtMFRqYvGQWFnU5Itczk9vuKxcoYPBzliYw5mvdSW/3nhBpKKK/Tz80CpbaPzbiNPVhUVaGkRbp2kPRF/U0IDb1W3+02UgAyyfOv4f8A1q5Su5xXI6la/ZLt0A+RvmT6GkimVKVSAwLDIzyM9aSlXbuG/O3POPSmSfpT4c/ay+BUXh/SY5rvUdIkitIo2sv7Kkk+zlUA2blyGAxjI61Tf4+fsuyOzyWlo7sSWZvCmSSepJ2V8CeV4R/5+tb/APAWH/4ujyvCX/P1rf8A4Cw//F1n7Tyf3HR7B/zL7z6L/aV+Kvwk8ZaFoGhfCWzs7MTah5uraguhi1eGJQAqj5QzAlmYgf3AO9fQGh/tO/s++HtF03SNN1nUEtNOtY7aEf2NN91FCg9Opxn8a/PTyvCX/P1rf/gLD/8AF0eV4S/5+tb/APAWH/4uj2nk/uD2D/mX3n39P+0B+zBdTST3NvbTTysXkkk8Klmdickklckn1rzLxt8XvgVr3xN+HraLBb6b4Q0W4l1PVrm30Awyz3Cj9xDtVQxUMMntz7V8ktH4Z80bbnVzFjkm3i3flvq6IfBGwZvPEW/v/ocGP/RlDqW6P7heyf8AMvvPsf4//tQ/DbxD8LNc0b4bahd3mu6qEtT5unyQCOBmzK25uMlQVx/tVJ8Bvjr8EPhp8LNB0DV9avRrARrjUimkSuPtEhywDAchRtXPfbmvi54vCH/LO710/W1h/wDjlV2j8NZ+S51bHvbx/wDxdHP5MfsG/tL7z0Xxf8ZjqH7QcvxE0ZXNhaasj2MTDaWs4yEVCO26MHI9WNfbg/a2+ApOf7Z1EA87f7GmyPbOK/N3y/Df/Pxqv/fiP/4ujy/Dn/Pxqv8A34j/APi6fP5MfsH/ADL7z6M+CXxg8AW/xn8bfEX4rX9xZS3xkXSIIrJ7jasjYJO3psiVUH+8fStD9qz9oDwT8Q9H8OaH8OJri/0+O9a81UzWr22/aAscY3dR8zkn6V8x+X4b/wCfjVf+/Ef/AMXXs3wlsvhDp3gPVbz4mRjWdR1zWF0vTraG9WC7023WJm+1tk7UVpDGhZsgAE4OMFp8xnKm6et0/R3PXrP9pP4aJawbbq9tT5ajyWsHPl8fdyODjpxWW/xo+C7ZP2G0JP8A1AB/8TWJ/Y/wg1L4p+P7nQY/CUHh7QNJjsvDlhqWrNFa6nfkBWuGkLhnRT5hJBGfk9a5y8ufhlL+0FY6dZad4XTwNbWkdrqN2zzCzmdY99xcQnzN24tuSMEkfd4NfKLhfBRbcZzV+0v+Ae++IMU0k4xdvL/gmT8Y/iB4H8X/ANgaZ4Rt7ex08XXm6ldxaaIHVeFAAABYAFjj1xXql7+0Z4E07RJofD93cyT21oY7GA2TqpZUxGpJ4A4FeU+EpfBPjDxD4r1u80rwtoFnY2LQ6Fo15ePbw3M7yHZJKzSbmKpktggE7QAKW8/4VsvjzXbx4NKbw/oekpHDb2jsU1K9YAM8Ss+5lDMxA3dEHNdtTIsJVpU6U3JqF7a7376HPTznE0qk6kVFOXltbtqecaD4w1G41+xPiLxNq0GmNcK146XUrHy85bCg9SOPxr6J8V/tEeFG8OapH4avbmTVJLZo7RWtXQB2G0HcfQHP4V5lqMHgW5+INpFZWeknQdPsd88kd8IIr+ZhkH53O3aWAKZz8pzXI/FE6DBf6faeFxpkkaW4kuJdPjYL5jf8syxdw20AcjHU11YrKsNjKkJ1F8OyW3z0McLmmIwkJwhb3urvf5ano/wY+JPgzwF4Tkt9Wvp01W8uGmuQlq7gAcIu4deMn/gVee/GTxzb+O/FzXmlyPJpltAkFrvUqSOrNtPTLE/kK1Nd1XwvH4F8NafpmieHW8SarC4v7yN5T9iTeEjyTIQspALMSMAHoK7z4o2vw68N+EprfwPaeE9XuFggslvFvBNcO5TElwoWbIO4E8pgflV0suo0sVLFK7nLv+hNXMq9XCxwrSUV23+epD8Lvjjo2j+EbXS/Fl1PFd2JMUDpC0m+HquSOhHI+gFeR/E690DVfFt3qXhKdpbK9/fSI0Jj8uU/fAB7E8/jXrPxSs/B3hLwzp+meCLL4f6/DLp1tZz6supST6kb149004RZQiIGyoJUgYHrXU+LtN+Avh7wv4tl0GSz1nX9C8PWmjWKfaFa31PUZgDLqEO197mPLA5AQYAANOhl9HD15V6d05broFfM6+Jw0MPUSajs+v5nyZRRRXpHlhW/psPk2qk/ef5j/Sse0g+0XCJ/D1b6V0f0qkJmhWfrFl9qtSyDMsXzL7juK09tLtrM03OBorV1rT/sk/mxj9zIf++T6VlVRAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRV3TbP7TLucfuk5PufSgDQ0y18mHe4w8nP0HartPIpCKpCNbbRtqQCl21maFa4to7mF4phlGHPt71xV9ZSWFw0Uo91bsw9a77bVbUdOj1G3McnysOUfH3T/hTBq5wNFTXVrLZztDcLtdfyI9RUNMgKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKkhhe4kWOJdzGgB1tbvdTLHEOT1PoPWungt1t4ljjHC9/U+tNsbFLKLavzOfvN6/wD1qtbaB2IttBWpMUmKoLGwFpdtSbacFrMsiC0oWpQtLtoAztR0uHUoNkw2uPuOByp/wrhr/T59OmMVwuP7rDow9RXpeyorqyhvYTDcxiRD69R7j0piaueX0Vuav4auNP3S24M9sOcgfMv1H9aw6ZGwUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFaenaLNe4d8xQf3iOT9BQG5StbWW8lEcC5Pc9gPeuqsdPjsY8J8zn7znv/wDWq1b2cVpGI4FCr39SfU1LspXLSsQ7aNtTbaNtFx2INtG2p9lJspgbISnBKmCU4JWdyiDy6UJVgJTglFwK+yl2VY2Uojp3Ar7Kw9U8K2l/mSD/AEWc/wASj5T9R/hXS7KNlILXPKdR0K+0wk3EJaLtInK/n2/Gs2vZynBBHBrFv/CunX2W8o28h/ii4/TpVcxDieZUV1V54GvIsmzljuF9D8jf4frWFdaRf2R/0m0mjHrtyPzHFO6ZNmUqKKKYgooooAKKKKACirVvpt5dkfZ7aWQHuF4/Oti18IXcmDdSJbr6feb9OP1pNpDSbOdq5ZaVdX5/cRHZ3duFH412Np4bsbTBMZncfxScj8ulamzAAAwB2FS5di1Duc/YeHbe0w8+LiUeo+Ufh3/GtbbU5Wk21Ny7WINopNlT7KNlMLEGyjbU+yjZTuFiDZRsqfZRsNMVj//Z"><span>Preço Certo</span></span>
+    <div class="marca"><img class="logo" id="logo" alt="CliniCar Motors Tech" src="data:image/jpeg;base64,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"><span>Preço Certo</span></div>
     <button type="button" id="status" class="status" disabled>Carregando…</button>
   </div>
   <nav class="abas" role="tablist" aria-label="Telas">
-    <button type="button" role="tab" id="aba-orcamento" data-tela="orcamento" aria-selected="false" aria-controls="tela-orcamento">
-      <span class="icone" aria-hidden="true">🧮</span><span>Orçamento</span>
+    <button type="button" class="aba" role="tab" id="aba-orcamento" data-tela="orcamento" aria-selected="false" aria-controls="tela-orcamento">
+      <svg class="ic" aria-hidden="true"><use href="#i-calc"/></svg><span>Orçamento</span>
     </button>
-    <button type="button" role="tab" id="aba-gastos" data-tela="gastos" aria-selected="false" aria-controls="tela-gastos">
-      <span class="icone" aria-hidden="true">📋</span><span>Meus gastos</span>
+    <button type="button" class="aba" role="tab" id="aba-gastos" data-tela="gastos" aria-selected="false" aria-controls="tela-gastos">
+      <svg class="ic" aria-hidden="true"><use href="#i-recibo"/></svg><span>Meus gastos</span>
     </button>
-    <button type="button" role="tab" id="aba-ajustes" data-tela="ajustes" aria-selected="false" aria-controls="tela-ajustes">
-      <span class="icone" aria-hidden="true">⚙️</span><span>Ajustes</span>
+    <button type="button" class="aba" role="tab" id="aba-ajustes" data-tela="ajustes" aria-selected="false" aria-controls="tela-ajustes">
+      <svg class="ic" aria-hidden="true"><use href="#i-ajustes"/></svg><span>Ajustes</span>
     </button>
   </nav>
 </header>
@@ -204,206 +301,332 @@
   <div id="carregando" class="carregando">
     <img class="logo-grande" id="logo-carregando" alt="">
     <p id="carregando-texto">Carregando seus dados…</p>
-    <button type="button" class="btn" id="btn-tentar-carregar" hidden>Tentar de novo</button>
+    <button type="button" class="btn btn-fantasma" id="btn-tentar-carregar" hidden>Tentar de novo</button>
   </div>
 
-  <!-- ========================= ORÇAMENTO ========================= -->
+  <!-- ============================ ORÇAMENTO ============================ -->
   <section id="tela-orcamento" role="tabpanel" aria-labelledby="aba-orcamento" hidden>
     <div id="faixa-sem-gastos-orc" class="faixa" hidden>
-      Coloque seus gastos em <button type="button" class="link" data-ir="gastos">Meus gastos</button> para ver o lucro.
+      Coloque seus gastos em <button type="button" class="link link-inline" data-ir="gastos">Meus gastos</button> para ver o lucro.
     </div>
 
-    <div class="campo">
-      <label for="orc-descricao">Qual serviço / veículo?</label>
-      <input id="orc-descricao" type="text" data-orc="descricao" maxlength="120" autocomplete="off"
-             placeholder="Ex.: Troca de embreagem – Gol 2015">
-    </div>
+    <div class="grade-2">
+      <div class="coluna">
+        <div class="card">
+          <h2 class="card-titulo">Serviço</h2>
+          <div class="campo">
+            <label for="orc-descricao">Qual serviço / veículo?</label>
+            <div class="entrada">
+              <input id="orc-descricao" type="text" data-orc="descricao" maxlength="120" autocomplete="off" placeholder="Ex.: Troca de embreagem – Gol 2015">
+            </div>
+          </div>
 
-    <div id="bloco-horas">
-      <div class="campo">
-        <label for="orc-horas">Quantas horas de serviço?</label>
-        <input id="orc-horas" class="num" type="text" inputmode="decimal" data-orc="horasTexto" autocomplete="off" placeholder="Ex.: 8">
-        <p class="erro"></p>
-        <p class="info" id="info-mao-horas"></p>
+          <div id="bloco-horas">
+            <div class="campo">
+              <label for="orc-horas">Quantas horas de serviço?</label>
+              <div class="entrada">
+                <input id="orc-horas" class="num" type="text" inputmode="decimal" data-orc="horasTexto" autocomplete="off" placeholder="Ex.: 8">
+              </div>
+              <p class="erro"></p>
+              <p class="info" id="info-mao-horas"></p>
+            </div>
+            <button type="button" class="link" id="ir-fechado">Prefiro digitar o valor fechado</button>
+          </div>
+
+          <div id="bloco-fechado" hidden>
+            <div class="campo">
+              <label for="orc-valor">Valor da mão de obra</label>
+              <div class="entrada com-prefixo">
+                <span class="prefixo">R$</span>
+                <input id="orc-valor" class="num" type="text" inputmode="decimal" data-orc="valorTexto" autocomplete="off" placeholder="0,00">
+              </div>
+              <p class="erro"></p>
+            </div>
+            <div class="campo">
+              <label for="orc-horas-fechado">Horas (opcional)</label>
+              <div class="entrada">
+                <input id="orc-horas-fechado" class="num" type="text" inputmode="decimal" data-orc="horasFechadoTexto" autocomplete="off" placeholder="Ex.: 6">
+              </div>
+              <p class="erro"></p>
+              <p class="info" id="info-horas-estimadas"></p>
+            </div>
+            <button type="button" class="link" id="ir-horas">Prefiro calcular por horas</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2 class="card-titulo">Peças</h2>
+          <div class="campo">
+            <label for="orc-pecas-pagar">Peças – quanto você paga</label>
+            <div class="entrada com-prefixo">
+              <span class="prefixo">R$</span>
+              <input id="orc-pecas-pagar" class="num" type="text" inputmode="decimal" data-orc="pecasPagarTexto" autocomplete="off" placeholder="0,00">
+            </div>
+            <p class="erro"></p>
+          </div>
+
+          <div id="bloco-acrescimo">
+            <div class="campo">
+              <label for="orc-acrescimo">Quanto você põe em cima da peça</label>
+              <div class="entrada com-sufixo">
+                <input id="orc-acrescimo" class="num" type="text" inputmode="decimal" data-orc="acrescimoTexto" autocomplete="off" placeholder="0">
+                <span class="sufixo">%</span>
+              </div>
+              <p class="erro"></p>
+              <p class="info" id="info-pecas-cliente"></p>
+            </div>
+            <button type="button" class="link" id="ir-pecas-valor">Prefiro digitar o valor das peças</button>
+          </div>
+
+          <div id="bloco-pecas-valor" hidden>
+            <div class="campo">
+              <label for="orc-pecas-cobrar">Peças – quanto vai cobrar do cliente</label>
+              <div class="entrada com-prefixo">
+                <span class="prefixo">R$</span>
+                <input id="orc-pecas-cobrar" class="num" type="text" inputmode="decimal" data-orc="pecasCobrarTexto" autocomplete="off" placeholder="Igual ao que você paga">
+              </div>
+              <p class="erro"></p>
+              <p class="ajuda">Se deixar vazio, usa o mesmo valor que você paga.</p>
+            </div>
+            <button type="button" class="link" id="ir-pecas-acrescimo">Prefiro usar o acréscimo (%)</button>
+          </div>
+        </div>
       </div>
-      <button type="button" class="link" id="ir-fechado">Prefiro digitar o valor fechado</button>
-    </div>
 
-    <div id="bloco-fechado" hidden>
-      <div class="campo">
-        <label for="orc-valor">Valor da mão de obra (R$)</label>
-        <input id="orc-valor" class="num" type="text" inputmode="decimal" data-orc="valorTexto" autocomplete="off" placeholder="Ex.: 900,00">
-        <p class="erro"></p>
+      <div class="coluna">
+        <div id="orc-vazio" class="dica">
+          <svg class="ic" aria-hidden="true"><use href="#i-calc"/></svg>
+          Preencha as horas (ou o valor) e as peças para ver o preço.
+        </div>
+
+        <div id="orc-resultado" hidden>
+          <div class="card card-avista">
+            <div class="titulo-valor"><svg class="ic" aria-hidden="true"><use href="#i-dinheiro"/></svg>À vista (Pix ou dinheiro)</div>
+            <div class="valor-grande" id="res-avista"></div>
+          </div>
+
+          <div class="card" id="card-cartao">
+            <div id="bloco-bandeiras">
+              <p class="rotulo">Cartão do cliente</p>
+              <div class="chips" id="chips-bandeira" role="radiogroup" aria-label="Cartão do cliente"></div>
+              <p class="ajuda">Não sabe o cartão do cliente? Deixe em "Não sei": o preço cobre qualquer bandeira.</p>
+            </div>
+            <div id="cards-destaque"></div>
+            <details id="outras-formas">
+              <summary>Ver outras formas de pagamento<svg class="ic" aria-hidden="true"><use href="#i-seta"/></svg></summary>
+              <ul class="lista-formas" id="lista-outras"></ul>
+            </details>
+          </div>
+          <p class="dica-discreta" id="dica-sem-cartoes" hidden>
+            Cadastre seus cartões em <button type="button" class="link link-inline" data-ir="ajustes">Ajustes</button> para ver as parcelas.
+          </p>
+
+          <div class="card" id="card-lucro">
+            <div class="titulo-valor">Seu lucro neste serviço</div>
+            <div class="valor-grande" id="res-lucro"></div>
+            <p class="alerta" id="res-lucro-alerta" hidden>Esse preço não cobre seus gastos do mês</p>
+            <p class="pequeno" id="res-lucro-cartao" hidden></p>
+            <details>
+              <summary>Ver detalhes<svg class="ic" aria-hidden="true"><use href="#i-seta"/></svg></summary>
+              <dl class="detalhes" id="res-detalhes"></dl>
+            </details>
+          </div>
+
+          <button type="button" class="btn btn-primario" id="btn-copiar">
+            <svg class="ic" aria-hidden="true"><use href="#i-mensagem"/></svg>Copiar para WhatsApp
+          </button>
+          <button type="button" class="btn btn-fantasma" id="btn-compartilhar" hidden>
+            <svg class="ic" aria-hidden="true"><use href="#i-compartilhar"/></svg>Compartilhar
+          </button>
+        </div>
+
+        <button type="button" class="btn btn-fantasma" id="btn-novo">
+          <svg class="ic" aria-hidden="true"><use href="#i-novo"/></svg>Novo orçamento
+        </button>
       </div>
-      <div class="campo">
-        <label for="orc-horas-fechado">Horas (opcional)</label>
-        <input id="orc-horas-fechado" class="num" type="text" inputmode="decimal" data-orc="horasFechadoTexto" autocomplete="off" placeholder="Ex.: 6">
-        <p class="erro"></p>
-        <p class="info" id="info-horas-estimadas"></p>
-      </div>
-      <button type="button" class="link" id="ir-horas">Prefiro calcular por horas</button>
     </div>
-
-    <h2>Peças</h2>
-    <div class="campo">
-      <label for="orc-pecas-pagar">Peças – quanto você paga (R$)</label>
-      <input id="orc-pecas-pagar" class="num" type="text" inputmode="decimal" data-orc="pecasPagarTexto" autocomplete="off" placeholder="0,00">
-      <p class="erro"></p>
-    </div>
-    <div class="campo">
-      <label for="orc-pecas-cobrar">Peças – quanto vai cobrar do cliente (R$)</label>
-      <input id="orc-pecas-cobrar" class="num" type="text" inputmode="decimal" data-orc="pecasCobrarTexto" autocomplete="off" placeholder="Igual ao que você paga">
-      <p class="erro"></p>
-      <p class="ajuda">Se deixar vazio, usa o mesmo valor que você paga.</p>
-    </div>
-
-    <div id="orc-vazio" class="dica">Preencha as horas (ou o valor) e as peças para ver o preço.</div>
-
-    <div id="orc-resultado" hidden>
-      <div class="card card-avista">
-        <div class="card-titulo">💵 À vista (Pix ou dinheiro)</div>
-        <div class="valor-grande" id="res-avista"></div>
-      </div>
-
-      <div id="bloco-bandeiras">
-        <p class="rotulo">Cartão do cliente:</p>
-        <div class="chips" id="chips-bandeira" role="radiogroup" aria-label="Cartão do cliente"></div>
-        <p class="ajuda">Não sabe o cartão do cliente? Deixe em "Não sei": o preço cobre qualquer bandeira.</p>
-      </div>
-
-      <div id="cards-destaque"></div>
-
-      <details id="outras-formas">
-        <summary>Ver outras formas de pagamento</summary>
-        <ul class="lista-formas" id="lista-outras"></ul>
-      </details>
-
-      <div class="card" id="card-lucro">
-        <div class="card-titulo">Seu lucro neste serviço</div>
-        <div class="valor-grande" id="res-lucro"></div>
-        <p class="alerta" id="res-lucro-alerta" hidden>Esse preço não cobre seus gastos do mês</p>
-        <p class="pequeno" id="res-lucro-cartao" hidden></p>
-        <details>
-          <summary>Ver detalhes</summary>
-          <dl class="detalhes" id="res-detalhes"></dl>
-        </details>
-      </div>
-
-      <button type="button" class="btn btn-principal" id="btn-copiar">📲 Copiar para WhatsApp</button>
-      <button type="button" class="btn" id="btn-compartilhar" hidden>Compartilhar</button>
-    </div>
-
-    <button type="button" class="btn" id="btn-novo">Novo orçamento</button>
   </section>
 
-  <!-- ========================= MEUS GASTOS ========================= -->
+  <!-- ============================ MEUS GASTOS ============================ -->
   <section id="tela-gastos" role="tabpanel" aria-labelledby="aba-gastos" hidden>
     <div id="faixa-primeiro" class="faixa" hidden>Comece colocando seus gastos do mês. Leva 2 minutos.</div>
 
     <fieldset id="fs-gastos" disabled>
-      <h2>Gastos da oficina</h2>
-      <div id="lista-Oficina"></div>
-      <div class="chips" id="sugestoes-Oficina"></div>
-      <button type="button" class="btn" data-adicionar="Oficina">+ Adicionar gasto</button>
-      <p class="subtotal">Total da oficina: <strong id="total-Oficina"></strong></p>
+      <div class="grade-2">
+        <div class="coluna">
+          <div class="card">
+            <h2 class="card-titulo">Gastos da oficina</h2>
+            <div id="lista-Oficina"></div>
+            <div class="chips sugestoes" id="sugestoes-Oficina"></div>
+            <button type="button" class="btn-adicionar" data-adicionar="Oficina">
+              <svg class="ic ic-sm" aria-hidden="true"><use href="#i-mais"/></svg>Adicionar gasto
+            </button>
+            <div class="total-linha"><span>Total da oficina</span><strong id="total-Oficina"></strong></div>
+          </div>
 
-      <h2>Gastos de casa</h2>
-      <div id="lista-Casa"></div>
-      <div class="chips" id="sugestoes-Casa"></div>
-      <button type="button" class="btn" data-adicionar="Casa">+ Adicionar gasto</button>
-      <p class="subtotal">Total de casa: <strong id="total-Casa"></strong></p>
+          <div class="card">
+            <h2 class="card-titulo">Gastos de casa</h2>
+            <div id="lista-Casa"></div>
+            <div class="chips sugestoes" id="sugestoes-Casa"></div>
+            <button type="button" class="btn-adicionar" data-adicionar="Casa">
+              <svg class="ic ic-sm" aria-hidden="true"><use href="#i-mais"/></svg>Adicionar gasto
+            </button>
+            <div class="total-linha"><span>Total de casa</span><strong id="total-Casa"></strong></div>
+          </div>
+        </div>
 
-      <h2>Sua rotina</h2>
-      <div class="campo">
-        <label for="p-diasPorSemana">Dias de trabalho por semana</label>
-        <input id="p-diasPorSemana" class="num" type="text" inputmode="decimal" data-param="diasPorSemana" autocomplete="off">
-        <p class="erro"></p>
-      </div>
-      <div class="campo">
-        <label for="p-horasPorDia">Horas de trabalho por dia</label>
-        <input id="p-horasPorDia" class="num" type="text" inputmode="decimal" data-param="horasPorDia" autocomplete="off">
-        <p class="erro"></p>
-      </div>
-      <div class="campo">
-        <label for="p-horasCobradasPorDia">Das suas horas de trabalho por dia, quantas você consegue cobrar do cliente?</label>
-        <input id="p-horasCobradasPorDia" class="num" type="text" inputmode="decimal" data-param="horasCobradasPorDia" autocomplete="off">
-        <p class="erro"></p>
-        <p class="ajuda">Tem orçamento, busca de peça, espera… Normalmente 6 de 8.</p>
-      </div>
+        <div class="coluna">
+          <div class="card">
+            <h2 class="card-titulo">Sua rotina</h2>
+            <div class="campo">
+              <label for="p-diasPorSemana">Dias de trabalho por semana</label>
+              <div class="entrada"><input id="p-diasPorSemana" class="num" type="text" inputmode="decimal" data-param="diasPorSemana" autocomplete="off"></div>
+              <p class="erro"></p>
+            </div>
+            <div class="campo">
+              <label for="p-horasPorDia">Horas de trabalho por dia</label>
+              <div class="entrada"><input id="p-horasPorDia" class="num" type="text" inputmode="decimal" data-param="horasPorDia" autocomplete="off"></div>
+              <p class="erro"></p>
+            </div>
+            <div class="campo">
+              <label for="p-horasCobradasPorDia">Das suas horas de trabalho por dia, quantas você consegue cobrar do cliente?</label>
+              <div class="entrada"><input id="p-horasCobradasPorDia" class="num" type="text" inputmode="decimal" data-param="horasCobradasPorDia" autocomplete="off"></div>
+              <p class="erro"></p>
+              <p class="ajuda">Tem orçamento, busca de peça, espera… Normalmente 6 de 8.</p>
+            </div>
+          </div>
 
-      <div class="card">
-        <p style="margin:0">Você gasta <strong id="res-gasto-mes"></strong> por mês</p>
-        <p style="margin:12px 0 0">Sua hora precisa valer no mínimo</p>
-        <div class="valor-grande" id="res-preco-minimo"></div>
-      </div>
-
-      <div class="campo">
-        <label for="p-valorHoraCobrado">Quanto você vai cobrar por hora (R$)</label>
-        <input id="p-valorHoraCobrado" class="num" type="text" inputmode="decimal" data-param="valorHoraCobrado" data-formato="dinheiro" autocomplete="off">
-        <p class="erro"></p>
-        <p class="info" id="res-ganho-hora"></p>
+          <div class="card">
+            <div class="resumo-linha"><span>Você gasta por mês</span><strong id="res-gasto-mes"></strong></div>
+            <hr class="separador">
+            <div class="titulo-valor">Sua hora precisa valer no mínimo</div>
+            <div class="valor-grande" id="res-preco-minimo"></div>
+            <hr class="separador">
+            <div class="campo">
+              <label for="p-valorHoraCobrado">Quanto você vai cobrar por hora</label>
+              <div class="entrada com-prefixo">
+                <span class="prefixo">R$</span>
+                <input id="p-valorHoraCobrado" class="num" type="text" inputmode="decimal" data-param="valorHoraCobrado" data-formato="dinheiro" autocomplete="off">
+              </div>
+              <p class="erro"></p>
+              <p class="info" id="res-ganho-hora"></p>
+            </div>
+          </div>
+        </div>
       </div>
     </fieldset>
   </section>
 
-  <!-- ========================= AJUSTES ========================= -->
+  <!-- ============================ AJUSTES ============================ -->
   <section id="tela-ajustes" role="tabpanel" aria-labelledby="aba-ajustes" hidden>
     <fieldset id="fs-ajustes" disabled>
-      <h2>Taxas da maquininha</h2>
-      <p class="ajuda" style="margin-top:0">Copie as taxas da calculadora do app da sua maquininha, bandeira por bandeira.</p>
-      <div class="campo" style="margin-top:12px">
-        <label for="sel-bandeira">Editando:</label>
-        <select id="sel-bandeira"></select>
-      </div>
-      <div id="lista-taxas"></div>
-      <p class="ajuda">Campo vazio = sem taxa: essa opção não aparece no orçamento.</p>
+      <div class="grade-2 grade-ajustes">
+        <div class="coluna">
+          <div class="card">
+            <h2 class="card-titulo">Seus cartões</h2>
+            <p class="ajuda" style="margin:0 0 16px">Cadastre os cartões que você aceita e copie as taxas da calculadora da sua maquininha.</p>
+            <div class="chips" id="chips-cartoes" role="radiogroup" aria-label="Cartão que você está editando"></div>
+            <p class="ajuda" id="sem-cartoes" hidden>Nenhum cartão cadastrado. Toque em "Adicionar cartão".</p>
 
-      <button type="button" class="btn" id="btn-restaurar">Voltar taxas da InfinitePay</button>
-      <div class="confirma" id="restaurar-confirma" hidden>
-        <p style="margin-top:0"><strong>Tem certeza?</strong> Isso troca só as taxas de Visa/Master pelas da InfinitePay. As outras bandeiras não mudam.</p>
-        <button type="button" class="btn btn-perigo" id="btn-restaurar-sim">Sim, voltar as taxas</button>
-        <button type="button" class="btn" id="btn-restaurar-nao">Cancelar</button>
-      </div>
+            <!-- Adicionar cartão -->
+            <div class="painel" id="painel-adicionar" hidden>
+              <p class="rotulo">Qual cartão você quer adicionar?</p>
+              <div class="chips" id="sugestoes-cartao"></div>
+              <div id="bloco-outro" hidden>
+                <div class="campo" style="margin-top:16px">
+                  <label for="novo-cartao-nome">Nome do cartão</label>
+                  <div class="entrada"><input id="novo-cartao-nome" type="text" maxlength="30" autocomplete="off" placeholder="Ex.: Banescard"></div>
+                  <p class="erro"></p>
+                </div>
+                <button type="button" class="btn btn-fantasma" id="btn-criar-cartao">Adicionar este cartão</button>
+              </div>
+              <button type="button" class="link" id="btn-cancelar-adicionar">Cancelar</button>
+            </div>
 
-      <h2>Outros ajustes</h2>
-      <div class="campo">
-        <label for="p-impostoPercentual">Imposto (%)</label>
-        <input id="p-impostoPercentual" class="num" type="text" inputmode="decimal" data-param="impostoPercentual" autocomplete="off">
-        <p class="erro"></p>
-        <p class="ajuda">Se for MEI, deixe 0 e coloque o DAS em Meus gastos.</p>
-      </div>
-      <div class="campo">
-        <label for="p-parcelasDestaque">Parcelas que aparecem no orçamento</label>
-        <input id="p-parcelasDestaque" type="text" inputmode="decimal" data-param="parcelasDestaque" autocomplete="off" placeholder="Ex.: 5,10">
-        <p class="erro"></p>
-        <p class="ajuda">Ex.: 5,10. Deixe vazio para não destacar nenhuma.</p>
-      </div>
-      <div class="campo">
-        <label for="p-nomeOficina">Nome da oficina</label>
-        <input id="p-nomeOficina" type="text" data-param="nomeOficina" maxlength="60" autocomplete="off">
-        <p class="erro"></p>
-        <p class="ajuda">Aparece no texto do WhatsApp.</p>
+            <!-- Editar cartão -->
+            <div class="painel" id="painel-cartao" hidden>
+              <div class="campo">
+                <label for="cartao-nome">Nome do cartão</label>
+                <div class="entrada"><input id="cartao-nome" type="text" maxlength="30" autocomplete="off" data-cartao-nome="1"></div>
+                <p class="erro"></p>
+              </div>
+              <p class="faixa" id="aviso-cartao-vazio" hidden>Copie as taxas da calculadora da sua maquininha para este cartão.</p>
+              <div class="taxas-grade" id="lista-taxas"></div>
+              <p class="ajuda">Campo vazio = sem taxa: essa opção não aparece no orçamento.</p>
+
+              <div class="acoes-cartao">
+                <button type="button" class="link" id="btn-preencher-padrao">Preencher com as taxas padrão Visa/Master da InfinitePay</button>
+                <div class="confirma" id="confirma-padrao" hidden>
+                  <p><strong>Tem certeza?</strong> As taxas deste cartão serão trocadas pelas da InfinitePay (Visa/Master).</p>
+                  <button type="button" class="btn btn-perigo" id="btn-padrao-sim">Sim, preencher</button>
+                  <button type="button" class="btn btn-fantasma" id="btn-padrao-nao">Cancelar</button>
+                </div>
+                <button type="button" class="link link-perigo" id="btn-remover-cartao">
+                  <svg class="ic ic-sm" aria-hidden="true"><use href="#i-lixeira"/></svg>Remover cartão
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="coluna">
+          <div class="card">
+            <h2 class="card-titulo">Outros ajustes</h2>
+            <div class="campo">
+              <label for="p-acrescimoPecasPadrao">Acréscimo padrão nas peças</label>
+              <div class="entrada com-sufixo">
+                <input id="p-acrescimoPecasPadrao" class="num" type="text" inputmode="decimal" data-param="acrescimoPecasPadrao" autocomplete="off">
+                <span class="sufixo">%</span>
+              </div>
+              <p class="erro"></p>
+              <p class="ajuda">Cada orçamento novo começa com este número.</p>
+            </div>
+            <div class="campo">
+              <label for="p-impostoPercentual">Imposto</label>
+              <div class="entrada com-sufixo">
+                <input id="p-impostoPercentual" class="num" type="text" inputmode="decimal" data-param="impostoPercentual" autocomplete="off">
+                <span class="sufixo">%</span>
+              </div>
+              <p class="erro"></p>
+              <p class="ajuda">Se for MEI, deixe 0 e coloque o DAS em Meus gastos.</p>
+            </div>
+            <div class="campo">
+              <label for="p-parcelasDestaque">Parcelas que aparecem no orçamento</label>
+              <div class="entrada"><input id="p-parcelasDestaque" type="text" inputmode="decimal" data-param="parcelasDestaque" autocomplete="off" placeholder="Ex.: 5,10"></div>
+              <p class="erro"></p>
+              <p class="ajuda">Ex.: 5,10. Deixe vazio para não destacar nenhuma.</p>
+            </div>
+            <div class="campo">
+              <label for="p-nomeOficina">Nome da oficina</label>
+              <div class="entrada"><input id="p-nomeOficina" type="text" data-param="nomeOficina" maxlength="60" autocomplete="off"></div>
+              <p class="erro"></p>
+              <p class="ajuda">Aparece no texto do WhatsApp.</p>
+            </div>
+          </div>
+
+          <a class="btn btn-fantasma" id="link-planilha" target="_blank" rel="noopener" hidden>
+            <svg class="ic" aria-hidden="true"><use href="#i-abrir"/></svg>Abrir minha planilha
+          </a>
+          <p class="ajuda" id="info-salvo" style="text-align:center"></p>
+        </div>
       </div>
     </fieldset>
-
-    <a class="btn" id="link-planilha" target="_blank" rel="noopener" hidden>🔗 Abrir minha planilha</a>
-    <p class="pequeno" id="info-salvo"></p>
   </section>
 </main>
 
 <div id="aviso" class="toast" role="status" aria-live="polite" hidden></div>
 
 <div id="barra-desfazer" class="toast barra-desfazer" role="status" aria-live="polite" hidden>
-  <span>Gasto removido</span>
+  <span id="texto-desfazer">Gasto removido</span>
   <button type="button" id="btn-desfazer">DESFAZER</button>
 </div>
 
 <div id="caixa-copia" class="modal" role="dialog" aria-modal="true" aria-labelledby="caixa-copia-titulo" hidden>
   <div class="modal-corpo">
-    <p id="caixa-copia-titulo" style="margin-top:0"><strong>Copie o texto abaixo</strong></p>
-    <p class="ajuda">Toque e segure no texto → Selecionar tudo → Copiar. Depois cole no WhatsApp.</p>
+    <p id="caixa-copia-titulo" style="margin:0 0 4px;font-weight:600">Copie o texto abaixo</p>
+    <p class="ajuda" style="margin:0 0 12px">Toque e segure no texto → Selecionar tudo → Copiar. Depois cole no WhatsApp.</p>
     <textarea id="texto-copia" readonly></textarea>
-    <button type="button" class="btn" id="btn-fechar-copia">Fechar</button>
+    <button type="button" class="btn btn-fantasma" id="btn-fechar-copia" style="margin-top:12px">Fechar</button>
   </div>
 </div>
 
@@ -412,37 +635,46 @@
      Regras: docs/DESENHO.md, seção 4.
      ===================================================================== -->
 <script id="calculo">
-var BANDEIRAS = [
-  { id: 'visa', curto: 'Visa/Master', longo: 'Visa/Master' },
-  { id: 'elo', curto: 'Elo', longo: 'Elo' },
-  { id: 'amex', curto: 'Amex', longo: 'Amex' },
-  { id: 'hiper', curto: 'Hiper', longo: 'Hipercard' }
-];
-var NAO_SEI = 'naosei';
+/** "Não sei" o cartão do cliente. String vazia: nenhum cartão pode ter nome vazio. */
+var NAO_SEI = '';
+
+/** Campos de taxa de cada cartão (Débito, 1x … 12x) — mesma ordem do backend (CAMPOS_TAXA_). */
+var CAMPOS_TAXA = ['debito', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9', 'p10', 'p11', 'p12'];
+var FORMAS = CAMPOS_TAXA.map(function (campo) {
+  return campo === 'debito'
+    ? { campo: campo, forma: 'Débito', parcelas: 1, rotulo: 'Débito' }
+    : { campo: campo, forma: 'Crédito', parcelas: Number(campo.slice(1)), rotulo: campo.slice(1) + 'x' };
+});
 
 // Limites: espelho EXATO do backend (Codigo.gs).
 var MAX_VALOR = 1e9;
 var MAX_TAXA = 99;
+var MAX_ACRESCIMO = 1000;
 var MAX_GASTOS = 200;
+var MAX_CARTOES = 12;
+var MAX_NOME_CARTAO = 30;
 var LIMITES_PARAMETROS = {
-  diasPorSemana:       { min: 1, max: 7 },
-  horasPorDia:         { min: 0, max: 24, minExclusivo: true },
-  horasCobradasPorDia: { min: 0, max: 24, minExclusivo: true },
-  valorHoraCobrado:    { min: 0, max: MAX_VALOR },
-  impostoPercentual:   { min: 0, max: MAX_TAXA }
+  diasPorSemana:        { min: 1, max: 7 },
+  horasPorDia:          { min: 0, max: 24, minExclusivo: true },
+  horasCobradasPorDia:  { min: 0, max: 24, minExclusivo: true },
+  valorHoraCobrado:     { min: 0, max: MAX_VALOR },
+  impostoPercentual:    { min: 0, max: MAX_TAXA },
+  acrescimoPecasPadrao: { min: 0, max: MAX_ACRESCIMO }
 };
 var LIMITE_TAXA = { min: 0, max: MAX_TAXA };
 var LIMITE_VALOR_GASTO = { min: 0, max: MAX_VALOR };
 // Só do orçamento (não vai para a planilha).
 var LIMITE_HORAS_SERVICO = { min: 0, max: 10000 };
 var LIMITE_VALOR_ORCAMENTO = { min: 0, max: MAX_VALOR };
+var LIMITE_ACRESCIMO = LIMITES_PARAMETROS.acrescimoPecasPadrao;
 
 var MENSAGENS_PARAMETROS = {
   diasPorSemana: 'Use um número de 1 a 7.',
   horasPorDia: 'Use um número maior que 0 e até 24.',
   horasCobradasPorDia: 'Use um número maior que 0 e até 24.',
   valorHoraCobrado: 'Digite um valor igual ou maior que zero.',
-  impostoPercentual: 'Use um número de 0 a 99.'
+  impostoPercentual: 'Use um número de 0 a 99.',
+  acrescimoPecasPadrao: 'Use um número de 0 a 1000.'
 };
 var MENSAGEM_NAO_NUMERO = 'Digite só números. Ex.: 150,50';
 
@@ -591,28 +823,84 @@ function calcularMaoDeObra(entrada, valorHoraCobrado) {
 }
 
 /**
- * Taxa (%) de uma linha para a bandeira escolhida. null = sem taxa (linha some).
- * Pix: sempre 0. "Não sei": a MAIOR taxa entre as bandeiras preenchidas.
+ * Quanto o cliente paga pelas peças (sem arredondar).
+ * entrada.pecasModo 'acrescimo': paga × (1 + acréscimo/100); acréscimo vazio = 0%.
+ * Outro modo (ou ausente): valor digitado; vazio = o que você paga.
  */
-function taxaDaLinha(linha, bandeira) {
-  if (linha.forma === 'Pix') return 0;
-  if (bandeira === NAO_SEI) {
+function calcularPecasCobrar(entrada) {
+  var pagar = typeof entrada.pecasPagar === 'number' ? entrada.pecasPagar : 0;
+  if (entrada.pecasModo === 'acrescimo') {
+    var acrescimo = typeof entrada.pecasAcrescimo === 'number' ? entrada.pecasAcrescimo : 0;
+    return pagar * (1 + acrescimo / 100);
+  }
+  return typeof entrada.pecasCobrar === 'number' ? entrada.pecasCobrar : pagar;
+}
+
+// ---------------- Cartões ----------------
+
+/** Faixa Unicode dos acentos combinantes (U+0300 a U+036F), escrita por código para ficar legível. */
+var RE_ACENTOS = new RegExp('[' + String.fromCharCode(0x300) + '-' + String.fromCharCode(0x36f) + ']', 'g');
+
+/** Chave para comparar nomes sem diferenciar maiúsculas, acentos e espaços repetidos (igual a chaveNome_ do backend). */
+function chaveNome(s) {
+  return String(s === null || s === undefined ? '' : s).normalize('NFD').replace(RE_ACENTOS, '')
+    .trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function cartaoVazio(nome) {
+  var cartao = { nome: nome };
+  CAMPOS_TAXA.forEach(function (campo) { cartao[campo] = null; });
+  return cartao;
+}
+
+function cartaoTodoVazio(cartao) {
+  return CAMPOS_TAXA.every(function (campo) { return typeof cartao[campo] !== 'number'; });
+}
+
+/** Posição do cartão pelo nome (sem diferenciar maiúsculas/acentos); -1 se não existe. */
+function acharCartao(cartoes, nome) {
+  var chave = chaveNome(nome);
+  for (var i = 0; i < cartoes.length; i++) if (chaveNome(cartoes[i].nome) === chave) return i;
+  return -1;
+}
+
+/**
+ * Cartão que vale no cálculo: com UM só cartão, é ele (sem escolha);
+ * senão, o escolhido se existir; senão "Não sei".
+ */
+function cartaoEfetivo(cartoes, escolhido) {
+  if (cartoes.length === 1) return cartoes[0].nome;
+  if (escolhido === NAO_SEI || escolhido === null || escolhido === undefined) return NAO_SEI;
+  var i = acharCartao(cartoes, escolhido);
+  return i >= 0 ? cartoes[i].nome : NAO_SEI;
+}
+
+/**
+ * Taxa (%) de uma forma (campo) para o cartão. null = sem taxa (a forma não aparece).
+ * "Não sei": a MAIOR taxa entre os cartões que têm aquela forma preenchida.
+ */
+function taxaDaForma(cartoes, campo, cartao) {
+  if (cartao === NAO_SEI) {
     var maior = null;
-    BANDEIRAS.forEach(function (b) {
-      var t = linha[b.id];
+    cartoes.forEach(function (c) {
+      var t = c[campo];
       if (typeof t === 'number' && (maior === null || t > maior)) maior = t;
     });
     return maior;
   }
-  var v = linha[bandeira];
+  var i = acharCartao(cartoes, cartao);
+  var v = i >= 0 ? cartoes[i][campo] : null;
   return typeof v === 'number' ? v : null;
 }
 
-/** Bandeiras com pelo menos uma taxa de Débito ou Crédito preenchida. */
-function bandeirasDisponiveis(taxas) {
-  return BANDEIRAS.filter(function (b) {
-    return taxas.some(function (l) { return l.forma !== 'Pix' && typeof l[b.id] === 'number'; });
-  });
+/** Valida o nome de um cartão. indiceProprio: posição do próprio cartão (para não se comparar consigo). '' = válido. */
+function validarNomeCartao(nome, cartoes, indiceProprio) {
+  var n = String(nome === null || nome === undefined ? '' : nome).trim();
+  if (n === '') return 'Dê um nome ao cartão.';
+  if (n.length > MAX_NOME_CARTAO) return 'Use no máximo ' + MAX_NOME_CARTAO + ' letras.';
+  var i = acharCartao(cartoes, n);
+  if (i >= 0 && i !== indiceProprio) return 'Já existe um cartão com esse nome.';
+  return '';
 }
 
 /**
@@ -632,36 +920,37 @@ function calcularOpcao(aVista, taxa, n) {
 
 /**
  * Orçamento completo.
- * @param entrada {modo:'horas'|'fechado', horas, valorFechado, pecasPagar, pecasCobrar} (números ou null)
+ * @param entrada {modo:'horas'|'fechado', horas, valorFechado,
+ *                 pecasPagar, pecasModo:'acrescimo'|'valor', pecasAcrescimo, pecasCobrar} (números ou null)
  * @param parametros {valorHoraCobrado, impostoPercentual, parcelasDestaque}
- * @param taxas as 14 linhas da aba Taxas
- * @param bandeira 'naosei' | 'visa' | 'elo' | 'amex' | 'hiper'
+ * @param cartoes [{nome, debito, p1 … p12}] (null = sem taxa)
+ * @param cartaoEscolhido nome do cartão ou NAO_SEI
  * @param precoMinimoHora calculado fora (sem arredondar)
  */
-function calcularOrcamento(entrada, parametros, taxas, bandeira, precoMinimoHora) {
+function calcularOrcamento(entrada, parametros, cartoes, cartaoEscolhido, precoMinimoHora) {
   var mo = calcularMaoDeObra(entrada, parametros.valorHoraCobrado);
   var pecasPagar = typeof entrada.pecasPagar === 'number' ? entrada.pecasPagar : 0;
-  var pecasCobrar = typeof entrada.pecasCobrar === 'number' ? entrada.pecasCobrar : pecasPagar;
+  var pecasCobrar = calcularPecasCobrar(entrada);
   var lucroPecas = pecasCobrar - pecasPagar;
   var aVista = mo.maoDeObra + pecasCobrar;
   var gastoHoras = mo.horas * precoMinimoHora;
   var impostoPct = typeof parametros.impostoPercentual === 'number' ? parametros.impostoPercentual : 0;
 
   function montar(forma, parcelas, taxa) {
-    var n = forma === 'Crédito' ? parcelas : 1;
-    var op = calcularOpcao(aVista, taxa, n);
+    var op = calcularOpcao(aVista, taxa, parcelas);
     op.forma = forma;
     op.imposto = (op.totalCentavos / 100) * impostoPct / 100;
     op.lucro = mo.maoDeObra - gastoHoras + lucroPecas - op.imposto;
     return op;
   }
 
+  var efetivo = cartaoEfetivo(cartoes, cartaoEscolhido);
   var opcoes = [];
-  taxas.forEach(function (linha) {
-    if (linha.forma === 'Pix') return;
-    var t = taxaDaLinha(linha, bandeira);
-    if (t === null) return; // sem taxa: a linha não aparece
-    opcoes.push(montar(linha.forma, linha.parcelas, t));
+  FORMAS.forEach(function (f) {
+    if (!cartoes.length) return;
+    var t = taxaDaForma(cartoes, f.campo, efetivo);
+    if (t === null) return; // sem taxa: a forma não aparece
+    opcoes.push(montar(f.forma, f.parcelas, t));
   });
 
   var destaques = [];
@@ -679,10 +968,14 @@ function calcularOrcamento(entrada, parametros, taxas, bandeira, precoMinimoHora
     lucroPecas: lucroPecas,
     gastoHoras: gastoHoras,
     precoMinimoHora: precoMinimoHora,
-    aVista: montar('Pix', 0, 0),
+    aVista: montar('Pix', 1, 0), // Pix: sempre 0%, fixo no código
     opcoes: opcoes,
     destaques: destaques,
-    outras: opcoes.filter(function (o) { return destaques.indexOf(o) < 0; })
+    outras: opcoes.filter(function (o) { return destaques.indexOf(o) < 0; }),
+    semCartoes: cartoes.length === 0,
+    cartao: efetivo,
+    // Nome que vai no texto do cliente: só quando há escolha de verdade (2+ cartões e um escolhido).
+    cartaoNoTexto: cartoes.length > 1 && efetivo !== NAO_SEI ? efetivo : null
   };
 }
 
@@ -701,11 +994,14 @@ function valoresWhatsApp(res) {
   return { maoDeObraCentavos: aVista, pecasCentavos: 0 };
 }
 
-/** Texto para o cliente. Sem custo, lucro, taxa, e sem bandeira quando for "Não sei". */
-function textoWhatsApp(res, parametros, descricao, bandeira) {
+/**
+ * Texto para o cliente (WhatsApp). Negrito do WhatsApp com *…* no título e no valor à vista.
+ * Sem custo, lucro, taxa, e sem nome de cartão quando for "Não sei" (ou quando só há um cartão).
+ */
+function textoWhatsApp(res, parametros, descricao) {
   var linhas = [];
   var nome = String(parametros.nomeOficina || '').trim();
-  linhas.push(nome ? 'Orçamento – ' + nome : 'Orçamento');
+  linhas.push(nome ? '*Orçamento – ' + nome + '*' : '*Orçamento*');
   var desc = String(descricao || '').trim();
   if (desc) linhas.push(desc);
   linhas.push('');
@@ -716,9 +1012,8 @@ function textoWhatsApp(res, parametros, descricao, bandeira) {
   if (itens.pecasCentavos > 0) { linhas.push('Peças: ' + formatarCentavos(itens.pecasCentavos)); temItens = true; }
   if (temItens) linhas.push('');
 
-  linhas.push('💵 À vista (Pix/dinheiro): ' + formatarCentavos(res.aVista.totalCentavos));
-  var b = BANDEIRAS.filter(function (x) { return x.id === bandeira; })[0];
-  var cartao = '💳 Cartão' + (b ? ' ' + b.longo : '');
+  linhas.push('💵 À vista (Pix/dinheiro): *' + formatarCentavos(res.aVista.totalCentavos) + '*');
+  var cartao = '💳 Cartão' + (res.cartaoNoTexto ? ' ' + res.cartaoNoTexto : '');
   res.destaques.forEach(function (op) {
     if (op.parcelas === 1) {
       linhas.push(cartao + ' em 1x: ' + formatarCentavos(op.totalCentavos));
@@ -732,35 +1027,36 @@ function textoWhatsApp(res, parametros, descricao, bandeira) {
 
 // ---------------------------------------------------------------------
 // Casos de teste (usados pelo autoteste ?teste=1 e pelo teste em Node).
-// Fatia 3: T1–T7 e T13. Fatia 4 completa com T8–T12, T14, T15.
+// Fatia 4 completa com T14 e T15. T8–T12 foram substituídos por C1–C8 (cartões cadastráveis).
 // ---------------------------------------------------------------------
 
-/** Monta as 14 linhas de taxas para teste. porBandeira = {visa: {debito: 1.37, 1: 3.15, ...}, elo: {...}} */
-function taxasDeTeste(porBandeira) {
-  var linhas = [{ forma: 'Pix', parcelas: 0 }, { forma: 'Débito', parcelas: 0 }];
-  for (var n = 1; n <= 12; n++) linhas.push({ forma: 'Crédito', parcelas: n });
-  return linhas.map(function (l) {
-    var t = { forma: l.forma, parcelas: l.parcelas, visa: null, elo: null, amex: null, hiper: null };
-    if (l.forma === 'Pix') { t.visa = 0; return t; }
-    BANDEIRAS.forEach(function (b) {
-      var m = porBandeira[b.id];
-      var k = l.forma === 'Débito' ? 'debito' : l.parcelas;
-      if (m && typeof m[k] === 'number') t[b.id] = m[k];
-    });
-    return t;
-  });
-}
-
 /** Taxas Visa/Master da InfinitePay usadas como DADO DE TESTE (o padrão oficial fica no backend). */
-var VISA_TESTE = { debito: 1.37, 1: 3.15, 2: 5.39, 3: 6.12, 4: 6.85, 5: 7.57, 6: 8.28, 7: 8.99, 8: 9.69, 9: 10.38, 10: 11.06, 11: 11.74, 12: 12.40 };
+var VISA_TESTE = { debito: 1.37, p1: 3.15, p2: 5.39, p3: 6.12, p4: 6.85, p5: 7.57, p6: 8.28, p7: 8.99, p8: 9.69, p9: 10.38, p10: 11.06, p11: 11.74, p12: 12.40 };
+
+/** Cartão de teste: nome + taxas informadas (o resto vazio). */
+function cartaoDeTeste(nome, taxas) {
+  var c = cartaoVazio(nome);
+  Object.keys(taxas || {}).forEach(function (k) { c[k] = taxas[k]; });
+  return c;
+}
 
 function casosDeTeste() {
   function opcao(base, taxa, n) {
     var o = calcularOpcao(base, taxa, n);
     return [o.totalCentavos, o.parcelaCentavos];
   }
+  var visa = function () { return cartaoDeTeste('Visa/Master', VISA_TESTE); };
   var paramsT6 = { valorHoraCobrado: 150, impostoPercentual: 0, parcelasDestaque: '5,10' };
   var entradaT6 = { modo: 'horas', horas: 8, valorFechado: null, pecasPagar: 400, pecasCobrar: 500 };
+  var entrada1700 = { modo: 'horas', horas: 8, pecasPagar: 500, pecasCobrar: 500 }; // à vista 1.700
+  var semMao = { valorHoraCobrado: 150, impostoPercentual: 0, parcelasDestaque: '' };
+  function soPecas(pagar, acrescimo) {
+    return calcularOrcamento({ modo: 'horas', horas: null, pecasPagar: pagar, pecasModo: 'acrescimo', pecasAcrescimo: acrescimo },
+      semMao, [visa()], NAO_SEI, 0);
+  }
+  function opDe(res, parcelas) {
+    return res.opcoes.filter(function (o) { return o.forma === 'Crédito' && o.parcelas === parcelas; })[0] || null;
+  }
   return [
     { id: 'T1', descricao: 'Visa, à vista 1.000, 1x 3,15% → total 1.032,52 · parcela 1.032,52 (o app InfinitePay mostra 1.032,53: divergência conhecida e aceita)',
       executar: function () { return { obtido: opcao(1000, 3.15, 1), esperado: [103252, 103252] }; } },
@@ -778,12 +1074,12 @@ function casosDeTeste() {
       } },
     { id: 'T6', descricao: '8 h × 150; preço mínimo da hora 70 (injetado); peças 400 → 500 → à vista 1.700,00 · lucro 740,00',
       executar: function () {
-        var r = calcularOrcamento(entradaT6, paramsT6, taxasDeTeste({ visa: VISA_TESTE }), NAO_SEI, 70);
+        var r = calcularOrcamento(entradaT6, paramsT6, [visa()], NAO_SEI, 70);
         return { obtido: [r.aVista.totalCentavos, centavos(r.aVista.lucro)], esperado: [170000, 74000] };
       } },
-    { id: 'T7', descricao: 'T6 em 5x Visa 7,57% → 1.839,23 · 5× 367,85',
+    { id: 'T7', descricao: 'T6 em 5x Visa/Master 7,57% → 1.839,23 · 5× 367,85',
       executar: function () {
-        var r = calcularOrcamento(entradaT6, paramsT6, taxasDeTeste({ visa: VISA_TESTE }), 'visa', 70);
+        var r = calcularOrcamento(entradaT6, paramsT6, [visa()], 'Visa/Master', 70);
         var op = r.destaques[0];
         return { obtido: [op.parcelas, op.totalCentavos, op.parcelaCentavos], esperado: [5, 183923, 36785] };
       } },
@@ -791,9 +1087,71 @@ function casosDeTeste() {
       executar: function () {
         return { obtido: [lerNumeroBR('1.234,56'), lerNumeroBR('150,50'), lerNumeroBR('')], esperado: [1234.56, 150.5, null] };
       } },
+    { id: 'C1', descricao: 'Um só cartão (Elo, 5x 8,00): usado direto, sem escolha; nome não vai para o texto do cliente',
+      executar: function () {
+        var cartoes = [cartaoDeTeste('Elo', { p5: 8 })];
+        var semEscolha = calcularOrcamento(entrada1700, paramsT6, cartoes, NAO_SEI, 0);
+        var escolhido = calcularOrcamento(entrada1700, paramsT6, cartoes, 'Elo', 0);
+        return { obtido: [semEscolha.cartao, semEscolha.cartaoNoTexto, semEscolha.opcoes.length, opDe(semEscolha, 5).totalCentavos, opDe(escolhido, 5).totalCentavos],
+                 esperado: ['Elo', null, 1, 184783, 184783] };
+      } },
+    { id: 'C2', descricao: '"Não sei" com Visa/Master 5x 7,57 e Elo 5x 8,00 → usa 8,00 (1.700 → 1.847,83 · 5× 369,57); 6x (Elo vazio) usa Visa/Master 8,28',
+      executar: function () {
+        var r = calcularOrcamento(entrada1700, paramsT6, [visa(), cartaoDeTeste('Elo', { p5: 8 })], NAO_SEI, 0);
+        var p5 = opDe(r, 5), p6 = opDe(r, 6);
+        return { obtido: [p5.taxa, p5.totalCentavos, p5.parcelaCentavos, p6.taxa, r.cartaoNoTexto], esperado: [8, 184783, 36957, 8.28, null] };
+      } },
+    { id: 'C3', descricao: 'Cartão escolhido com só 5x preenchido → só a linha 5x aparece; nenhum total igual ao à vista por causa de vazio',
+      executar: function () {
+        var r = calcularOrcamento(entrada1700, paramsT6, [visa(), cartaoDeTeste('Elo', { p5: 8 })], 'elo', 0);
+        var totalIgualAVista = r.opcoes.some(function (o) { return o.totalCentavos === r.aVista.totalCentavos; });
+        return { obtido: [r.cartao, r.opcoes.length, r.opcoes[0].parcelas, totalIgualAVista], esperado: ['Elo', 1, 5, false] };
+      } },
+    { id: 'C4', descricao: 'Nome repetido ("Elo" e "elo", "ÉLO") é recusado com mensagem simples; o próprio cartão pode manter o nome',
+      executar: function () {
+        var cartoes = [cartaoDeTeste('Visa/Master'), cartaoDeTeste('Elo')];
+        return { obtido: [validarNomeCartao('elo', cartoes, -1), validarNomeCartao(' ÉLO ', cartoes, 0), validarNomeCartao('Elo', cartoes, 1),
+                          validarNomeCartao('  ', cartoes, -1), validarNomeCartao('Cabal', cartoes, -1)],
+                 esperado: ['Já existe um cartão com esse nome.', 'Já existe um cartão com esse nome.', '', 'Dê um nome ao cartão.', ''] };
+      } },
+    { id: 'C5', descricao: 'Nenhum cartão → orçamento só com à vista, sem erro',
+      executar: function () {
+        var r = calcularOrcamento(entrada1700, paramsT6, [], NAO_SEI, 0);
+        return { obtido: [r.semCartoes, r.aVista.totalCentavos, r.opcoes.length, r.destaques.length], esperado: [true, 170000, 0, 0] };
+      } },
+    { id: 'C8', descricao: 'WhatsApp com cartão "Cabal" escolhido contém "Cartão Cabal"; com "Não sei" não contém nome de cartão',
+      executar: function () {
+        var cartoes = [visa(), cartaoDeTeste('Cabal', VISA_TESTE)];
+        var comCabal = textoWhatsApp(calcularOrcamento(entrada1700, paramsT6, cartoes, 'Cabal', 0), { nomeOficina: '' }, '');
+        var naoSei = textoWhatsApp(calcularOrcamento(entrada1700, paramsT6, cartoes, NAO_SEI, 0), { nomeOficina: '' }, '');
+        return { obtido: [comCabal.indexOf('💳 Cartão Cabal em até 5x') >= 0, /Cabal|Visa/.test(naoSei), naoSei.indexOf('💳 Cartão em até 5x') >= 0],
+                 esperado: [true, false, true] };
+      } },
+    { id: 'P1', descricao: 'Peças: paga 500 + 47% → cliente paga 735,00',
+      executar: function () {
+        var r = soPecas(500, 47);
+        return { obtido: [centavos(r.pecasCobrar), r.aVista.totalCentavos], esperado: [73500, 73500] };
+      } },
+    { id: 'P2', descricao: 'Peças: acréscimo 0% → mesmo valor (500,00); acréscimo vazio também',
+      executar: function () {
+        return { obtido: [centavos(soPecas(500, 0).pecasCobrar), centavos(soPecas(500, null).pecasCobrar)], esperado: [50000, 50000] };
+      } },
+    { id: 'P3', descricao: 'Peças: 333,33 + 47% = 489,9951 (sem arredondar no meio) → 490,00',
+      executar: function () {
+        var r = soPecas(333.33, 47);
+        return { obtido: [Math.round(r.pecasCobrar * 10000) / 10000, centavos(r.pecasCobrar), r.aVista.totalCentavos], esperado: [489.9951, 49000, 49000] };
+      } },
+    { id: 'P4', descricao: 'Peças: lucro nas peças = cobrar − pagar (333,33 + 47% → 156,67); 8 h × 150 + peças 400 + 25% → à vista 1.700,00 · lucro 740,00',
+      executar: function () {
+        var r = soPecas(333.33, 47);
+        var t6 = calcularOrcamento({ modo: 'horas', horas: 8, pecasPagar: 400, pecasModo: 'acrescimo', pecasAcrescimo: 25 },
+          paramsT6, [visa()], NAO_SEI, 70);
+        return { obtido: [centavos(r.lucroPecas), centavos(t6.lucroPecas), t6.aVista.totalCentavos, centavos(t6.aVista.lucro)],
+                 esperado: [15667, 10000, 170000, 74000] };
+      } },
     { id: 'W1', descricao: 'WhatsApp: 7,3 h × 150 + peças 333,33 → mão de obra 1.095,00 + peças 333,33 = à vista 1.428,33',
       executar: function () {
-        var r = calcularOrcamento({ modo: 'horas', horas: 7.3, pecasPagar: 300, pecasCobrar: 333.33 }, paramsT6, taxasDeTeste({ visa: VISA_TESTE }), NAO_SEI, 0);
+        var r = calcularOrcamento({ modo: 'horas', horas: 7.3, pecasPagar: 300, pecasCobrar: 333.33 }, paramsT6, [visa()], NAO_SEI, 0);
         var v = valoresWhatsApp(r);
         return { obtido: [v.maoDeObraCentavos, v.pecasCentavos, r.aVista.totalCentavos, v.maoDeObraCentavos + v.pecasCentavos === r.aVista.totalCentavos],
                  esperado: [109500, 33333, 142833, true] };
@@ -801,18 +1159,26 @@ function casosDeTeste() {
     { id: 'W2', descricao: 'WhatsApp (centavo quebrado): 1,5 h × 133,33 = 199,995 + peças 10,005 → 200,00 + 10,00 = à vista 210,00',
       executar: function () {
         var p = { valorHoraCobrado: 133.33, impostoPercentual: 0, parcelasDestaque: '5,10' };
-        var r = calcularOrcamento({ modo: 'horas', horas: 1.5, pecasPagar: 10, pecasCobrar: 10.005 }, p, taxasDeTeste({ visa: VISA_TESTE }), NAO_SEI, 0);
+        var r = calcularOrcamento({ modo: 'horas', horas: 1.5, pecasPagar: 10, pecasCobrar: 10.005 }, p, [visa()], NAO_SEI, 0);
         var v = valoresWhatsApp(r);
         return { obtido: [v.maoDeObraCentavos, v.pecasCentavos, r.aVista.totalCentavos], esperado: [20000, 1000, 21000] };
       } },
     { id: 'W3', descricao: 'WhatsApp: só peças ou só mão de obra → a linha que existe é igual ao à vista',
       executar: function () {
         var p = { valorHoraCobrado: 150, impostoPercentual: 0, parcelasDestaque: '' };
-        var t = taxasDeTeste({ visa: VISA_TESTE });
-        var soPecas = valoresWhatsApp(calcularOrcamento({ modo: 'horas', horas: null, pecasPagar: 99.995 }, p, t, NAO_SEI, 0));
-        var soMao = valoresWhatsApp(calcularOrcamento({ modo: 'horas', horas: 1.2345 }, p, t, NAO_SEI, 0));
-        return { obtido: [soPecas.maoDeObraCentavos, soPecas.pecasCentavos, soMao.maoDeObraCentavos, soMao.pecasCentavos],
+        var soP = valoresWhatsApp(calcularOrcamento({ modo: 'horas', horas: null, pecasPagar: 99.995 }, p, [visa()], NAO_SEI, 0));
+        var soM = valoresWhatsApp(calcularOrcamento({ modo: 'horas', horas: 1.2345 }, p, [visa()], NAO_SEI, 0));
+        return { obtido: [soP.maoDeObraCentavos, soP.pecasCentavos, soM.maoDeObraCentavos, soM.pecasCentavos],
                  esperado: [0, 10000, 18518, 0] };
+      } },
+    { id: 'W4', descricao: 'WhatsApp: negrito no título e no à vista; peças com acréscimo aparecem só como "Peças: R$ …"',
+      executar: function () {
+        var r = calcularOrcamento({ modo: 'horas', horas: 8, pecasPagar: 500, pecasModo: 'acrescimo', pecasAcrescimo: 47 },
+          paramsT6, [visa()], NAO_SEI, 0);
+        var linhas = textoWhatsApp(r, { nomeOficina: 'CliniCar Motors Tech' }, '').split('\n');
+        var semNome = textoWhatsApp(r, { nomeOficina: '' }, '').split('\n')[0];
+        return { obtido: [linhas[0], linhas[3], linhas[5], semNome, linhas.join('\n').indexOf('47') < 0],
+                 esperado: ['*Orçamento – CliniCar Motors Tech*', 'Peças: R$ 735,00', '💵 À vista (Pix/dinheiro): *R$ 1.935,00*', '*Orçamento*', true] };
       } }
   ];
 }
@@ -849,10 +1215,11 @@ function rodarCasosDeTeste() {
   var orc = orcamentoVazio();
   var invalidos = {};            // campos salváveis com erro: chave → true
   var sync = { sujo: false, salvando: false, erro: false, timer: null };
-  var desfazer = { item: null, indice: -1, timer: null }; // último gasto removido (barra "Desfazer")
+  var desfazer = { tipo: null, item: null, indice: -1, timer: null }; // último gasto/cartão removido (barra "Desfazer")
   var remocoesNaoSalvas = 0;     // remoções que ainda não entraram em nenhum salvamento
   var usuarioEscolheuTela = false;
-  var editandoBandeira = 'visa';
+  var ui = { cartao: 0, adicionandoCartao: false, outroAberto: false }; // tela "Seus cartões"
+  var SUGESTOES_CARTAO = ['Elo', 'Amex', 'Hipercard', 'Visa', 'Mastercard', 'Cabal', 'Banescard', 'Sorocred'];
   var ultimoResultado = null;
   var podeCompartilhar = false;
   var timerAviso = null;
@@ -866,6 +1233,10 @@ function rodarCasosDeTeste() {
     return String(s === null || s === undefined ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function icone(id, classe) {
+    return '<svg class="ic' + (classe ? ' ' + classe : '') + '" aria-hidden="true"><use href="#' + id + '"/></svg>';
   }
 
   function temGoogle() {
@@ -899,15 +1270,17 @@ function rodarCasosDeTeste() {
   }
 
   // ------------------------------------------------------------------
-  // Dados: validação da estrutura vinda do cache
+  // Dados
   // ------------------------------------------------------------------
   function dadosComFormatoValido(d) {
-    return !!(d && Array.isArray(d.gastos) && d.parametros && typeof d.parametros === 'object' &&
-      Array.isArray(d.taxas) && d.taxas.length === 14);
+    return !!(d && Array.isArray(d.gastos) && d.parametros && typeof d.parametros === 'object' && Array.isArray(d.cartoes));
   }
 
   function aplicarDados(dados, url, atualizadoEm) {
     estado.dados = clonar(dados);
+    if (typeof estado.dados.parametros.acrescimoPecasPadrao !== 'number') {
+      estado.dados.parametros.acrescimoPecasPadrao = 47; // cache de versão anterior
+    }
     if (url) estado.urlPlanilha = url;
     estado.atualizadoEm = atualizadoEm || null;
     invalidos = {};
@@ -932,7 +1305,8 @@ function rodarCasosDeTeste() {
       erroCarregar: 'Sem conexão – tentar de novo',
       semGoogle: 'Abra pelo link do app'
     };
-    el.textContent = textos[tipo] || '';
+    var animado = tipo === 'salvando' || tipo === 'carregando';
+    el.innerHTML = (animado ? '<span class="ponto"></span>' : '') + esc(textos[tipo] || '');
     el.dataset.tipo = tipo;
     var clicavel = tipo === 'erro' || tipo === 'erroCarregar';
     el.disabled = !clicavel;
@@ -999,11 +1373,8 @@ function rodarCasosDeTeste() {
         estado.atualizadoEm = atualizadoEm;
         salvarCache();
         atualizarInfoSalvo();
-        if (sync.sujo) {
-          atualizarStatusSalvamento();
-        } else {
-          mostrarStatus('salvo');
-        }
+        if (sync.sujo) atualizarStatusSalvamento();
+        else mostrarStatus('salvo');
       })
       .withFailureHandler(function (e) {
         sync.salvando = false;
@@ -1019,6 +1390,7 @@ function rodarCasosDeTeste() {
     var d = clonar(estado.dados);
     d.gastos.forEach(function (g) { g.descricao = String(g.descricao || '').trim(); });
     d.parametros.nomeOficina = String(d.parametros.nomeOficina || '').trim();
+    d.cartoes.forEach(function (c) { c.nome = String(c.nome || '').trim(); });
     return d;
   }
 
@@ -1032,7 +1404,7 @@ function rodarCasosDeTeste() {
     google.script.run
       .withSuccessHandler(function (r) {
         if (estado.carregadoDoServidor && temPendencia()) return; // mudou algo nesse meio tempo: mantém o que está na tela
-        aplicarDados({ gastos: r.gastos, parametros: r.parametros, taxas: r.taxas }, r.urlPlanilha, r.atualizadoEm);
+        aplicarDados({ gastos: r.gastos, parametros: r.parametros, cartoes: r.cartoes }, r.urlPlanilha, r.atualizadoEm);
         estado.carregadoDoServidor = true;
         sync.sujo = false;
         sync.erro = false;
@@ -1045,7 +1417,7 @@ function rodarCasosDeTeste() {
         if (!usuarioEscolheuTela) escolherTelaInicial();
         mostrarStatus('salvo');
       })
-      .withFailureHandler(function (e) {
+      .withFailureHandler(function () {
         mostrarStatus('erroCarregar');
         if (!estado.dados) mostrarFalhaCarregamento('Não foi possível carregar seus dados. Confira a internet.');
         else if (!estado.carregadoDoServidor) $('faixa-offline').hidden = false; // cache: só orçamento (edição bloqueada)
@@ -1110,9 +1482,7 @@ function rodarCasosDeTeste() {
   // ------------------------------------------------------------------
   // Telas
   // ------------------------------------------------------------------
-  function mostrarApp() {
-    $('carregando').hidden = true;
-  }
+  function mostrarApp() { $('carregando').hidden = true; }
 
   function trocarTela(nome, peloUsuario) {
     if (peloUsuario) usuarioEscolheuTela = true;
@@ -1131,6 +1501,7 @@ function rodarCasosDeTeste() {
     preencherParametros();
     renderGastos();
     renderAjustes();
+    preencherOrcamento();
     renderOrcamento();
   }
 
@@ -1139,7 +1510,7 @@ function rodarCasosDeTeste() {
     return {
       descricao: '', modo: 'horas',
       horasTexto: '', valorTexto: '', horasFechadoTexto: '',
-      pecasPagarTexto: '', pecasCobrarTexto: '',
+      pecasPagarTexto: '', pecasModo: 'acrescimo', acrescimoTexto: null, pecasCobrarTexto: '',
       bandeira: NAO_SEI
     };
   }
@@ -1150,15 +1521,24 @@ function rodarCasosDeTeste() {
     var base = orcamentoVazio();
     Object.keys(base).forEach(function (k) { if (typeof o[k] === 'string') base[k] = o[k]; });
     if (base.modo !== 'horas' && base.modo !== 'fechado') base.modo = 'horas';
+    if (base.pecasModo !== 'acrescimo' && base.pecasModo !== 'valor') base.pecasModo = 'acrescimo';
     orc = base;
   }
 
-  function preencherOrcamento() {
-    document.querySelectorAll('[data-orc]').forEach(function (el) { el.value = orc[el.dataset.orc] || ''; });
+  /** Texto do acréscimo deste orçamento: o digitado, ou o padrão de Ajustes enquanto ele não mexeu. */
+  function textoAcrescimo() {
+    if (orc.acrescimoTexto !== null) return orc.acrescimoTexto;
+    return estado.dados ? numeroParaCampo(estado.dados.parametros.acrescimoPecasPadrao, false) : '';
   }
 
-  function lerCampoOrcamento(id, campo, lim, msg) {
-    var r = validarNumeroCampo(orc[campo], lim, { vazioPermitido: true, mensagem: msg });
+  function preencherOrcamento() {
+    document.querySelectorAll('[data-orc]').forEach(function (el) {
+      el.value = el.dataset.orc === 'acrescimoTexto' ? textoAcrescimo() : (orc[el.dataset.orc] || '');
+    });
+  }
+
+  function lerCampoOrcamento(id, texto, lim, msg) {
+    var r = validarNumeroCampo(texto, lim, { vazioPermitido: true, mensagem: msg });
     mostrarErroCampo($(id), r.erro);
     return r.valor;
   }
@@ -1167,54 +1547,67 @@ function rodarCasosDeTeste() {
     var msgHoras = 'Digite as horas. Ex.: 2,5';
     var msgValor = 'Digite um valor igual ou maior que zero.';
     var fechado = orc.modo === 'fechado';
+    var porAcrescimo = orc.pecasModo === 'acrescimo';
     return {
       modo: orc.modo,
       horas: fechado
-        ? lerCampoOrcamento('orc-horas-fechado', 'horasFechadoTexto', LIMITE_HORAS_SERVICO, msgHoras)
-        : lerCampoOrcamento('orc-horas', 'horasTexto', LIMITE_HORAS_SERVICO, msgHoras),
-      valorFechado: fechado ? lerCampoOrcamento('orc-valor', 'valorTexto', LIMITE_VALOR_ORCAMENTO, msgValor) : null,
-      pecasPagar: lerCampoOrcamento('orc-pecas-pagar', 'pecasPagarTexto', LIMITE_VALOR_ORCAMENTO, msgValor),
-      pecasCobrar: lerCampoOrcamento('orc-pecas-cobrar', 'pecasCobrarTexto', LIMITE_VALOR_ORCAMENTO, msgValor)
+        ? lerCampoOrcamento('orc-horas-fechado', orc.horasFechadoTexto, LIMITE_HORAS_SERVICO, msgHoras)
+        : lerCampoOrcamento('orc-horas', orc.horasTexto, LIMITE_HORAS_SERVICO, msgHoras),
+      valorFechado: fechado ? lerCampoOrcamento('orc-valor', orc.valorTexto, LIMITE_VALOR_ORCAMENTO, msgValor) : null,
+      pecasPagar: lerCampoOrcamento('orc-pecas-pagar', orc.pecasPagarTexto, LIMITE_VALOR_ORCAMENTO, msgValor),
+      pecasModo: orc.pecasModo,
+      pecasAcrescimo: porAcrescimo ? lerCampoOrcamento('orc-acrescimo', textoAcrescimo(), LIMITE_ACRESCIMO, MENSAGENS_PARAMETROS.acrescimoPecasPadrao) : null,
+      pecasCobrar: porAcrescimo ? null : lerCampoOrcamento('orc-pecas-cobrar', orc.pecasCobrarTexto, LIMITE_VALOR_ORCAMENTO, msgValor)
     };
   }
 
-  function renderChipsBandeira(disponiveis) {
-    $('bloco-bandeiras').hidden = disponiveis.length === 0;
-    var opcoes = [{ id: NAO_SEI, curto: 'Não sei' }].concat(disponiveis);
-    $('chips-bandeira').innerHTML = opcoes.map(function (b) {
-      var sel = b.id === orc.bandeira;
-      return '<button type="button" class="chip" role="radio" data-bandeira="' + b.id + '" aria-checked="' + sel + '">' +
-        esc(b.curto) + (sel ? ' ✓' : '') + '</button>';
-    }).join('');
+  /** Chips "Não sei · cartão · cartão…" — só aparecem com 2 ou mais cartões. */
+  function renderChipsBandeira(cartoes, efetivo) {
+    $('bloco-bandeiras').hidden = cartoes.length <= 1;
+    if (cartoes.length <= 1) { $('chips-bandeira').innerHTML = ''; return; }
+    var html = '<button type="button" class="chip" role="radio" data-bandeira-indice="-1" aria-checked="' + (efetivo === NAO_SEI) + '">Não sei</button>';
+    cartoes.forEach(function (c, i) {
+      var sel = efetivo !== NAO_SEI && chaveNome(c.nome) === chaveNome(efetivo);
+      html += '<button type="button" class="chip" role="radio" data-bandeira-indice="' + i + '" aria-checked="' + sel + '">' + esc(c.nome) + '</button>';
+    });
+    $('chips-bandeira').innerHTML = html;
   }
 
   function renderOrcamento() {
     if (!estado.dados) return;
     var d = estado.dados;
 
-    var disponiveis = bandeirasDisponiveis(d.taxas);
-    if (orc.bandeira !== NAO_SEI && !disponiveis.some(function (b) { return b.id === orc.bandeira; })) {
-      orc.bandeira = NAO_SEI;
-    }
+    // Cartão escolhido que não existe mais (removido ou renomeado fora daqui) volta para "Não sei".
+    if (orc.bandeira !== NAO_SEI && acharCartao(d.cartoes, orc.bandeira) < 0) orc.bandeira = NAO_SEI;
 
     $('bloco-horas').hidden = orc.modo !== 'horas';
     $('bloco-fechado').hidden = orc.modo !== 'fechado';
+    $('bloco-acrescimo').hidden = orc.pecasModo !== 'acrescimo';
+    $('bloco-pecas-valor').hidden = orc.pecasModo !== 'valor';
 
-    var semGastos = totalGastos(d.gastos) === 0;
-    $('faixa-sem-gastos-orc').hidden = !semGastos;
+    // Enquanto ele não mexeu no acréscimo deste orçamento, o campo acompanha o padrão de Ajustes.
+    var campoAcrescimo = $('orc-acrescimo');
+    if (orc.acrescimoTexto === null && document.activeElement !== campoAcrescimo) campoAcrescimo.value = textoAcrescimo();
+
+    $('faixa-sem-gastos-orc').hidden = totalGastos(d.gastos) !== 0;
 
     var entrada = montarEntrada();
-    var res = calcularOrcamento(entrada, d.parametros, d.taxas, orc.bandeira, precoMinimoHora(d.gastos, d.parametros));
+    var res = calcularOrcamento(entrada, d.parametros, d.cartoes, orc.bandeira, precoMinimoHora(d.gastos, d.parametros));
     ultimoResultado = res;
 
-    // Linha de apoio da mão de obra
-    if (orc.modo === 'horas') {
-      $('info-mao-horas').textContent = d.parametros.valorHoraCobrado > 0
-        ? 'Mão de obra: ' + formatarBRL(res.maoDeObra)
+    // Linhas de apoio
+    var infoMao = '';
+    if (orc.modo === 'horas' && res.horas > 0) {
+      infoMao = d.parametros.valorHoraCobrado > 0
+        ? 'Mão de obra: <strong>' + esc(formatarBRL(res.maoDeObra)) + '</strong>'
         : 'Coloque quanto você cobra por hora em Meus gastos.';
     }
+    $('info-mao-horas').innerHTML = infoMao;
     $('info-horas-estimadas').textContent = res.horasEstimadas
       ? 'Horas estimadas pelo valor da sua hora: ' + formatarHoras(res.horas)
+      : '';
+    $('info-pecas-cliente').innerHTML = res.pecasPagar > 0
+      ? 'Cliente paga pelas peças: <strong>' + esc(formatarBRL(res.pecasCobrar)) + '</strong>'
       : '';
 
     var temValor = res.aVista.totalCentavos > 0;
@@ -1223,34 +1616,36 @@ function rodarCasosDeTeste() {
     if (!temValor) return;
 
     $('res-avista').textContent = formatarCentavos(res.aVista.totalCentavos);
-    renderChipsBandeira(disponiveis);
+    renderChipsBandeira(d.cartoes, res.cartao);
+    $('card-cartao').hidden = res.semCartoes;
+    $('dica-sem-cartoes').hidden = !res.semCartoes;
 
-    // Cards em destaque
+    // Parcelas em destaque
     $('cards-destaque').innerHTML = res.destaques.map(function (op) {
-      return '<div class="card">' +
-        '<div class="card-titulo">💳 Cartão em ' + op.parcelas + 'x</div>' +
-        '<div class="valor-medio">' + op.parcelas + '× de ' + esc(formatarCentavos(op.parcelaCentavos)) + '</div>' +
-        '<div class="total">Total ' + esc(formatarCentavos(op.totalCentavos)) + '</div>' +
+      var valor = op.parcelas === 1
+        ? formatarCentavos(op.totalCentavos)
+        : op.parcelas + '× de ' + formatarCentavos(op.parcelaCentavos);
+      return '<div class="parcela">' +
+        '<div class="titulo-valor">' + icone('i-cartao', 'ic-sm') + 'Cartão em ' + op.parcelas + 'x</div>' +
+        '<div class="parcela-valor">' + esc(valor) + '</div>' +
+        (op.parcelas === 1 ? '' : '<div class="parcela-total">Total ' + esc(formatarCentavos(op.totalCentavos)) + '</div>') +
         '</div>';
     }).join('');
 
-    // Outras formas
+    // Outras formas (sem repetir as em destaque)
     $('outras-formas').hidden = res.outras.length === 0 && res.destaques.length > 0;
     $('lista-outras').innerHTML = res.outras.length
       ? res.outras.map(function (op) {
-          var esquerda = op.forma === 'Débito'
-            ? 'Débito'
-            : op.parcelas + 'x de ' + formatarCentavos(op.parcelaCentavos);
-          return '<li><span class="forma">' + esc(esquerda) + '</span><span>total ' + esc(formatarCentavos(op.totalCentavos)) + '</span></li>';
+          var esquerda = op.forma === 'Débito' ? 'Débito' : op.parcelas + 'x de ' + formatarCentavos(op.parcelaCentavos);
+          return '<li><span class="forma">' + esc(esquerda) + '</span><span class="total-li">total ' + esc(formatarCentavos(op.totalCentavos)) + '</span></li>';
         }).join('')
       : '<li>Nenhuma taxa cadastrada para este cartão. Veja em Ajustes.</li>';
 
     // Lucro (opção à vista)
     var lucro = centavos(res.aVista.lucro);
     var negativo = lucro < 0;
-    var elLucro = $('res-lucro');
-    elLucro.textContent = formatarCentavos(lucro);
-    elLucro.className = 'valor-grande ' + (negativo ? 'negativo' : 'positivo');
+    $('res-lucro').textContent = formatarCentavos(lucro);
+    $('res-lucro').className = 'valor-grande ' + (negativo ? 'negativo' : 'positivo');
     $('card-lucro').className = 'card' + (negativo ? ' card-negativo' : '');
     $('res-lucro-alerta').hidden = !negativo;
 
@@ -1288,6 +1683,13 @@ function rodarCasosDeTeste() {
     $(modo === 'horas' ? 'orc-horas' : 'orc-valor').focus();
   }
 
+  function trocarModoPecas(modo) {
+    orc.pecasModo = modo;
+    gravarStorage(CHAVE_ORCAMENTO, orc);
+    renderOrcamento();
+    $(modo === 'acrescimo' ? 'orc-acrescimo' : 'orc-pecas-cobrar').focus();
+  }
+
   function novoOrcamento() {
     orc = orcamentoVazio();
     apagarStorage(CHAVE_ORCAMENTO);
@@ -1302,7 +1704,7 @@ function rodarCasosDeTeste() {
   // ---------------- Copiar e compartilhar ----------------
   function textoAtual() {
     if (!ultimoResultado || !estado.dados) return '';
-    return textoWhatsApp(ultimoResultado, estado.dados.parametros, orc.descricao, orc.bandeira);
+    return textoWhatsApp(ultimoResultado, estado.dados.parametros, orc.descricao);
   }
 
   /** 3 níveis: clipboard → execCommand → caixa com o texto selecionado. Resolve 'ok' ou 'manual'. */
@@ -1385,20 +1787,21 @@ function rodarCasosDeTeste() {
       gastos.forEach(function (g, i) {
         if (g.tipo !== tipo) return;
         quantos++;
+        var nome = esc(g.descricao || 'gasto');
         html += '<div class="gasto-linha">' +
-          '<input type="text" class="gasto-desc" data-gasto-campo="descricao" data-indice="' + i + '" maxlength="100"' +
-          ' placeholder="O que é?" aria-label="Descrição do gasto" autocomplete="off" value="' + esc(g.descricao) + '">' +
-          '<input type="text" class="gasto-valor num" inputmode="decimal" data-gasto-campo="valor" data-formato="dinheiro"' +
-          ' data-indice="' + i + '" placeholder="R$ por mês" aria-label="Valor por mês de ' + esc(g.descricao || 'gasto') + '"' +
-          ' autocomplete="off" value="' + esc(numeroParaCampo(g.valor, true)) + '">' +
-          '<button type="button" class="btn-remover" data-remover="' + i + '" aria-label="Remover ' + esc(g.descricao || 'gasto') + '">🗑</button>' +
+          '<div class="entrada"><input type="text" data-gasto-campo="descricao" data-indice="' + i + '" maxlength="100"' +
+          ' placeholder="O que é?" aria-label="Descrição do gasto" autocomplete="off" value="' + esc(g.descricao) + '"></div>' +
+          '<div class="entrada com-prefixo"><span class="prefixo">R$</span>' +
+          '<input type="text" class="num" inputmode="decimal" data-gasto-campo="valor" data-formato="dinheiro" data-indice="' + i + '"' +
+          ' placeholder="0,00" aria-label="Valor por mês de ' + nome + '" autocomplete="off" value="' + esc(numeroParaCampo(g.valor, true)) + '"></div>' +
+          '<button type="button" class="btn-remover" data-remover="' + i + '" aria-label="Remover ' + nome + '">' + icone('i-lixeira') + '</button>' +
           '<p class="erro"></p>' +
           '</div>';
       });
       $('lista-' + tipo).innerHTML = html;
       $('sugestoes-' + tipo).innerHTML = quantos === 0 && !cheio
         ? SUGESTOES[tipo].map(function (s) {
-            return '<button type="button" class="chip chip-sugestao" data-sugestao="' + esc(s) + '" data-tipo="' + tipo + '">+ ' + esc(s) + '</button>';
+            return '<button type="button" class="chip chip-sugestao" data-sugestao="' + esc(s) + '" data-tipo="' + tipo + '">' + esc(s) + '</button>';
           }).join('')
         : '';
     });
@@ -1419,15 +1822,13 @@ function rodarCasosDeTeste() {
 
     var el = $('res-ganho-hora');
     if (total === 0) {
-      el.textContent = '';
+      el.innerHTML = '';
     } else {
       var diferenca = d.parametros.valorHoraCobrado - pmh;
       if (centavos(diferenca) >= 0) {
-        el.textContent = 'Você ganha ' + formatarBRL(diferenca) + ' a mais por hora';
-        el.className = 'info positivo';
+        el.innerHTML = 'Você ganha <strong class="positivo">' + esc(formatarBRL(diferenca)) + '</strong> a mais por hora';
       } else {
-        el.textContent = 'Você cobra ' + formatarBRL(-diferenca) + ' a menos do que precisa por hora';
-        el.className = 'info negativo';
+        el.innerHTML = 'Você cobra <strong class="negativo">' + esc(formatarBRL(-diferenca)) + '</strong> a menos do que precisa por hora';
       }
     }
   }
@@ -1444,17 +1845,26 @@ function rodarCasosDeTeste() {
   }
 
   /**
-   * Remove na hora e mostra "Gasto removido · DESFAZER" por 6 s.
+   * Remoção com "Desfazer" (gasto ou cartão): some na hora e mostra a barra por 6 s.
    * O salvamento só dispara quando a barra some (ou junto com a próxima alteração).
    */
-  function removerGasto(indice) {
+  function listaDoTipo(tipo) { return tipo === 'cartao' ? estado.dados.cartoes : estado.dados.gastos; }
+
+  function redesenharDoTipo(tipo) {
+    if (tipo === 'cartao') renderAjustes(); else renderGastos();
+    renderOrcamento();
+  }
+
+  function removerComDesfazer(tipo, indice) {
     if (desfazer.timer !== null) { clearTimeout(desfazer.timer); desfazer.timer = null; } // a anterior vira definitiva
-    desfazer.item = estado.dados.gastos.splice(indice, 1)[0];
+    desfazer.tipo = tipo;
+    desfazer.item = listaDoTipo(tipo).splice(indice, 1)[0];
     desfazer.indice = indice;
     remocoesNaoSalvas++;
-    renderGastos();
-    renderOrcamento();
+    if (tipo === 'cartao') ui.cartao = Math.min(indice, estado.dados.cartoes.length - 1);
+    redesenharDoTipo(tipo);
     $('aviso').hidden = true;
+    $('texto-desfazer').textContent = tipo === 'cartao' ? 'Cartão removido' : 'Gasto removido';
     $('barra-desfazer').hidden = false;
     desfazer.timer = setTimeout(finalizarRemocao, TEMPO_DESFAZER_MS);
   }
@@ -1469,12 +1879,14 @@ function rodarCasosDeTeste() {
   function desfazerRemocao() {
     if (!desfazer.item) return;
     if (desfazer.timer !== null) { clearTimeout(desfazer.timer); desfazer.timer = null; }
-    var gastos = estado.dados.gastos;
-    gastos.splice(Math.min(desfazer.indice, gastos.length), 0, desfazer.item);
+    var tipo = desfazer.tipo;
+    var lista = listaDoTipo(tipo);
+    var posicao = Math.min(desfazer.indice, lista.length);
+    lista.splice(posicao, 0, desfazer.item);
     desfazer.item = null;
+    if (tipo === 'cartao') { ui.cartao = posicao; ui.adicionandoCartao = false; }
     $('barra-desfazer').hidden = true;
-    renderGastos();
-    renderOrcamento();
+    redesenharDoTipo(tipo);
     if (remocoesNaoSalvas > 0) {
       remocoesNaoSalvas--;                  // esta remoção nunca foi salva: voltar não precisa salvar
       if (remocoesNaoSalvas > 0) alterou(); // ainda há remoção anterior pendente
@@ -1482,7 +1894,7 @@ function rodarCasosDeTeste() {
     } else {
       alterou();                            // a remoção já tinha ido num salvamento: salvar a volta
     }
-    mostrarAviso('Gasto de volta.');
+    mostrarAviso(tipo === 'cartao' ? 'Cartão de volta.' : 'Gasto de volta.');
   }
 
   function onGastoInput(el) {
@@ -1561,78 +1973,164 @@ function rodarCasosDeTeste() {
   }
 
   // ---------------- Ajustes ----------------
+  // ---------------- Ajustes: Seus cartões ----------------
+  function cartaoAtual() {
+    var cartoes = estado.dados.cartoes;
+    return ui.cartao >= 0 && ui.cartao < cartoes.length ? cartoes[ui.cartao] : null;
+  }
+
+  function renderChipsCartoes() {
+    var cartoes = estado.dados.cartoes;
+    var html = cartoes.map(function (c, i) {
+      var sel = !ui.adicionandoCartao && i === ui.cartao;
+      return '<button type="button" class="chip" role="radio" data-editar-cartao="' + i + '" aria-checked="' + sel + '">' + esc(c.nome || '(sem nome)') + '</button>';
+    }).join('');
+    if (cartoes.length < MAX_CARTOES) {
+      html += '<button type="button" class="chip chip-adicionar" data-acao="adicionar-cartao" aria-pressed="' + ui.adicionandoCartao + '">' +
+        icone('i-mais') + 'Adicionar cartão</button>';
+    }
+    $('chips-cartoes').innerHTML = html;
+  }
+
   function renderAjustes() {
     if (!estado.dados) return;
-    var sel = $('sel-bandeira');
-    if (!sel.options.length) {
-      sel.innerHTML = BANDEIRAS.map(function (b) { return '<option value="' + b.id + '">' + esc(b.longo) + '</option>'; }).join('');
-    }
-    sel.value = editandoBandeira;
+    var cartoes = estado.dados.cartoes;
+    if (cartoes.length === 0) ui.cartao = -1;
+    else if (ui.cartao < 0 || ui.cartao >= cartoes.length) ui.cartao = 0;
+    if (cartoes.length >= MAX_CARTOES) ui.adicionandoCartao = false;
 
-    $('lista-taxas').innerHTML = estado.dados.taxas.map(function (l, i) {
-      if (l.forma === 'Pix') return '';
-      var rotulo = l.forma === 'Débito' ? 'Débito' : l.parcelas + 'x';
-      return '<div class="taxa-linha">' +
-        '<label for="taxa-' + i + '">' + rotulo + '</label>' +
-        '<input id="taxa-' + i + '" class="num" type="text" inputmode="decimal" data-taxa-indice="' + i + '"' +
-        ' placeholder="sem taxa" autocomplete="off" value="' + esc(numeroParaCampo(l[editandoBandeira], false)) + '">' +
-        '<span class="pct">%</span>' +
-        '<p class="erro"></p>' +
-        '</div>';
-    }).join('');
+    renderChipsCartoes();
+    $('sem-cartoes').hidden = cartoes.length > 0 || ui.adicionandoCartao;
+
+    // Painel "Adicionar cartão"
+    $('painel-adicionar').hidden = !ui.adicionandoCartao;
+    if (ui.adicionandoCartao) {
+      var sugestoes = SUGESTOES_CARTAO.filter(function (s) { return acharCartao(cartoes, s) < 0; });
+      $('sugestoes-cartao').innerHTML = sugestoes.map(function (s) {
+        return '<button type="button" class="chip chip-sugestao" data-sugestao-cartao="' + esc(s) + '">' + esc(s) + '</button>';
+      }).join('') + '<button type="button" class="chip chip-sugestao" data-sugestao-cartao="" aria-pressed="' + ui.outroAberto + '">Outro…</button>';
+      $('bloco-outro').hidden = !ui.outroAberto;
+    }
+
+    // Painel do cartão em edição
+    var cartao = cartaoAtual();
+    $('painel-cartao').hidden = ui.adicionandoCartao || !cartao;
     limparInvalidos('t:');
+    limparInvalidos('c:');
+    if (cartao && !ui.adicionandoCartao) {
+      var campoNome = $('cartao-nome');
+      campoNome.value = cartao.nome;
+      mostrarErroCampo(campoNome, '');
+      $('lista-taxas').innerHTML = FORMAS.map(function (f) {
+        return '<div class="taxa-linha">' +
+          '<label for="taxa-' + f.campo + '">' + f.rotulo + '</label>' +
+          '<div class="entrada com-sufixo"><input id="taxa-' + f.campo + '" class="num" type="text" inputmode="decimal" data-taxa-campo="' + f.campo + '"' +
+          ' placeholder="sem taxa" autocomplete="off" value="' + esc(numeroParaCampo(cartao[f.campo], false)) + '"><span class="sufixo">%</span></div>' +
+          '<p class="erro"></p>' +
+          '</div>';
+      }).join('');
+      $('aviso-cartao-vazio').hidden = !cartaoTodoVazio(cartao);
+      $('confirma-padrao').hidden = true;
+      $('btn-preencher-padrao').hidden = false;
+    }
 
     var link = $('link-planilha');
     if (estado.urlPlanilha) { link.href = estado.urlPlanilha; link.hidden = false; } else { link.hidden = true; }
     atualizarInfoSalvo();
   }
 
-  function onTaxaInput(el) {
-    var i = Number(el.dataset.taxaIndice);
-    var linha = estado.dados.taxas[i];
-    if (!linha || linha.forma === 'Pix') return;
-    var r = validarNumeroCampo(el.value, LIMITE_TAXA, { vazioPermitido: true, mensagem: 'Use um número de 0 a 99.' });
-    marcarCampo(el, 't:' + i, r.erro);
-    if (r.erro) { atualizarStatusSalvamento(); return; }
-    linha[editandoBandeira] = r.valor; // vazio → null (sem taxa); "0" → 0
+  function editarCartao(indice) {
+    ui.cartao = indice;
+    ui.adicionandoCartao = false;
+    ui.outroAberto = false;
+    renderAjustes();
+    atualizarStatusSalvamento(); // campos com erro do cartão anterior foram descartados
+  }
+
+  function abrirAdicionarCartao() {
+    ui.adicionandoCartao = !ui.adicionandoCartao;
+    ui.outroAberto = false;
+    renderAjustes();
+    atualizarStatusSalvamento();
+  }
+
+  /** Cria o cartão (nome já validado) com as taxas vazias e abre para edição, com foco no Débito. */
+  function criarCartao(nome) {
+    var cartoes = estado.dados.cartoes;
+    var erro = validarNomeCartao(nome, cartoes, -1);
+    if (erro || cartoes.length >= MAX_CARTOES) return erro || 'Você pode cadastrar no máximo ' + MAX_CARTOES + ' cartões.';
+    cartoes.push(cartaoVazio(String(nome).trim()));
+    ui.cartao = cartoes.length - 1;
+    ui.adicionandoCartao = false;
+    ui.outroAberto = false;
+    renderAjustes();
+    renderOrcamento();
+    alterou();
+    $('taxa-debito').focus();
+    return '';
+  }
+
+  function criarCartaoOutro() {
+    var campo = $('novo-cartao-nome');
+    var erro = criarCartao(campo.value);
+    mostrarErroCampo(campo, erro);
+    if (!erro) campo.value = '';
+  }
+
+  function onNomeCartaoInput(el) {
+    var cartao = cartaoAtual();
+    if (!cartao) return;
+    var erro = validarNomeCartao(el.value, estado.dados.cartoes, ui.cartao);
+    marcarCampo(el, 'c:nome', erro);
+    if (erro) { atualizarStatusSalvamento(); return; }
+    var nomeAntigo = cartao.nome;
+    cartao.nome = el.value.trim();
+    if (orc.bandeira !== NAO_SEI && chaveNome(orc.bandeira) === chaveNome(nomeAntigo)) {
+      orc.bandeira = cartao.nome; // o orçamento continua com o mesmo cartão escolhido
+      gravarStorage(CHAVE_ORCAMENTO, orc);
+    }
+    renderChipsCartoes();
     renderOrcamento();
     alterou();
   }
 
-  function trocarBandeiraEditada(id) {
-    editandoBandeira = id;
-    renderAjustes();
-    atualizarStatusSalvamento(); // campos com erro da bandeira anterior foram descartados
+  function onTaxaInput(el) {
+    var cartao = cartaoAtual();
+    if (!cartao) return;
+    var campo = el.dataset.taxaCampo;
+    var r = validarNumeroCampo(el.value, LIMITE_TAXA, { vazioPermitido: true, mensagem: 'Use um número de 0 a 99.' });
+    marcarCampo(el, 't:' + campo, r.erro);
+    if (r.erro) { atualizarStatusSalvamento(); return; }
+    cartao[campo] = r.valor; // vazio → null (sem taxa); "0" → 0
+    $('aviso-cartao-vazio').hidden = !cartaoTodoVazio(cartao);
+    renderOrcamento();
+    alterou();
   }
 
-  function restaurarTaxasPadrao() {
+  function preencherTaxasPadrao() {
     if (!temGoogle()) return;
-    var botao = $('btn-restaurar-sim');
+    var botao = $('btn-padrao-sim');
     botao.disabled = true;
     google.script.run
       .withSuccessHandler(function (padrao) {
         botao.disabled = false;
-        $('restaurar-confirma').hidden = true;
-        $('btn-restaurar').hidden = false;
-        padrao.forEach(function (p) {
-          estado.dados.taxas.forEach(function (l) {
-            if (l.forma === p.forma && l.parcelas === p.parcelas) l.visa = p.taxa;
-          });
-        });
-        if (editandoBandeira === 'visa') renderAjustes();
+        var cartao = cartaoAtual();
+        if (!cartao) return;
+        CAMPOS_TAXA.forEach(function (campo) { cartao[campo] = typeof padrao[campo] === 'number' ? padrao[campo] : null; });
+        renderAjustes();
         renderOrcamento();
         alterou();
-        mostrarAviso('Taxas de Visa/Master voltaram para as da InfinitePay.');
+        mostrarAviso('Taxas da InfinitePay preenchidas.');
       })
       .withFailureHandler(function (e) {
         botao.disabled = false;
-        mostrarAviso('Não deu para voltar as taxas: ' + mensagemDoErro(e));
+        mostrarAviso('Não deu para preencher as taxas: ' + mensagemDoErro(e));
       })
       .obterTaxasPadraoVisa();
   }
 
   // ------------------------------------------------------------------
-  // Autoteste (?teste=1). Fatia 4 completa os casos.
+  // Autoteste (?teste=1)
   // ------------------------------------------------------------------
   function verificarModoTeste() {
     if (temGoogle() && google.script.url) {
@@ -1647,7 +2145,7 @@ function rodarCasosDeTeste() {
   function executarAutoteste() {
     var resultados = rodarCasosDeTeste();
     var passaram = resultados.filter(function (r) { return r.passou; }).length;
-    var html = '<h2>Autoteste de cálculo</h2>' +
+    var html = '<div class="card"><h2 class="card-titulo">Autoteste de cálculo</h2>' +
       '<p><strong>' + passaram + ' de ' + resultados.length + ' passaram.</strong></p>' +
       '<table><thead><tr><th>Caso</th><th>Resultado</th><th>Obtido</th><th>Esperado</th></tr></thead><tbody>' +
       resultados.map(function (r) {
@@ -1655,7 +2153,7 @@ function rodarCasosDeTeste() {
           '<td class="' + (r.passou ? 'ok">PASSOU' : 'falha">FALHOU') + '</td>' +
           '<td>' + esc(JSON.stringify(r.obtido)) + '</td><td>' + esc(JSON.stringify(r.esperado)) + '</td></tr>';
       }).join('') +
-      '</tbody></table>';
+      '</tbody></table></div>';
     var el = $('tela-teste');
     el.innerHTML = html;
     el.hidden = false;
@@ -1670,7 +2168,8 @@ function rodarCasosDeTeste() {
       if (!estado.dados) return;
       if (el.dataset.param) onParametroInput(el);
       else if (el.dataset.gastoCampo) onGastoInput(el);
-      else if (el.dataset.taxaIndice) onTaxaInput(el);
+      else if (el.dataset.taxaCampo) onTaxaInput(el);
+      else if (el.dataset.cartaoNome) onNomeCartaoInput(el);
       else if (el.dataset.orc) onOrcamentoInput(el);
     });
 
@@ -1694,18 +2193,33 @@ function rodarCasosDeTeste() {
       if (ds.ir) { trocarTela(ds.ir, true); return; }
       if (ds.adicionar) { adicionarGasto(ds.adicionar, ''); return; }
       if (ds.sugestao) { adicionarGasto(ds.tipo, ds.sugestao); return; }
-      if (ds.remover !== undefined) { removerGasto(Number(ds.remover)); return; }
-      if (ds.bandeira) {
-        orc.bandeira = ds.bandeira;
+      if (ds.remover !== undefined) { removerComDesfazer('gasto', Number(ds.remover)); return; }
+      if (ds.editarCartao !== undefined) { editarCartao(Number(ds.editarCartao)); return; }
+      if (ds.acao === 'adicionar-cartao') { abrirAdicionarCartao(); return; }
+      if (ds.sugestaoCartao !== undefined) {
+        if (ds.sugestaoCartao === '') { // "Outro…"
+          ui.outroAberto = true;
+          renderAjustes();
+          $('novo-cartao-nome').focus();
+        } else {
+          criarCartao(ds.sugestaoCartao);
+        }
+        return;
+      }
+      if (ds.bandeiraIndice !== undefined) {
+        var i = Number(ds.bandeiraIndice);
+        orc.bandeira = i < 0 ? NAO_SEI : estado.dados.cartoes[i].nome;
         gravarStorage(CHAVE_ORCAMENTO, orc);
         renderOrcamento();
-        var chip = document.querySelector('[data-bandeira="' + ds.bandeira + '"]');
+        var chip = document.querySelector('[data-bandeira-indice="' + i + '"]');
         if (chip) chip.focus();
       }
     });
 
     $('ir-fechado').addEventListener('click', function () { trocarModo('fechado'); });
     $('ir-horas').addEventListener('click', function () { trocarModo('horas'); });
+    $('ir-pecas-valor').addEventListener('click', function () { trocarModoPecas('valor'); });
+    $('ir-pecas-acrescimo').addEventListener('click', function () { trocarModoPecas('acrescimo'); });
     $('btn-novo').addEventListener('click', novoOrcamento);
 
     $('btn-copiar').addEventListener('click', function () {
@@ -1718,17 +2232,30 @@ function rodarCasosDeTeste() {
     $('btn-compartilhar').addEventListener('click', compartilhar);
     $('btn-fechar-copia').addEventListener('click', function () { $('caixa-copia').hidden = true; });
 
-    $('sel-bandeira').addEventListener('change', function (e) { trocarBandeiraEditada(e.target.value); });
-    $('btn-restaurar').addEventListener('click', function () {
-      $('restaurar-confirma').hidden = false;
-      $('btn-restaurar').hidden = true;
-      $('btn-restaurar-sim').focus();
+    // Seus cartões
+    $('btn-cancelar-adicionar').addEventListener('click', function () {
+      ui.adicionandoCartao = false;
+      ui.outroAberto = false;
+      renderAjustes();
     });
-    $('btn-restaurar-nao').addEventListener('click', function () {
-      $('restaurar-confirma').hidden = true;
-      $('btn-restaurar').hidden = false;
+    $('btn-criar-cartao').addEventListener('click', criarCartaoOutro);
+    $('novo-cartao-nome').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); criarCartaoOutro(); }
     });
-    $('btn-restaurar-sim').addEventListener('click', restaurarTaxasPadrao);
+    $('novo-cartao-nome').addEventListener('input', function (e) { mostrarErroCampo(e.target, ''); });
+    $('btn-preencher-padrao').addEventListener('click', function () {
+      $('confirma-padrao').hidden = false;
+      $('btn-preencher-padrao').hidden = true;
+      $('btn-padrao-sim').focus();
+    });
+    $('btn-padrao-nao').addEventListener('click', function () {
+      $('confirma-padrao').hidden = true;
+      $('btn-preencher-padrao').hidden = false;
+    });
+    $('btn-padrao-sim').addEventListener('click', preencherTaxasPadrao);
+    $('btn-remover-cartao').addEventListener('click', function () {
+      if (cartaoAtual()) removerComDesfazer('cartao', ui.cartao);
+    });
 
     $('status').addEventListener('click', function () {
       var tipo = $('status').dataset.tipo;

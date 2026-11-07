@@ -1,46 +1,88 @@
 # Testes de cálculo – Preço Certo
 
-> Situação na **Fatia 3**. A Fatia 4 completa os casos T8–T12, T14 e T15 e registra o autoteste rodando no app publicado (`?teste=1`).
+> Situação na **Fatia 3 / Parte 2**: novo visual, acréscimo nas peças e cartões cadastráveis. A Fatia 4 acrescenta T14 e T15 e registra o autoteste rodando no app publicado (`?teste=1`).
 
 ## Como os testes rodam
 
-- Os casos ficam no próprio `src/Index.html`, dentro do bloco `<script id="calculo">` (funções `casosDeTeste()` e `rodarCasosDeTeste()`).
-- **No app:** abrir o link do App da Web com `?teste=1` no final. Aparece a tabela PASSOU/FALHOU.
-- **No computador (Node):** o bloco de cálculo é extraído do `Index.html` e executado com os mesmos casos. Nada é copiado à mão.
-- A comparação é **exata, em centavos inteiros** (sem tolerância).
+- **Frontend:** os casos ficam no próprio `src/Index.html`, no bloco `<script id="calculo">` (`casosDeTeste()` e `rodarCasosDeTeste()`).
+  - **No app:** abra o link (de preferência a URL `/dev`) com `?teste=1` no final. Aparece a tabela PASSOU/FALHOU.
+  - **No computador (Node):** o bloco de cálculo é extraído do `Index.html` e executado com os mesmos casos. Nada é copiado à mão.
+- **Backend:** o `src/Codigo.gs` roda em Node com a planilha simulada (leitura, validação, migração e lock).
+- A comparação é **exata, em centavos inteiros**, sem tolerância.
+- Os casos T8–T12, do modelo antigo de bandeiras fixas, foram **substituídos** por C1–C8 (cartões cadastráveis).
 
-## Resultados: Fatia 3 (Node, 07/11/2026)
+## Resultados (Node, 07/11/2026)
 
-| # | Caso | Esperado | Obtido | Resultado |
+**Frontend: 35 de 35 · Backend: 48 de 48.**
+
+### Taxas e cálculo base (T)
+| # | Caso | Esperado | Resultado |
+|---|---|---|---|
+| T1 | Visa/Master, à vista 1.000, 1x 3,15% | 1.032,52 · 1.032,52 | ✅ (ver divergência conhecida) |
+| T2 | 2x 5,39% | 1.056,97 · 528,49 | ✅ |
+| T3 | 3x 6,12% | 1.065,19 · 355,06 | ✅ |
+| T4 | 4x 6,85% | 1.073,54 · 268,38 | ✅ |
+| T5 | Gastos 4.000 + 3.000; 5 dias × 6 h × 52/12 | 130 h · R$ 53,85 | ✅ |
+| T6 | 8 h × 150; preço mínimo da hora 70 (injetado); peças 400 → 500 | à vista 1.700,00 · lucro 740,00 | ✅ |
+| T7 | T6 em 5x Visa/Master 7,57% | 1.839,23 · 5× 367,85 | ✅ |
+| T13 | `lerNumeroBR("1.234,56")`, `"150,50"`, `""` | 1234,56 · 150,5 · vazio | ✅ |
+| T14 | Horas cobradas = 0 | preço mínimo 0, sem erro | Fatia 4 |
+| T15 | Valor fechado 900, horas vazias, valor da hora 150 | horas 6 · aviso ligado | Fatia 4 |
+
+### Cartões cadastráveis (C)
+| # | Caso | Esperado | Onde | Resultado |
 |---|---|---|---|---|
-| T1 | Visa, à vista 1.000, 1x 3,15% | 1.032,52 · 1.032,52 | 1.032,52 · 1.032,52 | ✅ PASSOU (ver divergência conhecida) |
-| T2 | Visa, à vista 1.000, 2x 5,39% | 1.056,97 · 528,49 | 1.056,97 · 528,49 | ✅ PASSOU |
-| T3 | Visa, à vista 1.000, 3x 6,12% | 1.065,19 · 355,06 | 1.065,19 · 355,06 | ✅ PASSOU |
-| T4 | Visa, à vista 1.000, 4x 6,85% | 1.073,54 · 268,38 | 1.073,54 · 268,38 | ✅ PASSOU |
-| T5 | Gastos 4.000 + 3.000; 5 dias × 6 h × 52/12 | 130 h · R$ 53,85 | 130 h · R$ 53,85 | ✅ PASSOU |
-| T6 | 8 h × 150; preço mínimo da hora 70 (injetado); peças 400 → 500; imposto 0 | à vista 1.700,00 · lucro 740,00 | 1.700,00 · 740,00 | ✅ PASSOU |
-| T7 | T6 em 5x Visa 7,57% | 1.839,23 · 5× 367,85 | 1.839,23 · 5× 367,85 | ✅ PASSOU |
-| T13 | `lerNumeroBR("1.234,56")`, `"150,50"`, `""` | 1234,56 · 150,5 · vazio | 1234,56 · 150,5 · vazio | ✅ PASSOU |
-| W1 | WhatsApp: 7,3 h × 150 + peças 333,33 | 1.095,00 + 333,33 = 1.428,33 | 1.095,00 + 333,33 = 1.428,33 | ✅ PASSOU |
-| W2 | WhatsApp: 1,5 h × 133,33 (= 199,995) + peças 10,005 | 200,00 + 10,00 = 210,00 | 200,00 + 10,00 = 210,00 | ✅ PASSOU |
-| W3 | WhatsApp: só peças (99,995) / só mão de obra (1,2345 h × 150) | 0 + 100,00 · 185,18 + 0 | 0 + 100,00 · 185,18 + 0 | ✅ PASSOU |
+| C1 | Um só cartão (Elo, 5x 8,00) | usado direto, sem escolha; 5x = 1.847,83; sem nome no texto do cliente | front | ✅ |
+| C2 | "Não sei" com Visa/Master 5x 7,57 e Elo 5x 8,00, à vista 1.700 | 5x usa 8,00 → 1.847,83 · 5× 369,57; 6x (Elo vazio) usa 8,28 | front | ✅ |
+| C3 | Elo escolhido com só 5x preenchido | só a linha 5x; nenhum total igual ao à vista | front | ✅ |
+| C4 | Nome repetido ("Elo" × "elo"; "Hipercard" × "HIPERCÁRD") | front: "Já existe um cartão com esse nome."; back: validação recusa e a leitura mantém o primeiro | front + back | ✅ |
+| C5 | Nenhum cartão | só o à vista (1.700,00), sem parcelas e sem erro | front + back | ✅ |
+| C6 | 13º cartão | validação: "Você pode cadastrar no máximo 12 cartões."; leitura fica com 12 | back | ✅ |
+| C7 | Migração: formato antigo com Visa preenchida e Elo só no 5x | 2 cartões; valores idênticos; vazios preservados (null, não 0); migra uma única vez; cópia "Taxas (antigo)" (ou "Taxas (antigo) 2" se já existir) com o conteúdo antigo intacto; leitura antes da migração já sai no formato novo | back | ✅ |
+| C8 | WhatsApp com "Cabal" escolhido / com "Não sei" | contém "💳 Cartão Cabal em até 5x" / sem nome de cartão | front | ✅ |
 
-**Verificações extras (Node):**
-- `lerNumeroBR` do frontend e `lerNumeroBR_` do backend dão a mesma resposta em 24 de 24 entradas.
-- Os limites do frontend são idênticos aos do backend.
-- `centavos(528,485)` = 528,49 (sem o erro de ponto flutuante).
-- Taxa vazia → `null` e `"0"` → 0.
-- Horas cobradas maiores que as horas de trabalho são bloqueadas.
-- O bloco do app não usa `VISA_TESTE`, `taxasDeTeste` nem `casosDeTeste`.
-- Backend: 30 de 30.
+### Peças com acréscimo (P)
+| # | Caso | Esperado | Resultado |
+|---|---|---|---|
+| P1 | Paga 500 + 47% | cliente paga 735,00 | ✅ |
+| P2 | Acréscimo 0% (e acréscimo vazio) | mesmo valor: 500,00 | ✅ |
+| P3 | 333,33 + 47% | 489,9951 sem arredondar no meio → 490,00 | ✅ |
+| P4 | Lucro nas peças = cobrar − pagar | 333,33 + 47% → 156,67; 8 h × 150 + peças 400 + 25% → à vista 1.700,00 · lucro 740,00 | ✅ |
+| — | `acrescimoPecasPadrao` lido fora do limite ("1500", "-1", "abc") | volta ao padrão 47; "0" → 0; "47,5" → 47,5; linha ausente → 47 | ✅ (back) |
 
-**Verificação da tela (Chrome headless, com `google.script.run` simulado):**
-- primeiro acesso, chips de sugestão, preço mínimo e "você ganha…";
-- campo inválido bloqueando o salvamento;
-- "Desfazer": nenhum salvamento durante a barra e nenhum ao desfazer; um salvamento depois de 6 s;
-- orçamento, bandeiras, detalhes do lucro sem multiplicação e valor fechado;
-- modo sem conexão com a faixa "Sem conexão: só orçamento";
-- nenhum erro de JavaScript.
+### Texto do WhatsApp (W)
+| # | Caso | Esperado | Resultado |
+|---|---|---|---|
+| W1 | 7,3 h × 150 + peças 333,33 | 1.095,00 + 333,33 = à vista 1.428,33 | ✅ |
+| W2 | 1,5 h × 133,33 (= 199,995) + peças 10,005 | 200,00 + 10,00 = 210,00 (sem o ajuste daria 210,01) | ✅ |
+| W3 | Só peças (99,995) / só mão de obra (1,2345 h × 150) | a linha que existe = à vista (100,00 · 185,18) | ✅ |
+| W4 | Negrito e acréscimo | `*Orçamento – CliniCar Motors Tech*` (ou `*Orçamento*`); `💵 À vista (Pix/dinheiro): *R$ 1.935,00*`; "Peças: R$ 735,00"; o 47% não aparece | ✅ |
+
+### Verificações extras
+- **Paridade frontend × backend:**
+  - `lerNumeroBR` dá a mesma resposta em 24 de 24 entradas;
+  - limites dos parâmetros, limite de taxa, limite de gasto, `MAX_GASTOS`, `MAX_CARTOES` e `MAX_NOME_CARTAO` idênticos;
+  - campos dos cartões (`debito`, `p1` … `p12`) idênticos;
+  - `chaveNome` = `chaveNome_`;
+  - taxas padrão do backend = dado de teste `VISA_TESTE`.
+- **Regras do código:**
+  - o app nunca usa dados de teste;
+  - não há emoji na interface (fora do texto do WhatsApp; o "✓" de "Salvo ✓" é um símbolo de texto pedido);
+  - não há caracteres invisíveis de acento no código, nem no front nem no back. Isso evita voltar o bug do `semAcento_`.
+- **Backend:**
+  - leitura tolerante sempre passa em `validarDados_`;
+  - `doGet` com e sem lock;
+  - só 4 funções públicas.
+- **Tela (Chrome headless, `google.script.run` simulado):**
+  - primeiro acesso;
+  - chips "Não sei · Visa/Master · Elo";
+  - adicionar cartão por sugestão e por "Outro…" (foco no Débito);
+  - nome repetido recusado ao criar e ao renomear;
+  - "Preencher com as taxas padrão";
+  - "Desfazer" de gasto e de cartão (nenhum salvamento durante a barra e um depois);
+  - modo sem conexão;
+  - fonte Inter carregada;
+  - nenhum erro de JavaScript.
 
 ## Divergências conhecidas
 

@@ -7,7 +7,15 @@ A cada `git push` na branch `main` que altere algo em `src/`, o workflow [`.gith
 
 A descrição da versão fica `<sha curto> – <1ª linha do commit, até 60 caracteres>`, por exemplo `452f361 – Fatia 3: frontend (Index.html) com identidade CliniCar`.
 
-Versão usada: `@google/clasp@3.4.1`, a major atual no npm, conferida em 07/11/2026. Flags conferidas no `--help` dessa versão: `push -f/--force`, `deploy -i/--deploymentId` e `deploy -d/--description`.
+**Versões fixadas** (conferidas em 07/11/2026):
+
+| Item | Versão | Evidência |
+|---|---|---|
+| `@google/clasp` | 3.4.1 (major 3) | `npm view @google/clasp version` → 3.4.1 (tag `latest`). Flags conferidas no `--help`: `push -f/--force`, `deploy -i/--deploymentId`, `deploy -d/--description` |
+| `actions/checkout` | `@v7` | última versão estável: v7.0.1, publicada em 20/07/2026 — https://github.com/actions/checkout/releases/tag/v7.0.1 |
+| `actions/setup-node` | `@v7` | última versão estável: v7.1.0, publicada em 08/10/2026 — https://github.com/actions/setup-node/releases/tag/v7.1.0 |
+
+> **O `clasp login` local precisa usar a mesma versão do workflow (3.4.1).** Veja o item c.
 
 > Os comandos abaixo são para **você** rodar. Nada aqui é executado automaticamente fora do GitHub Actions.
 
@@ -37,8 +45,13 @@ Sem isso, o `clasp push` falha com uma mensagem sobre a API desativada. O workfl
 
 ## c) Instalar o clasp e fazer login (uma vez, no seu computador)
 
+> ⚠️ **IMPORTANTE: faça o `clasp login` local com a MESMA versão usada no workflow (`@google/clasp@3.4.1`).**
+> O formato do `.clasprc.json` mudou no clasp 3. Um arquivo gerado por outra versão (por exemplo, o clasp 2) pode não funcionar no GitHub Actions. Confira com `clasp --version` antes do login: tem de aparecer `3.4.1`.
+> Se um dia o workflow mudar de versão (`CLASP_VERSION` no `deploy.yml`), refaça o login local com a nova versão e atualize o secret `CLASPRC_JSON`.
+
 ```bash
 npm install -g @google/clasp@3.4.1
+clasp --version        # deve mostrar 3.4.1
 clasp login
 ```
 
