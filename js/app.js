@@ -669,11 +669,11 @@ function renderOrcamento() {
   if (preco.temAncora && !preco.acimaDoMaximo) {
     faixaAinda.textContent = preco.aindaPodeCentavos > 0
       ? 'Se o cliente pedir mais: ainda pode dar até ' + formatarPercentual(preco.aindaPodePct) +
-        ' (' + formatarCentavos(preco.aindaPodeCentavos) + ') sem mexer no seu lucro.'
-      : 'Esse é o máximo de desconto sem mexer no seu lucro.';
+        ' (' + formatarCentavos(preco.aindaPodeCentavos) + ') sem perder nada — é só a taxa da maquininha que você não vai pagar.'
+      : 'Esse é o máximo de desconto sem perder nada — é toda a taxa da maquininha que você não vai pagar.';
   }
   if (preco.temAncora && preco.acimaDoMaximo) {
-    faixaAbre.textContent = 'Com esse desconto você abre mão de ' + formatarCentavos(preco.abreMaoCentavos) + ' do seu lucro.';
+    faixaAbre.textContent = 'Com esse desconto você abre mão de ' + formatarCentavos(preco.abreMaoCentavos) + ' da sua sobra extra.';
   }
 
   $('card-cartao').hidden = res.semCartoes;
@@ -706,38 +706,54 @@ function renderOrcamento() {
       }).join('')
     : '<li>Nenhuma taxa cadastrada para este cartão. Veja em Ajustes.</li>';
 
-  // Lucro (à vista oferecido)
-  var lucro = centavos(preco.lucro);
-  var negativo = lucro < 0;
-  $('res-lucro').textContent = formatarCentavos(lucro);
-  $('res-lucro').className = 'valor-grande ' + (negativo ? 'negativo' : 'positivo');
-  $('card-lucro').className = 'card' + (negativo ? ' card-negativo' : '');
-  $('res-lucro-alerta').hidden = !negativo;
+  // Neste serviço: paga a oficina, vai para a casa (o "salário") e a sobra extra (sobre o à vista oferecido)
+  var ganho = separarGanho(res, preco, d.parametros,
+    minimoHoraDoTipo(d.gastos, d.parametros, 'Oficina'), minimoHoraDoTipo(d.gastos, d.parametros, 'Casa'));
+  var det = linhasDetalheServico(res, preco, ganho);
+  var cor = { verde: 'positivo', ambar: 'ambar', vermelho: 'negativo' }[ganho.estado];
+  // Negativo sempre como "− R$ 130,77" (mesmo sinal das linhas de custo).
+  function comSinal(c) { return c < 0 ? '− ' + formatarCentavos(-c) : formatarCentavos(c); }
+  $('res-sobra').textContent = comSinal(det.sobra);
+  $('res-lucro').className = 'valor-grande ' + cor;
+  $('card-lucro').className = 'card' + (ganho.estado === 'vermelho' ? ' card-negativo' : ganho.estado === 'ambar' ? ' card-ambar' : '');
+  $('res-total-seu').hidden = det.totalSeu === null;
+  $('res-total-seu').innerHTML = det.totalSeu === null ? '' : 'Total que é seu (casa + sobra): <span class="sem-quebra">' + esc(comSinal(det.totalSeu)) + '</span>';
+  var alerta = $('res-lucro-alerta');
+  alerta.hidden = ganho.estado === 'verde';
+  alerta.className = 'alerta' + (ganho.estado === 'ambar' ? ' alerta-ambar' : '');
+  alerta.textContent = ganho.estado === 'ambar' ? 'Paga a oficina, mas não cobre toda a sua casa.'
+    : ganho.estado === 'vermelho' ? 'Com esse preço a oficina não se paga.' : '';
 
+  // No cartão: a sobra na maior parcela em destaque (o imposto é sobre o total do cartão), como antes
   var impostoPct = d.parametros.impostoPercentual;
   var maiorDestaque = res.destaques.length ? res.destaques[res.destaques.length - 1] : null;
   var elCartao = $('res-lucro-cartao');
   if (impostoPct > 0 && maiorDestaque) {
-    elCartao.textContent = 'No cartão em ' + maiorDestaque.parcelas + 'x: ' + formatarBRL(maiorDestaque.lucro);
+    elCartao.textContent = 'Sobra extra no cartão em ' + maiorDestaque.parcelas + 'x: ' + comSinal(centavos(maiorDestaque.lucro));
     elCartao.hidden = false;
   } else {
     elCartao.hidden = true;
   }
 
+  // Ver detalhes (as linhas fecham no centavo com a sobra exibida: veja linhasDetalheServico)
+  function menos(c) { return (c < 0 ? '+ ' : '− ') + formatarCentavos(Math.abs(c)); }
   var linhas = [
-    ['Mão de obra', formatarBRL(res.maoDeObra)],
-    ['Gasto das suas ' + formatarHoras(res.horas), '− ' + formatarBRL(res.gastoHoras)],
-    ['Lucro nas peças', formatarBRL(res.lucroPecas)]
+    ['Mão de obra', formatarCentavos(det.maoDeObra)],
+    ['Lucro nas peças', formatarCentavos(det.lucroPecas)]
   ];
-  var diferenca = preco.precoCentavos / 100 - res.aVista.totalExato;
-  if (preco.temAncora && centavos(diferenca) !== 0) {
-    linhas.push(['Diferença pelo desconto à vista', (diferenca < 0 ? '− ' : '+ ') + formatarBRL(Math.abs(diferenca))]);
-  }
-  if (impostoPct > 0) linhas.push(['Imposto (à vista)', '− ' + formatarBRL(preco.imposto)]);
+  if (det.diferenca !== null) linhas.push(['Diferença pelo desconto à vista', (det.diferenca < 0 ? '− ' : '+ ') + formatarCentavos(Math.abs(det.diferenca))]);
+  if (det.imposto !== null) linhas.push(['Imposto (à vista)', menos(det.imposto)]);
+  linhas.push(['Paga os gastos da oficina', menos(det.pagaOficina)]);
+  if (det.vaiParaCasa !== null) linhas.push(['Vai para a sua casa', menos(det.vaiParaCasa), 'é o seu salário']);
+  linhas.push(['Sobra extra', comSinal(det.sobra), null, 'total']);
   $('res-detalhes').innerHTML = linhas.map(function (l) {
-    return '<dt>' + esc(l[0]) + '</dt><dd>' + esc(l[1]) + '</dd>';
+    var classe = l[3] ? ' class="' + l[3] + '"' : '';
+    return '<dt' + classe + '>' + esc(l[0]) + (l[2] ? '<span class="nota-casa">' + esc(l[2]) + '</span>' : '') + '</dt>' +
+      '<dd' + classe + '>' + esc(l[1]) + '</dd>';
   }).join('');
-  $('res-piso').textContent = 'Abaixo de ' + formatarBRL(preco.piso) + ' você trabalha no prejuízo.';
+  $('res-piso-oficina').textContent = 'Abaixo de ' + formatarBRL(ganho.pisoOficina) + ' a oficina não se paga.';
+  $('res-piso').hidden = !ganho.temCasa; // sem gastos de casa: um só piso
+  $('res-piso').textContent = ganho.temCasa ? 'Abaixo de ' + formatarBRL(ganho.pisoCasa) + ' não sobra nada para a sua casa.' : '';
 }
 
 function onOrcamentoInput(el) {
@@ -1350,10 +1366,12 @@ function desligarPin() {
 // Uma aberta por vez; fecham com novo toque, toque fora ou Esc.
 // ------------------------------------------------------------------
 var DICAS = {
+  servico: { alvo: '#titulo-servico', nome: 'Neste serviço',
+    texto: 'Sua hora já inclui os gastos da oficina e os da sua casa. "Vai para a sua casa" é o seu salário; a "Sobra extra" é o que ficou além disso. O que é seu de verdade é a soma das duas.' },
   acrescimo: { alvo: 'label[for="p-acrescimoPecasPadrao"]', nome: 'Acréscimo padrão nas peças',
     texto: 'Quanto você põe em cima do preço que paga pela peça. Ex.: paga R$ 100 com 47%, o cliente paga R$ 147. Cada orçamento novo começa com este número. Dá para mudar só naquele orçamento, no campo "Quanto você põe em cima da peça".' },
   imposto: { alvo: 'label[for="p-impostoPercentual"]', nome: 'Imposto',
-    texto: 'A porcentagem de imposto sobre o que o cliente paga (nota fiscal). O app tira esse imposto do seu lucro, no à vista e no cartão. É MEI? Deixe 0 e coloque o DAS em Meus gastos, porque o DAS é um valor fixo por mês.' },
+    texto: 'A porcentagem de imposto sobre o que o cliente paga (nota fiscal). O app tira esse imposto da sua sobra extra, no à vista e no cartão. É MEI? Deixe 0 e coloque o DAS em Meus gastos, porque o DAS é um valor fixo por mês.' },
   parcelas: { alvo: 'label[for="p-parcelasDestaque"]', nome: 'Parcelas que aparecem no orçamento',
     texto: 'Quais parcelas do cartão aparecem em destaque no orçamento e no WhatsApp. Ex.: "5,10" mostra 5x e 10x. A primeira (5x) é o preço cheio do cartão, e o desconto à vista é calculado em cima dela. As demais formas ficam em "Ver outras formas de pagamento".' },
   nomeOficina: { alvo: 'label[for="p-nomeOficina"]', nome: 'Nome da oficina',
@@ -1361,7 +1379,7 @@ var DICAS = {
   horasCobradas: { alvo: 'label[for="p-horasCobradasPorDia"]', nome: 'Horas que você cobra por dia',
     texto: 'Das horas que você trabalha, quantas viram serviço cobrado do cliente? O resto vai em orçamento, busca de peça, espera… Normalmente 6 de 8. Quanto menor esse número, mais a sua hora precisa valer.' },
   valorHora: { alvo: 'label[for="p-valorHoraCobrado"]', nome: 'Quanto você vai cobrar por hora',
-    texto: 'Quanto você cobra por hora de serviço. Precisa ser maior que "Sua hora precisa valer no mínimo", logo acima: a diferença é o seu lucro em cada hora. Ex.: mínimo R$ 33,08 e você cobra R$ 165, sobram R$ 131,92 por hora.' },
+    texto: 'Quanto você cobra por hora de serviço. Precisa ser maior que "Sua hora precisa valer no mínimo", logo acima: a diferença é a sua sobra extra em cada hora. Ex.: mínimo R$ 33,08 e você cobra R$ 165, sobram R$ 131,92 por hora.' },
   desconto: { alvo: 'label[for="orc-desconto"]', nome: 'Desconto à vista', texto: function () {
     var ate = ultimoPreco && ultimoPreco.temAncora
       ? 'Neste orçamento, até ' + formatarPercentual(Math.round(ultimoPreco.maximo * 100) / 100) + ' você não perde nada'
@@ -1370,7 +1388,7 @@ var DICAS = {
       ', porque não paga a maquininha. Já vem com o seu número de sempre (Ajustes → Este aparelho).';
   } },
   extra: { alvo: 'label[for="orc-extra"]', nome: 'Desconto extra',
-    texto: 'Se o cliente pedir um pouco mais. Soma com o desconto à vista (5% + 2% = 7%). O app mostra até onde dá para ir sem mexer no seu lucro e avisa em vermelho se passar disso.' },
+    texto: 'Se o cliente pedir um pouco mais. Soma com o desconto à vista (5% + 2% = 7%). O app mostra até onde dá para ir sem perder nada e avisa em vermelho se passar disso.' },
   cartoes: { alvo: '#titulo-cartoes', nome: 'Seus cartões',
     texto: 'As taxas que a maquininha cobra em cada parcela (Débito, 1x … 12x). Copie da calculadora de taxas do app da maquininha, um cartão de cada vez. Campo vazio = essa parcela não aparece no orçamento. Vazio é diferente de 0: 0 quer dizer "sem taxa".' },
   descontoPadrao: { alvo: 'label[for="desconto-padrao"]', nome: 'Desconto à vista padrão',

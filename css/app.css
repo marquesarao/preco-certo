@@ -362,3 +362,13 @@ input.pin { letter-spacing: 0.4em; }
    Aberto, volta a ser um card normal com a lista. */
 .card.card-so-link:not(:has(details[open])) { background: none; box-shadow: none; padding: 0 4px; }
 .card-so-link details { margin-top: 0; }
+
+/* ---------- Neste serviço: oficina, casa e sobra ---------- */
+.rotulo-sobra { font-size: 0.6em; font-weight: 600; letter-spacing: 0; vertical-align: 0.15em; }
+.total-seu { margin: 6px 0 0; font-size: 16px; font-weight: 600; color: var(--texto); }
+.ambar { color: #9a5b00; }
+.card-ambar { background: #fff7e8; }
+.alerta.alerta-ambar { color: #9a5b00; }
+.detalhes .nota-casa { display: block; font-size: 12px; color: var(--texto-3); font-weight: 400; }
+.detalhes dt.total, .detalhes dd.total { padding-top: 8px; border-top: 1px solid var(--borda-suave); font-weight: 600; color: var(--texto); }
+.sem-quebra { white-space: nowrap; }

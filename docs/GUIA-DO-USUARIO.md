@@ -1,6 +1,6 @@
 # Preço Certo – guia rápido
 
-O Preço Certo mostra **quanto cobrar** em cada serviço, **já com a taxa da maquininha**, e quanto **sobra de lucro** para você. Tudo fica guardado na sua planilha do Google.
+O Preço Certo mostra **quanto cobrar** em cada serviço, **já com a taxa da maquininha**, e **quanto é seu** em cada serviço: a parte da sua casa (o seu salário) e a **sobra extra**. Tudo fica guardado na sua planilha do Google.
 
 ---
 
@@ -65,7 +65,10 @@ Na tela do **Orçamento**:
    - **Cartão em 5x** (em cima): o preço cheio no cartão, já cobrindo a taxa da maquininha;
    - **À vista (Pix ou dinheiro):** o preço do cartão **com desconto** (veja abaixo);
    - **Cartão em 10x** e **"Ver outras formas"**: as outras opções no cartão;
-   - **Seu lucro neste serviço:** em **verde** está bom; em **vermelho**, o preço não cobre seus gastos.
+   - **Neste serviço:** sua hora já inclui os gastos da **oficina** e os da sua **casa**:
+     - **"Total que é seu (casa + sobra)"** é o que é seu de verdade: a parte da casa (o seu **salário**) mais a **sobra extra**;
+     - **"Sobra extra"** é o que ficou além disso. Em **verde**, tudo pago e ainda sobrou; em **amarelo**, a oficina se paga, mas não cobre toda a sua casa; em **vermelho**, com esse preço a oficina não se paga;
+     - em **Ver detalhes** aparece a conta inteira e os dois limites: "Abaixo de R$ X a oficina não se paga." e "Abaixo de R$ Y não sobra nada para a sua casa."
 5. **Não sabe o cartão do cliente?** Deixe em **"Não sei"**: o preço cobre qualquer cartão.
 
 ### Desconto à vista
@@ -74,9 +77,9 @@ O à vista é o preço do cartão **com um desconto**. Assim o cliente vê que p
 
 - **Desconto à vista:** já vem com o seu número de sempre (de fábrica, 5%). Mude só se quiser, naquele orçamento.
 - **Desconto extra que vou dar:** para quando o cliente pede mais. Ele **soma** com o desconto à vista (5% + 2% = 7%).
-- Embaixo aparece, **só para você**: **"Se o cliente pedir mais: ainda pode dar até X% (R$ Y) sem mexer no seu lucro."** Até esse ponto, o desconto sai da taxa que você não vai pagar, e não do seu bolso.
-- Passou desse ponto? Aparece em **vermelho**: **"Com esse desconto você abre mão de R$ X do seu lucro"**. Você ainda pode dar, mas sabendo quanto perde.
-- Em **Ver detalhes** aparece **"Abaixo de R$ X você trabalha no prejuízo."** Esse é o limite: abaixo dele, você paga para trabalhar.
+- Embaixo aparece, **só para você**: **"Se o cliente pedir mais: ainda pode dar até X% (R$ Y) sem perder nada — é só a taxa da maquininha que você não vai pagar."** Até esse ponto, o desconto sai da taxa que você não vai pagar, e não do seu bolso.
+- Passou desse ponto? Aparece em **vermelho**: **"Com esse desconto você abre mão de R$ X da sua sobra extra."**. Você ainda pode dar, mas sabendo quanto perde.
+- Em **Ver detalhes** aparecem os limites: **"Abaixo de R$ X a oficina não se paga."** e **"Abaixo de R$ Y não sobra nada para a sua casa."**
 - Quer mudar o seu número de sempre? **Engrenagem (⚙) → Ajustes → Este aparelho → "Desconto à vista padrão"**. Vale só para este aparelho.
 
 ---
@@ -86,7 +89,7 @@ O à vista é o preço do cartão **com um desconto**. Assim o cliente vê que p
 1. Toque em **Copiar para WhatsApp**.
 2. Abra a conversa do cliente no WhatsApp e **cole**.
 
-O texto mostra só o que o cliente precisa ver: as **peças inclusas** (só nome e quantidade, ex.: "2× Pastilha de freio", **sem preço**), depois o **cartão** (5x, 10x) e o **à vista** com o desconto (ex.: "— 5% de desconto"). **Nunca** mostra seu lucro, seus custos, a taxa, o preço de cada peça nem quanto você ainda pode dar.
+O texto mostra só o que o cliente precisa ver: as **peças inclusas** (só nome e quantidade, ex.: "2× Pastilha de freio", **sem preço**), depois o **cartão** (5x, 10x) e o **à vista** com o desconto (ex.: "— 5% de desconto"). **Nunca** mostra a sua sobra extra, seus custos, a taxa, o preço de cada peça nem quanto você ainda pode dar.
 
 Para começar outro, toque em **Novo orçamento**.
 

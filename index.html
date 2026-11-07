@@ -88,7 +88,7 @@
   <!-- ============================ ORÇAMENTO ============================ -->
   <section id="tela-orcamento" hidden>
     <div id="faixa-sem-gastos-orc" class="faixa" hidden>
-      Coloque seus gastos em <button type="button" class="link link-inline" data-ir="gastos">Meus gastos</button> para ver o lucro.
+      Coloque seus gastos em <button type="button" class="link link-inline" data-ir="gastos">Meus gastos</button> para ver a sobra extra e o total que é seu.
     </div>
 
     <div class="grade-2">
@@ -246,13 +246,15 @@
           </p>
 
           <div class="card" id="card-lucro">
-            <div class="titulo-valor">Seu lucro neste serviço</div>
-            <div class="valor-grande" id="res-lucro"></div>
-            <p class="alerta" id="res-lucro-alerta" hidden>Esse preço não cobre seus gastos do mês</p>
+            <div class="titulo-valor" id="titulo-servico">Neste serviço</div>
+            <div class="valor-grande" id="res-lucro"><span class="rotulo-sobra">Sobra extra:</span> <span id="res-sobra"></span></div>
+            <p class="total-seu" id="res-total-seu" hidden></p>
+            <p class="alerta" id="res-lucro-alerta" hidden></p>
             <p class="pequeno" id="res-lucro-cartao" hidden></p>
             <details>
               <summary>Ver detalhes<svg class="ic" aria-hidden="true"><use href="#i-seta"/></svg></summary>
               <dl class="detalhes" id="res-detalhes"></dl>
+              <p class="pequeno" id="res-piso-oficina"></p>
               <p class="pequeno" id="res-piso"></p>
             </details>
           </div>

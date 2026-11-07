@@ -14,7 +14,7 @@
 
 ## Resultados (07/11/2026)
 
-**Frontend: 76 de 76 · Backend (dados): 45 de 45 · API: 26 de 26 · Tela: 10 cenários + 94 verificações (desconto, engrenagem, PIN, desconto padrão, peças discriminadas, dicas "?", card "Ver outras formas", espaço entre os botões), estável em 4 rodadas seguidas · PWA: install, modo avião e versão nova.**
+**Frontend: 85 de 85 · Backend (dados): 45 de 45 · API: 26 de 26 · Tela: 10 cenários + 108 verificações (desconto, engrenagem, PIN, desconto padrão, peças discriminadas, dicas "?", card "Ver outras formas", espaço entre os botões, "Neste serviço"), estável em 3 rodadas seguidas · PWA: install, modo avião e versão nova.**
 
 > Pacote "dicas ? + peças discriminadas": `apps-script/` sem nenhuma mudança (D10); `sw.js` v3. Os casos D usam peças = 1 item 1 × 100 e continuam iguais.
 
@@ -61,6 +61,22 @@
 | P10 | Modo "valor direto" | esconde a lista; P1–P4 continuam passando; WhatsApp sem lista; ao voltar, a lista está como antes (tela) | ✅ |
 | — | Rascunho | a lista volta igual depois de recarregar a página | ✅ |
 | — | `acrescimoPecasPadrao` lido fora do limite ("1500", "-1", "abc") | volta ao padrão 47; "0" → 0; "47,5" → 47,5; linha ausente → 47 | ✅ (back) |
+
+### Neste serviço: oficina, casa e sobra (R)
+Cenário S: gastos Oficina 4.000 e Casa 3.000; 5 dias × 6 h × 52/12 = 130 h; serviço 8 h × 150; peças pagas 400 (cobra 500); sem cartões (âncora = base); imposto 0.
+
+| # | Caso | Esperado | Resultado |
+|---|---|---|---|
+| R1 | Oficina e casa | 8 × 4.000/130 = 246,15 · 8 × 3.000/130 = 184,62 | ✅ |
+| R2 | Sobra (preço 1.700) | 1.700 − 246,1538 − 184,6154 − 400 = 869,23, igual ao antigo "lucro" (`preco.lucro` e `aVista.lucro`) | ✅ |
+| R3 | Total que é seu | 184,6154 + 869,2308 = 1.053,85 | ✅ |
+| R4 | Pisos | oficina 646,15 · casa 830,77 (= piso antigo) · verde | ✅ |
+| R5 | Preço 700 (valor fechado 200 + peças 500) | sobra −130,77; ≥ piso da oficina → âmbar | ✅ |
+| R6 | Preço 600 | < 646,15 → vermelho | ✅ |
+| R7 | Sem gastos de casa | sem linha da casa, sem "total que é seu", um só piso; oficina continua 246,15 | ✅ |
+| R8 | Linhas do detalhe | fecham no centavo com a sobra exibida em S, S 700, S sem casa e no cenário D (5% e 10%, com imposto e diferença do desconto) | ✅ |
+
+**Linguagem única:** um teste automático confere que nenhum texto da interface (index.html e frases do js/app.js) usa "lucro"; a única exceção é "Lucro nas peças". As faixas do desconto viraram "…sem perder nada — é só a taxa da maquininha que você não vai pagar." e "Com esse desconto você abre mão de R$ X da sua sobra extra." ✅
 
 ### Texto do WhatsApp (W)
 | # | Caso | Esperado | Resultado |
@@ -157,6 +173,7 @@ Com desconto 0, o à vista é igual à âncora (2.301,20).
 | **Primeiro acesso** (sem gastos) | abre direto em Configurações → Meus gastos, com a faixa; "voltar" leva ao orçamento ✅ |
 | **PIN** | desligado: a engrenagem não pede nada; ligar recusa PIN curto e PINs diferentes; ligado: a engrenagem pede o PIN; PIN errado não abre ("PIN errado. Tente de novo."); Esc volta; PIN certo abre; "avançar" do navegador não pula o PIN; "Esqueci o PIN" → desconectar apaga o PIN e **mantém o desconto padrão**; abrir o link de configuração de novo apaga o PIN, inclusive com o app já aberto na mesma aba (só muda o `#`) ✅ |
 | **Desconto padrão do aparelho** | nada salvo → 5; Ajustes mostra 5 e "Vale só para este aparelho."; 150 → erro e não grava; 7 → gravado; mudar no orçamento não muda o padrão; Novo orçamento começa com 7; valor inválido guardado → 5 ✅ |
+| **Neste serviço** | cenário S na tela: "Sobra extra: R$ 869,23" verde; "Total que é seu (casa + sobra): R$ 1.053,85" visível com peso 600; detalhes na ordem pedida (1.200,00 · 100,00 · − 246,15 · − 184,62 · 869,23) com a nota "é o seu salário"; os dois pisos; o "?" do título; preço 700 → âmbar "− R$ 130,77" e "Paga a oficina, mas não cobre toda a sua casa."; preço 600 → vermelho "Com esse preço a oficina não se paga."; sem casa → linhas e piso da casa somem; a soma visível fecha no centavo nos três estados e no cenário de desconto; WhatsApp sem "sobra", "casa", "salário", "oficina não se paga". Prints 390 e 1280 dos 3 estados ✅ |
 | **Card "Ver outras formas"** | parcelas "5": só o link, sem fundo, sem sombra e sem área reservada, a 16 px do bloco de cima (espaçamento normal); o 5x continua no card do cartão; aberto, a lista aparece num card normal. Parcelas "5,10": card normal com o 10x. Prints 390 e 1280 dos dois casos ✅ |
 | **Botões do fim do orçamento** | Copiar para WhatsApp · Compartilhar · Novo orçamento com 10 px entre eles (antes, "Novo orçamento" ficava colado) ✅ |
 | **Dicas "?"** | 11 botões com `aria-label` "O que é \"…\"?" e área de toque ≥ 44 px; o do Desconto à vista mostra o máximo do orçamento (7,57%); só um aberto por vez; novo toque, toque fora e Esc fecham; em Configurações o 1º Esc fecha só o balão e o 2º volta ao orçamento; texto do Imposto conferido ✅ |

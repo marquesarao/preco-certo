@@ -210,17 +210,29 @@ Colunas: `Cartão` | `Débito (%)` | `1x (%)` | `2x (%)` | … | `12x (%)`. As t
 - **À vista oferecido** = `âncora.totalExato × (1 − (desconto + extra)/100)`, arredondado em centavos. Desconto e extra **somam**, e o total fica limitado a 99.
 - **Máximo sem perder lucro** = `(1 − base ÷ âncora) × 100` (é a taxa da âncora).
 - **Ainda pode dar** = máximo − total (mín. 0), em % e em R$ (= oferecido − base).
-- **Acima do máximo:** faixa vermelha "Com esse desconto você abre mão de R$ X do seu lucro", com X = base − oferecido.
-- **Piso de prejuízo** = `(gasto das horas + peças pagas) ÷ (1 − imposto%)`: "Abaixo de R$ X você trabalha no prejuízo."
+- **Acima do máximo:** faixa vermelha "Com esse desconto você abre mão de R$ X da sua sobra extra.", com X = base − oferecido.
+- **Piso** = `(gasto das horas + peças pagas) ÷ (1 − imposto%)` (`preco.piso`). Na tela, ele virou o "piso da casa" (veja "Neste serviço" abaixo).
 - As **outras** parcelas em destaque e "Ver outras formas" continuam calculadas sobre a **base** (regra B). Nenhuma fica abaixo do à vista oferecido (D12).
 - Com desconto 0, o à vista é igual à âncora.
 - **Desconto à vista padrão:** fica **por aparelho**, no `localStorage` (`precoCerto.descontoPadrao.v1`, texto "7,5"), de 0 a 99, e é 5 de fábrica. Valor ausente ou inválido vale 5 (`descontoPadraoDoAparelho`). "Desconectar este aparelho" **não** apaga. Cada orçamento novo começa com ele, e dá para mudar só naquele orçamento.
 
-**Lucro:**
+**Lucro (= "Sobra extra" na tela):**
 - `imposto = total × impostoPercentual/100`, sobre o **total arredondado** (o que o cliente paga);
 - `lucro = (maoDeObra − horas × precoMinimoHora) + lucroPecas − imposto`;
 - o valor grande usa o **à vista oferecido**: `lucro = oferecido − gasto das horas − peças pagas − imposto sobre o oferecido`;
-- com imposto maior que 0, aparece embaixo "No cartão em {maior parcela em destaque}x: R$ …".
+- com imposto maior que 0, aparece embaixo "Sobra extra no cartão em {maior parcela em destaque}x: R$ …".
+
+**Neste serviço: oficina, casa e sobra** (`minimoHoraDoTipo`, `separarGanho`, `linhasDetalheServico`; sem arredondar no meio):
+- Por quê: o gasto das horas usa o mínimo por hora, que soma oficina **e casa**. Os gastos de casa funcionam como o **salário** do mecânico, então chamar a sobra de "lucro" fazia parecer que só ela era dele.
+- `minimoHoraOficina = gastos Oficina ÷ horas cobradas no mês`; `minimoHoraCasa = gastos Casa ÷ horas cobradas no mês` (somados = mínimo por hora).
+- `pagaOficina = horas do serviço × minimoHoraOficina`; `vaiParaCasa = horas × minimoHoraCasa`.
+- `sobra = preço cobrado − pagaOficina − vaiParaCasa − peças pagas − imposto` (**é o mesmo valor do antigo "lucro"**); `totalSeu = vaiParaCasa + sobra`.
+- `pisoOficina = (pagaOficina + peças pagas) ÷ (1 − imposto%)`: "Abaixo de R$ X a oficina não se paga."; `pisoCasa = (pagaOficina + vaiParaCasa + peças pagas) ÷ (1 − imposto%)` (= piso antigo): "Abaixo de R$ Y não sobra nada para a sua casa."
+- **Estados:** sobra ≥ 0 → verde; sobra < 0 mas preço ≥ pisoOficina → **âmbar** "Paga a oficina, mas não cobre toda a sua casa."; preço < pisoOficina → **vermelho** "Com esse preço a oficina não se paga.".
+- **Sem gastos de casa:** sem as linhas "Vai para a sua casa" e "Total que é seu"; um só piso (o da oficina).
+- **Arredondamento das linhas (R8):** cada linha de "Ver detalhes" é arredondada sozinha e **uma linha absorve a diferença** para a soma visível fechar no centavo com a "Sobra extra" exibida: "Vai para a sua casa" (com gastos de casa), senão "Paga os gastos da oficina", e sem horas "Lucro nas peças". A diferença é de poucos centavos. "Total que é seu" exibido = casa exibida + sobra exibida.
+- Nada disso vai para o WhatsApp.
+- **Linguagem única:** a interface não usa mais "lucro". O que sobra é a **"sobra extra"**, e o que é dele é o **"total que é seu"**. A única exceção é "Lucro nas peças" (o ganho bruto na peça, cobrar − pagar).
 
 **Assinatura da função pura principal** (o `precoMinimoHora` é calculado fora e injetado):
 ```
@@ -361,15 +373,13 @@ No notebook, os campos ficam à esquerda e os resultados à direita.
 - **Resultados:**
   - **card do cartão (âncora)**, com detalhe laranja à esquerda: "Cartão em 5x", "5× de R$ 460,24" e "Total R$ 2.301,20", mais os chips "Não sei · Visa/Master · Elo…" (só com 2 ou mais cartões) e a ajuda "Não sabe o cartão do cliente? Deixe em 'Não sei': o preço cobre qualquer bandeira.";
   - **card à vista:** "R$ 2.186,14 · 5% de desconto", com os campos "Desconto à vista" (%) e "Desconto extra que vou dar (opcional)" (%), ambos de 0 a 99 e com erro na hora. Sem âncora, os campos somem e aparece "Cadastre a taxa do cartão em Ajustes para oferecer desconto à vista.";
-  - **só para o mecânico:** faixa verde "Se o cliente pedir mais: ainda pode dar até 2,57% (R$ 59,14) sem mexer no seu lucro." ou, acima do máximo, faixa vermelha "Com esse desconto você abre mão de R$ 55,92 do seu lucro.";
+  - **só para o mecânico:** faixa verde "Se o cliente pedir mais: ainda pode dar até 2,57% (R$ 59,14) sem perder nada — é só a taxa da maquininha que você não vai pagar." ou, acima do máximo, faixa vermelha "Com esse desconto você abre mão de R$ 55,92 da sua sobra extra.";
   - **demais parcelas em destaque** (sobre a base), em blocos leves, e "Ver outras formas de pagamento", sem repetir as parcelas em destaque. Quando **só a âncora** está em destaque (ex.: parcelas "5"), não há card vazio: aparece **só o link** "Ver outras formas de pagamento", com o espaçamento normal entre os blocos; aberto, a lista aparece num card normal. Sem outras formas, nem o link aparece;
-  - **card de lucro** (sobre o à vista oferecido): valor verde (vermelho com "Esse preço não cobre seus gastos do mês"). Em "Ver detalhes":
-    - Mão de obra;
-    - "Gasto das suas 8 horas: − R$ 430,77" (nenhuma multiplicação visível);
-    - Lucro nas peças;
-    - "Diferença pelo desconto à vista" (± oferecido − base);
-    - Imposto (à vista).
-    A soma das linhas é o lucro. Embaixo: "Abaixo de R$ X você trabalha no prejuízo."
+  - **card "Neste serviço"** (sobre o à vista oferecido), com "?" no título:
+    - valor grande "Sobra extra: R$ 869,23": verde, **âmbar** ("Paga a oficina, mas não cobre toda a sua casa.") ou vermelho ("Com esse preço a oficina não se paga."), com o fundo do card no mesmo tom; negativo aparece como "− R$ 130,77";
+    - logo abaixo, **sempre visível**, peso 600: "Total que é seu (casa + sobra): R$ 1.053,85";
+    - com imposto: "Sobra extra no cartão em 10x: R$ …";
+    - "Ver detalhes", nesta ordem: Mão de obra · Lucro nas peças · Diferença pelo desconto à vista (± oferecido − base) · Imposto (à vista) · Paga os gastos da oficina (−) · Vai para a sua casa (−, com a nota "é o seu salário") · **Sobra extra**. A soma visível fecha no centavo com a sobra. Embaixo, discretos, os dois pisos.
   - **botões:** "Copiar para WhatsApp" (verde, ícone de balão), "Compartilhar" (fantasma) e "Novo orçamento" (fantasma).
   - Sem valor: a dica "Preencha as horas (ou o valor) e as peças para ver o preço."
 
@@ -399,15 +409,16 @@ Botão redondo "?" ao lado do rótulo (área de toque de 44 px; `aria-label` "O 
 | Onde | "?" de | Texto do balão |
 |---|---|---|
 | Ajustes → Outros ajustes | Acréscimo padrão nas peças | Quanto você põe em cima do preço que paga pela peça. Ex.: paga R$ 100 com 47%, o cliente paga R$ 147. Cada orçamento novo começa com este número. Dá para mudar só naquele orçamento, no campo "Quanto você põe em cima da peça". |
-| Ajustes → Outros ajustes | Imposto | A porcentagem de imposto sobre o que o cliente paga (nota fiscal). O app tira esse imposto do seu lucro, no à vista e no cartão. É MEI? Deixe 0 e coloque o DAS em Meus gastos, porque o DAS é um valor fixo por mês. |
+| Ajustes → Outros ajustes | Imposto | A porcentagem de imposto sobre o que o cliente paga (nota fiscal). O app tira esse imposto da sua sobra extra, no à vista e no cartão. É MEI? Deixe 0 e coloque o DAS em Meus gastos, porque o DAS é um valor fixo por mês. |
 | Ajustes → Outros ajustes | Parcelas que aparecem no orçamento | Quais parcelas do cartão aparecem em destaque no orçamento e no WhatsApp. Ex.: "5,10" mostra 5x e 10x. A primeira (5x) é o preço cheio do cartão, e o desconto à vista é calculado em cima dela. As demais formas ficam em "Ver outras formas de pagamento". |
 | Ajustes → Outros ajustes | Nome da oficina | Aparece no título do texto do WhatsApp: "*Orçamento – CliniCar Motors Tech*". Se ficar vazio, o título fica só "*Orçamento*". |
 | Meus gastos → Sua rotina | Horas que você cobra por dia | Das horas que você trabalha, quantas viram serviço cobrado do cliente? O resto vai em orçamento, busca de peça, espera… Normalmente 6 de 8. Quanto menor esse número, mais a sua hora precisa valer. |
-| Meus gastos | Quanto você vai cobrar por hora | Quanto você cobra por hora de serviço. Precisa ser maior que "Sua hora precisa valer no mínimo", logo acima: a diferença é o seu lucro em cada hora. Ex.: mínimo R$ 33,08 e você cobra R$ 165, sobram R$ 131,92 por hora. |
+| Meus gastos | Quanto você vai cobrar por hora | Quanto você cobra por hora de serviço. Precisa ser maior que "Sua hora precisa valer no mínimo", logo acima: a diferença é a sua sobra extra em cada hora. Ex.: mínimo R$ 33,08 e você cobra R$ 165, sobram R$ 131,92 por hora. |
 | Orçamento | Desconto à vista | Desconto para quem paga no Pix ou dinheiro, em cima do preço do cartão. Neste orçamento, até {máximo}% você não perde nada, porque não paga a maquininha. Já vem com o seu número de sempre (Ajustes → Este aparelho). *(o máximo é o deste orçamento; sem âncora: "Até a taxa do cartão em destaque…")* |
-| Orçamento | Desconto extra | Se o cliente pedir um pouco mais. Soma com o desconto à vista (5% + 2% = 7%). O app mostra até onde dá para ir sem mexer no seu lucro e avisa em vermelho se passar disso. |
+| Orçamento | Desconto extra | Se o cliente pedir um pouco mais. Soma com o desconto à vista (5% + 2% = 7%). O app mostra até onde dá para ir sem perder nada e avisa em vermelho se passar disso. |
 | Ajustes → Seus cartões (título) | Seus cartões | As taxas que a maquininha cobra em cada parcela (Débito, 1x … 12x). Copie da calculadora de taxas do app da maquininha, um cartão de cada vez. Campo vazio = essa parcela não aparece no orçamento. Vazio é diferente de 0: 0 quer dizer "sem taxa". |
 | Ajustes → Este aparelho | Desconto à vista padrão | O desconto que todo orçamento novo já traz para Pix ou dinheiro. Ex.: 5. Vale só para este aparelho: outro celular pode usar outro número. Em cada orçamento dá para mudar só naquele. |
+| Orçamento (título do card) | Neste serviço | Sua hora já inclui os gastos da oficina e os da sua casa. "Vai para a sua casa" é o seu salário; a "Sobra extra" é o que ficou além disso. O que é seu de verdade é a soma das duas. |
 | Ajustes → Este aparelho | Proteger com PIN | Pede 4 números para abrir Meus gastos e Ajustes neste aparelho. Serve para ninguém mexer sem querer: não é uma senha forte. Esqueceu? Na tela do PIN, toque em "Esqueci o PIN". |
 
 ### 6.2 Meus gastos
@@ -496,6 +507,14 @@ Ficam em `js/calculo.js` (`casosDeTeste()`). Rodam no app com `?teste=1` e em No
 | D11 | 10x Visa 11,06% sobre a base | 2.127 ÷ 0,8894 = 2.391,4999 → Total 2.391,50 · 10× 239,15 (também no WhatsApp) |
 | D12 | Parcelas em destaque × à vista oferecido (0%, 5%, 7%, 10%) | nenhum total abaixo do à vista |
 | L1 | Desconto padrão do aparelho | nada salvo → 5; "7" → 7; "7,5" → 7,5; "0" → 0; inválido → 5 |
+| R1 | Cenário S (oficina 4.000, casa 3.000, 130 h, serviço 8 h, peças 400 → 500, sem cartões, imposto 0): oficina e casa | 8 × 4.000/130 = 246,15 · 8 × 3.000/130 = 184,62 |
+| R2 | Sobra (preço 1.700) | 1.700 − 246,1538 − 184,6154 − 400 = 869,23 (= antigo "lucro") |
+| R3 | Total que é seu | 184,6154 + 869,2308 = 1.053,85 |
+| R4 | Pisos | oficina 646,15 · casa 830,77 (= piso antigo); verde |
+| R5 | Preço 700 | sobra −130,77, ≥ piso da oficina → âmbar |
+| R6 | Preço 600 | abaixo do piso da oficina → vermelho |
+| R7 | Sem gastos de casa | sem linha da casa e sem "total que é seu"; um só piso; oficina continua 246,15 |
+| R8 | Linhas do detalhe | fecham no centavo com a sobra exibida (S, S 700, S sem casa, cenário D com 5% e 10%) |
 
 Os casos C4 (leitura), C6 e C7 são testes do **backend** (Node, com a planilha simulada). Os demais estão em `js/calculo.js`.
 
@@ -529,6 +548,7 @@ O clasp e o GitHub Actions foram **removidos** (`.github/workflows/deploy.yml`, 
 5. Testes de cálculo: autoteste completo (T14, T15)
 6. Documentação final (`GUIA-DO-USUARIO.md` já existe; o `DEPLOY.md` cobre a instalação)
 7. **Desconto à vista negociável + engrenagem/Configurações + PIN opcional** (só frontend; `apps-script/` sem mudança; `sw.js` v2) ✅
-8. **Dicas "?" + peças discriminadas** (só frontend; `apps-script/` sem mudança; `sw.js` v3) (aguardando aprovação)
+8. **Dicas "?" + peças discriminadas** (só frontend; `apps-script/` sem mudança; `sw.js` v3) ✅
+9. **Neste serviço: oficina, casa e sobra** (só frontend; `apps-script/` sem mudança; `sw.js` v4) (aguardando aprovação)
 
 Cada fatia termina com uma parada para revisão. O commit local só é feito depois da aprovação.

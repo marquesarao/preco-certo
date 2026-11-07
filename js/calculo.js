@@ -434,6 +434,74 @@ function calcularPrecoComDesconto(res, parametros, desconto, extra) {
   };
 }
 
+// ---------------- Neste serviço: oficina, casa e sobra ----------------
+
+/** Mínimo por hora de um tipo só ('Oficina' ou 'Casa'). Os dois somados = precoMinimoHora. Sem arredondar. */
+function minimoHoraDoTipo(gastos, p, tipo) {
+  var h = horasCobradasMes(p);
+  return h > 0 ? totalGastos(gastos, tipo) / h : 0;
+}
+
+/**
+ * Separa o que o serviço paga (sem arredondar no meio):
+ * - pagaOficina = horas × mínimo/hora da oficina;  vaiParaCasa = horas × mínimo/hora da casa (o "salário");
+ * - sobra = preço cobrado − pagaOficina − vaiParaCasa − peças pagas − imposto (= o antigo "lucro");
+ * - totalSeu = vaiParaCasa + sobra;
+ * - pisoOficina = (pagaOficina + peças pagas) ÷ (1 − imposto%);  pisoCasa = (… + vaiParaCasa) ÷ (1 − imposto%) (= piso antigo);
+ * - estado: 'verde' (sobra ≥ 0) · 'ambar' (sobra < 0, mas preço ≥ pisoOficina) · 'vermelho' (preço < pisoOficina).
+ * @param res calcularOrcamento   @param preco calcularPrecoComDesconto (preço oferecido e imposto sobre ele)
+ */
+function separarGanho(res, preco, parametros, minimoOficina, minimoCasa) {
+  var impostoPct = typeof parametros.impostoPercentual === 'number' ? parametros.impostoPercentual : 0;
+  var horas = typeof res.horas === 'number' && res.horas > 0 ? res.horas : 0;
+  var valor = preco.precoCentavos / 100;
+  var pagaOficina = horas * minimoOficina;
+  var vaiParaCasa = horas * minimoCasa;
+  var sobra = valor - pagaOficina - vaiParaCasa - res.pecasPagar - preco.imposto;
+  var fator = 1 - impostoPct / 100;
+  var pisoOficina = (pagaOficina + res.pecasPagar) / fator;
+  var pisoCasa = (pagaOficina + vaiParaCasa + res.pecasPagar) / fator;
+  return {
+    pagaOficina: pagaOficina,
+    vaiParaCasa: vaiParaCasa,
+    sobra: sobra,
+    totalSeu: vaiParaCasa + sobra,
+    pisoOficina: pisoOficina,
+    pisoCasa: pisoCasa,
+    temCasa: minimoCasa > 0,
+    estado: centavos(sobra) >= 0 ? 'verde' : (valor >= pisoOficina ? 'ambar' : 'vermelho')
+  };
+}
+
+/**
+ * Linhas de "Ver detalhes" em centavos, para a soma VISÍVEL fechar no centavo com a "Sobra extra":
+ * cada linha é arredondada sozinha e UMA linha absorve a diferença de arredondamento (no máximo poucos centavos):
+ * "Vai para a sua casa" quando há gastos de casa; senão "Paga os gastos da oficina"; sem horas, "Lucro nas peças".
+ * totalSeu exibido = casa exibida + sobra exibida.
+ * @return {maoDeObra, lucroPecas, diferenca|null, imposto|null, pagaOficina, vaiParaCasa|null, sobra, totalSeu|null}
+ */
+function linhasDetalheServico(res, preco, ganho) {
+  var c = {
+    maoDeObra: centavos(res.maoDeObra),
+    lucroPecas: centavos(res.lucroPecas),
+    diferenca: null,
+    imposto: null,
+    pagaOficina: centavos(ganho.pagaOficina),
+    vaiParaCasa: ganho.temCasa ? centavos(ganho.vaiParaCasa) : null,
+    sobra: centavos(ganho.sobra),
+    totalSeu: null
+  };
+  var dif = preco.precoCentavos / 100 - res.aVista.totalExato;
+  if (preco.temAncora && centavos(dif) !== 0) c.diferenca = centavos(dif);
+  if (preco.imposto > 0) c.imposto = centavos(preco.imposto);
+  var soma = c.maoDeObra + c.lucroPecas + (c.diferenca || 0) - (c.imposto || 0) - c.pagaOficina - (c.vaiParaCasa || 0);
+  var falta = soma - c.sobra; // > 0: as linhas dão mais que a sobra
+  var absorve = ganho.temCasa && ganho.vaiParaCasa > 0 ? 'vaiParaCasa' : (ganho.pagaOficina > 0 ? 'pagaOficina' : 'lucroPecas');
+  if (absorve === 'lucroPecas') c.lucroPecas -= falta; else c[absorve] += falta;
+  if (ganho.temCasa) c.totalSeu = c.vaiParaCasa + c.sobra;
+  return c;
+}
+
 /** "5%", "7,5%" (sem zeros desnecessários). */
 function formatarPercentual(p) {
   return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(p) + '%';
@@ -690,7 +758,7 @@ function casosDeTeste() {
         var com = textoWhatsApp(c.res, { nomeOficina: 'CliniCar Motors Tech' }, 'Troca de embreagem', calcularPrecoComDesconto(c.res, c.params, 5, 0));
         var acima = textoWhatsApp(c.res, { nomeOficina: '' }, '', calcularPrecoComDesconto(c.res, c.params, 10, 0));
         var zero = textoWhatsApp(c.res, { nomeOficina: '' }, '', calcularPrecoComDesconto(c.res, c.params, 0, 0));
-        var proibido = /ainda|lucro|taxa|piso|preju/i;
+        var proibido = /ainda|lucro|taxa|piso|preju|sobra|casa|salário|oficina não se paga/i;
         return { obtido: [proibido.test(com + acima + zero), com.split('\n').pop(), zero.split('\n').pop(), /de desconto/.test(zero)],
                  esperado: [false, '💵 À vista (Pix/dinheiro): *R$ 2.186,14* — 5% de desconto', '💵 À vista (Pix/dinheiro): *R$ 2.301,20*', false] };
       } },
@@ -711,11 +779,69 @@ function casosDeTeste() {
         });
         return { obtido: ok, esperado: true };
       } },
+    // ---- Neste serviço: oficina, casa e sobra (cenário S) ----
+    { id: 'R1', descricao: 'Paga a oficina = 8 × 4.000/130 = 246,15; vai para a casa = 8 × 3.000/130 = 184,62',
+      executar: function () { var s = cenarioServico(); return { obtido: [centavos(s.ganho.pagaOficina), centavos(s.ganho.vaiParaCasa)], esperado: [24615, 18462] }; } },
+    { id: 'R2', descricao: 'Sobra = 1.700 − 246,1538 − 184,6154 − 400 = 869,23 (= o antigo "lucro")',
+      executar: function () {
+        var s = cenarioServico();
+        return { obtido: [s.preco.precoCentavos, centavos(s.ganho.sobra), centavos(s.preco.lucro), centavos(s.res.aVista.lucro)], esperado: [170000, 86923, 86923, 86923] };
+      } },
+    { id: 'R3', descricao: 'Total que é seu = 184,6154 + 869,2308 = 1.053,85',
+      executar: function () { var s = cenarioServico(); return { obtido: [centavos(s.ganho.totalSeu), s.linhas.totalSeu], esperado: [105385, 105385] }; } },
+    { id: 'R4', descricao: 'Piso da oficina = 646,15; piso da casa = 830,77 (= piso antigo); preço 1.700 → verde',
+      executar: function () {
+        var s = cenarioServico();
+        return { obtido: [centavos(s.ganho.pisoOficina), centavos(s.ganho.pisoCasa), centavos(s.preco.piso), s.ganho.estado], esperado: [64615, 83077, 83077, 'verde'] };
+      } },
+    { id: 'R5', descricao: 'Preço 700 → sobra negativa (−130,77), mas ≥ piso da oficina → âmbar',
+      executar: function () { var s = cenarioServico(200); return { obtido: [s.preco.precoCentavos, centavos(s.ganho.sobra), s.ganho.estado], esperado: [70000, -13077, 'ambar'] }; } },
+    { id: 'R6', descricao: 'Preço 600 → abaixo do piso da oficina (646,15) → vermelho',
+      executar: function () { var s = cenarioServico(100); return { obtido: [s.preco.precoCentavos, s.ganho.estado], esperado: [60000, 'vermelho'] }; } },
+    { id: 'R7', descricao: 'Sem gastos de casa → sem linha da casa e sem "total que é seu"; um só piso (= piso da oficina)',
+      executar: function () {
+        var s = cenarioServico(null, true);
+        return { obtido: [s.ganho.temCasa, s.linhas.vaiParaCasa, s.linhas.totalSeu, centavos(s.ganho.pisoCasa) === centavos(s.ganho.pisoOficina), centavos(s.ganho.pagaOficina)],
+                 esperado: [false, null, null, true, 24615] }; // a oficina continua 8 × 4.000/130
+      } },
+    { id: 'R8', descricao: 'Linhas do detalhe fecham no centavo com a sobra exibida (cenário S, S 700, S sem casa e cenário D com 5% e 10%)',
+      executar: function () {
+        function fecha(l) {
+          return l.maoDeObra + l.lucroPecas + (l.diferenca || 0) - (l.imposto || 0) - l.pagaOficina - (l.vaiParaCasa || 0) === l.sobra;
+        }
+        var casos = [cenarioServico().linhas, cenarioServico(200).linhas, cenarioServico(null, true).linhas];
+        var d = cenarioDesconto();
+        var gastosD = [{ tipo: 'Oficina', valor: 5000 }, { tipo: 'Casa', valor: 3433.33 }];
+        var pD = { diasPorSemana: 5, horasPorDia: 8, horasCobradasPorDia: 6, impostoPercentual: 10 };
+        [5, 10].forEach(function (desc) {
+          var preco = calcularPrecoComDesconto(d.res, d.params, desc, 0);
+          casos.push(linhasDetalheServico(d.res, preco, separarGanho(d.res, preco, d.params, minimoHoraDoTipo(gastosD, pD, 'Oficina'), minimoHoraDoTipo(gastosD, pD, 'Casa'))));
+        });
+        return { obtido: casos.map(fecha), esperado: [true, true, true, true, true] };
+      } },
     { id: 'L1', descricao: 'Desconto padrão do aparelho: nada salvo → 5; "7" → 7; "7,5" → 7,5; "0" → 0; inválido ("abc", "150", "-1") → 5',
       executar: function () {
         return { obtido: [null, '7', '7,5', '0', 'abc', '150', '-1'].map(descontoPadraoDoAparelho), esperado: [5, 7, 7.5, 0, 5, 5, 5] };
       } }
   ];
+}
+
+/**
+ * Cenário S (oficina/casa/sobra): gastos Oficina 4.000 e Casa 3.000; 5 dias × 6 h × 52/12 = 130 h;
+ * serviço 8 h; peças pagas 400 (cobra 500, valor direto); sem cartões (âncora = base); imposto 0.
+ * maoDeObraFechada: null = 8 h × 150 (preço 1.700); número = valor fechado com as mesmas 8 h (preço = valor + 500).
+ */
+function cenarioServico(maoDeObraFechada, semCasa) {
+  var gastos = [{ tipo: 'Oficina', descricao: 'A', valor: 4000 }];
+  if (!semCasa) gastos.push({ tipo: 'Casa', descricao: 'B', valor: 3000 });
+  var params = { diasPorSemana: 5, horasPorDia: 8, horasCobradasPorDia: 6, valorHoraCobrado: 150, impostoPercentual: 0, parcelasDestaque: '5,10' };
+  var entrada = typeof maoDeObraFechada === 'number'
+    ? { modo: 'fechado', valorFechado: maoDeObraFechada, horas: 8, pecasPagar: 400, pecasModo: 'valor', pecasCobrar: 500 }
+    : { modo: 'horas', horas: 8, pecasPagar: 400, pecasModo: 'valor', pecasCobrar: 500 };
+  var res = calcularOrcamento(entrada, params, [], NAO_SEI, precoMinimoHora(gastos, params));
+  var preco = calcularPrecoComDesconto(res, params, 5, 0);
+  var ganho = separarGanho(res, preco, params, minimoHoraDoTipo(gastos, params, 'Oficina'), minimoHoraDoTipo(gastos, params, 'Casa'));
+  return { res: res, preco: preco, ganho: ganho, linhas: linhasDetalheServico(res, preco, ganho) };
 }
 
 /** Cenário dos casos D: MO 12 h × 165; peças = 1 item 1 × 100, + 47%; Visa (padrão InfinitePay); imposto 10%; gasto das horas 936,92. */
