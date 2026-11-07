@@ -1,5 +1,0 @@
-# Envia ao Apps Script apenas os 3 arquivos do app (caminhos relativos ao rootDir "src")
-**/**
-!Codigo.gs
-!Index.html
-!appsscript.json

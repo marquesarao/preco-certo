@@ -1,0 +1,19 @@
+{
+  "name": "Preço Certo",
+  "short_name": "Preço Certo",
+  "description": "Quanto cobrar em cada serviço, já com a taxa da maquininha — CliniCar Motors Tech.",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#0e0e0e",
+  "background_color": "#0e0e0e",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

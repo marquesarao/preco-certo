@@ -1,19 +1,20 @@
 # Testes de cálculo – Preço Certo
 
-> Situação na **Fatia 3 / Parte 2**: novo visual, acréscimo nas peças e cartões cadastráveis. A Fatia 4 acrescenta T14 e T15 e registra o autoteste rodando no app publicado (`?teste=1`).
+> Situação na **arquitetura Pendências** (tela no GitHub Pages + Apps Script como API). A Fatia 5 acrescenta T14 e T15 e registra o autoteste rodando no app publicado (`?teste=1`).
 
 ## Como os testes rodam
 
-- **Frontend:** os casos ficam no próprio `src/Index.html`, no bloco `<script id="calculo">` (`casosDeTeste()` e `rodarCasosDeTeste()`).
-  - **No app:** abra o link (de preferência a URL `/dev`) com `?teste=1` no final. Aparece a tabela PASSOU/FALHOU.
-  - **No computador (Node):** o bloco de cálculo é extraído do `Index.html` e executado com os mesmos casos. Nada é copiado à mão.
-- **Backend:** o `src/Codigo.gs` roda em Node com a planilha simulada (leitura, validação, migração e lock).
-- A comparação é **exata, em centavos inteiros**, sem tolerância.
+- **Cálculo:** os casos ficam em `js/calculo.js` (`casosDeTeste()` e `rodarCasosDeTeste()`).
+  - **No app:** abra `https://marquesarao.github.io/preco-certo/?teste=1`. Aparece a tabela PASSOU/FALHOU.
+  - **No computador (Node):** o `js/calculo.js` é carregado direto e executado com os mesmos casos. Nada é copiado à mão.
+- **Backend:** o `apps-script/Codigo.gs` roda em Node com a planilha simulada (leitura, validação, migração), e a API (`doPost`) com um "espião" que registra qualquer acesso à planilha.
+- **Tela:** Chrome headless, servido em `localhost` com a API simulada. O PWA (service worker, modo avião e versão nova) é testado no Chrome em tempo real (puppeteer-core).
+- A comparação dos valores é **exata, em centavos inteiros**, sem tolerância.
 - Os casos T8–T12, do modelo antigo de bandeiras fixas, foram **substituídos** por C1–C8 (cartões cadastráveis).
 
-## Resultados (Node, 07/11/2026)
+## Resultados (07/11/2026)
 
-**Frontend: 35 de 35 · Backend: 48 de 48.**
+**Frontend: 58 de 58 · Backend (dados): 45 de 45 · API: 26 de 26 · Tela: 10 cenários · PWA: install, modo avião e versão nova.**
 
 ### Taxas e cálculo base (T)
 | # | Caso | Esperado | Resultado |
@@ -69,20 +70,60 @@
   - o app nunca usa dados de teste;
   - não há emoji na interface (fora do texto do WhatsApp; o "✓" de "Salvo ✓" é um símbolo de texto pedido);
   - não há caracteres invisíveis de acento no código, nem no front nem no back. Isso evita voltar o bug do `semAcento_`.
-- **Backend:**
-  - leitura tolerante sempre passa em `validarDados_`;
-  - `doGet` com e sem lock;
-  - só 4 funções públicas.
-- **Tela (Chrome headless, `google.script.run` simulado):**
-  - primeiro acesso;
-  - chips "Não sei · Visa/Master · Elo";
-  - adicionar cartão por sugestão e por "Outro…" (foco no Débito);
-  - nome repetido recusado ao criar e ao renomear;
-  - "Preencher com as taxas padrão";
-  - "Desfazer" de gasto e de cartão (nenhum salvamento durante a barra e um depois);
-  - modo sem conexão;
-  - fonte Inter carregada;
-  - nenhum erro de JavaScript.
+- **Backend:** a leitura tolerante sempre passa em `validarDados_`.
+
+### API: roteador, token e link (R, L, P)
+| # | Caso | Esperado | Resultado |
+|---|---|---|---|
+| R1 | GET (mesmo com token na URL) | `{ok:false, erro:"Acesso não autorizado"}` em JSON; planilha não tocada | ✅ |
+| R2 | Corpo que não é JSON | "Pedido inválido."; planilha não tocada | ✅ |
+| R3 / R4 | Sem token / token errado / tamanho diferente / número / vazio | "Acesso não autorizado"; **planilha não tocada** | ✅ |
+| R5 | Servidor ainda sem token | "Acesso não autorizado" para qualquer token | ✅ |
+| R6 | Token certo + ação desconhecida ou ausente | "Ação desconhecida."; planilha não tocada | ✅ |
+| R7 | Token certo + `action` = `gerarLinkDeConfiguracao`, `trocarToken`, `testarApi`, `doGet`, `doPost`, funções internas, `toString`, `constructor`, `__proto__`, `hasOwnProperty` | "Ação desconhecida." para todas; o token não muda; planilha não tocada | ✅ |
+| R8 | `obterDados` | cria as 3 abas e devolve o padrão (Visa/Master, 47%, CliniCar); não devolve o token | ✅ |
+| R9 | `salvarDados` com dados inválidos / nome de cartão repetido | mensagem de validação em PT-BR (não "erro interno") | ✅ |
+| R10 | `salvarDados` válido → `obterDados` | devolve o que foi salvo e o mesmo `atualizadoEm` | ✅ |
+| R11 | `obterTaxasPadraoVisa` | `{ok:true, taxas:{…}}` | ✅ |
+| R12 | Erro inesperado | "Erro interno no servidor. Tente de novo." (detalhe só no log) | ✅ |
+| R13 | Toda resposta | JSON com `ok` booleano; erros com `erro` em texto | ✅ |
+| L1–L3 | `gerarLinkDeConfiguracao()` com `URL_DA_API` vazia / fora do formato `/exec` / `URL_DO_APP` vazia | para com mensagem clara no Logger e não cria token | ✅ |
+| L4 | `gerarLinkDeConfiguracao()` com as URLs certas | link `URL_DO_APP#cfg=<base64url sem "=">` que decodifica para `{api, token}`; token de 64 hex | ✅ |
+| L5 | Rodar de novo | mesmo token (aparelhos continuam valendo) | ✅ |
+| L6 / L7 | Token do link funciona / `trocarToken()` | token novo; o antigo passa a receber "Acesso não autorizado" | ✅ |
+| P1 | Funções públicas | só `doGet`, `doPost`, `gerarLinkDeConfiguracao`, `trocarToken`, `testarApi` | ✅ |
+| P2 | Ações da API | só `obterDados`, `salvarDados`, `obterTaxasPadraoVisa` | ✅ |
+| P3 / P4 | Backend sem HtmlService; `URL_DA_API` vazia no repositório | ok | ✅ |
+
+### Link de configuração no app (F)
+| # | Caso | Esperado | Resultado |
+|---|---|---|---|
+| F1 / F2 | Link válido (com ou sem "=" no final) | `{api, token}` | ✅ |
+| F3 / F4 / F5 | base64 inválido / não é JSON / link cortado | "O link de configuração está incompleto ou foi copiado errado. Peça um link novo." | ✅ |
+| F6 / F7 | JSON sem `api` / sem `token` | mensagem própria para cada um | ✅ |
+| F8 / F9 | `api` que não é `/exec` (ou outro site) / token curto ou com espaço | recusado | ✅ |
+| F10 | Endereço sem `#cfg=` | não é link de configuração (`null`) | ✅ |
+| F11 | **Link gerado pelo backend** é lido pelo app | `{api, token}` idênticos | ✅ |
+| F12 / F13 | Configuração manual; "Planilha conectada" mostra só o final da URL | ok | ✅ |
+| — | Formato `/exec` e mensagem "Acesso não autorizado" iguais no app e no backend | ok | ✅ |
+| — | Toda a casca do service worker existe; todo arquivo usado pelo `index.html` está na casca; manifest correto | ok | ✅ |
+| — | **Varredura do repositório:** nenhuma URL `/exec` real, token, link `#cfg=` ou ID de planilha | nada encontrado | ✅ |
+
+### Tela (Chrome headless, API simulada em `localhost`)
+| Cenário | Resultado |
+|---|---|
+| Aparelho sem configuração | tela de conexão; abas escondidas; "Configurar manualmente" abre os campos ✅ |
+| Abrir pelo link `#cfg=` | conexão guardada, **endereço limpo** (sem `#cfg`), "Aparelho conectado à planilha ✓", app aberto; uma edição salva com POST de texto ✅ |
+| Link inválido (`#cfg=@@@`) | mensagem simples; nada guardado; endereço limpo ✅ |
+| Link com token errado | "Este link não dá mais acesso à planilha. Peça um link novo."; nada guardado ✅ |
+| Configuração manual | URL `/dev` recusada com mensagem; com a URL certa conecta ✅ |
+| Desconectar | confirmação na página → tela de conexão; conexão e cache apagados ✅ |
+| Sem internet (com cache) | "Sem conexão: só orçamento"; edição bloqueada; orçamento calcula (R$ 447,00) ✅ |
+| Token trocado | faixa "Este aparelho perdeu o acesso à planilha…"; status "Sem acesso à planilha"; edição bloqueada ✅ |
+| `?teste=1` | "22 de 22 passaram." ✅ |
+| PWA (Chrome em tempo real) | service worker ativo; casca com 15 arquivos; versão "v1"; **em modo avião o app abre** (faixa offline, fonte Inter, logo); publicação "v2" → "Nova versão disponível · ATUALIZAR" → recarrega na v2 e o cache antigo é apagado ✅ |
+
+Nenhum erro de JavaScript em nenhum cenário. Os fluxos já existentes (cartões, Desfazer, orçamento) continuam com a mesma lógica; só a camada de comunicação mudou.
 
 ## Divergências conhecidas
 

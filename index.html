@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Preço Certo</title>
+<meta name="description" content="Quanto cobrar em cada serviço, já com a taxa da maquininha.">
+<meta name="theme-color" content="#0e0e0e">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preload" href="fonts/inter-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<!-- Ícones (traço, 24×24). Usados com <svg class="ic"><use href="#i-…"/></svg>. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-calc" viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8"/><path d="M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"/></symbol>
+    <symbol id="i-recibo" viewBox="0 0 24 24"><path d="M4 2v20l2-1.5L8 22l2-1.5L12 22l2-1.5L16 22l2-1.5L20 22V2l-2 1.5L16 2l-2 1.5L12 2l-2 1.5L8 2 6 3.5Z"/><path d="M8 8h8M8 12h8M8 16h5"/></symbol>
+    <symbol id="i-ajustes" viewBox="0 0 24 24"><path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3"/><path d="M14 2v4M8 10v4M16 18v4"/></symbol>
+    <symbol id="i-dinheiro" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></symbol>
+    <symbol id="i-cartao" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/></symbol>
+    <symbol id="i-mensagem" viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></symbol>
+    <symbol id="i-compartilhar" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></symbol>
+    <symbol id="i-novo" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
+    <symbol id="i-lixeira" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6"/></symbol>
+    <symbol id="i-mais" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-abrir" viewBox="0 0 24 24"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+    <symbol id="i-seta" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  </defs>
+</svg>
+
+<header class="topo">
+  <div class="topo-linha">
+    <div class="marca"><img class="logo" id="logo" alt="CliniCar Motors Tech" src="icons/logo-clinicar.jpg" width="52" height="52"><span>Preço Certo</span></div>
+    <button type="button" id="status" class="status" disabled>Carregando…</button>
+  </div>
+  <nav class="abas" role="tablist" aria-label="Telas">
+    <button type="button" class="aba" role="tab" id="aba-orcamento" data-tela="orcamento" aria-selected="false" aria-controls="tela-orcamento">
+      <svg class="ic" aria-hidden="true"><use href="#i-calc"/></svg><span>Orçamento</span>
+    </button>
+    <button type="button" class="aba" role="tab" id="aba-gastos" data-tela="gastos" aria-selected="false" aria-controls="tela-gastos">
+      <svg class="ic" aria-hidden="true"><use href="#i-recibo"/></svg><span>Meus gastos</span>
+    </button>
+    <button type="button" class="aba" role="tab" id="aba-ajustes" data-tela="ajustes" aria-selected="false" aria-controls="tela-ajustes">
+      <svg class="ic" aria-hidden="true"><use href="#i-ajustes"/></svg><span>Ajustes</span>
+    </button>
+  </nav>
+</header>
+
+<main>
+  <section id="tela-teste" class="teste" hidden></section>
+
+  <div id="faixa-offline" class="faixa faixa-discreta" role="status" hidden>Sem conexão: só orçamento</div>
+  <div id="faixa-acesso" class="faixa" role="alert" hidden>Este aparelho perdeu o acesso à planilha. Abra o novo link de configuração.</div>
+
+  <!-- ============================ LIGAR O APARELHO À PLANILHA ============================ -->
+  <section id="tela-conectar" class="conectar" hidden>
+    <div class="card">
+      <img class="logo-grande" src="icons/logo-clinicar.jpg" alt="CliniCar Motors Tech" width="120" height="120">
+      <h1 class="card-titulo" style="text-align:center">Preço Certo</h1>
+      <p id="conectar-texto" class="conectar-texto">Este aparelho ainda não está ligado a uma planilha. Abra o link de configuração que você recebeu.</p>
+      <p class="erro" id="conectar-erro" role="alert"></p>
+
+      <button type="button" class="link" id="btn-config-manual" style="margin:8px auto 0;display:flex">Configurar manualmente</button>
+      <div id="config-manual" hidden>
+        <div class="campo">
+          <label for="manual-api">URL da planilha (termina em /exec)</label>
+          <div class="entrada"><input id="manual-api" type="url" autocomplete="off" spellcheck="false" placeholder="https://script.google.com/macros/s/…/exec"></div>
+        </div>
+        <div class="campo">
+          <label for="manual-token">Chave de acesso</label>
+          <div class="entrada"><input id="manual-token" type="text" autocomplete="off" spellcheck="false"></div>
+        </div>
+        <p class="erro" id="manual-erro"></p>
+        <button type="button" class="btn btn-primario" id="btn-conectar">Conectar</button>
+      </div>
+    </div>
+  </section>
+
+  <div id="carregando" class="carregando">
+    <img class="logo-grande" id="logo-carregando" alt="">
+    <p id="carregando-texto">Carregando seus dados…</p>
+    <button type="button" class="btn btn-fantasma" id="btn-tentar-carregar" hidden>Tentar de novo</button>
+  </div>
+
+  <!-- ============================ ORÇAMENTO ============================ -->
+  <section id="tela-orcamento" role="tabpanel" aria-labelledby="aba-orcamento" hidden>
+    <div id="faixa-sem-gastos-orc" class="faixa" hidden>
+      Coloque seus gastos em <button type="button" class="link link-inline" data-ir="gastos">Meus gastos</button> para ver o lucro.
+    </div>
+
+    <div class="grade-2">
+      <div class="coluna">
+        <div class="card">
+          <h2 class="card-titulo">Serviço</h2>
+          <div class="campo">
+            <label for="orc-descricao">Qual serviço / veículo?</label>
+            <div class="entrada">
+              <input id="orc-descricao" type="text" data-orc="descricao" maxlength="120" autocomplete="off" placeholder="Ex.: Troca de embreagem – Gol 2015">
+            </div>
+          </div>
+
+          <div id="bloco-horas">
+            <div class="campo">
+              <label for="orc-horas">Quantas horas de serviço?</label>
+              <div class="entrada">
+                <input id="orc-horas" class="num" type="text" inputmode="decimal" data-orc="horasTexto" autocomplete="off" placeholder="Ex.: 8">
+              </div>
+              <p class="erro"></p>
+              <p class="info" id="info-mao-horas"></p>
+            </div>
+            <button type="button" class="link" id="ir-fechado">Prefiro digitar o valor fechado</button>
+          </div>
+
+          <div id="bloco-fechado" hidden>
+            <div class="campo">
+              <label for="orc-valor">Valor da mão de obra</label>
+              <div class="entrada com-prefixo">
+                <span class="prefixo">R$</span>
+                <input id="orc-valor" class="num" type="text" inputmode="decimal" data-orc="valorTexto" autocomplete="off" placeholder="0,00">
+              </div>
+              <p class="erro"></p>
+            </div>
+            <div class="campo">
+              <label for="orc-horas-fechado">Horas (opcional)</label>
+              <div class="entrada">
+                <input id="orc-horas-fechado" class="num" type="text" inputmode="decimal" data-orc="horasFechadoTexto" autocomplete="off" placeholder="Ex.: 6">
+              </div>
+              <p class="erro"></p>
+              <p class="info" id="info-horas-estimadas"></p>
+            </div>
+            <button type="button" class="link" id="ir-horas">Prefiro calcular por horas</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2 class="card-titulo">Peças</h2>
+          <div class="campo">
+            <label for="orc-pecas-pagar">Peças – quanto você paga</label>
+            <div class="entrada com-prefixo">
+              <span class="prefixo">R$</span>
+              <input id="orc-pecas-pagar" class="num" type="text" inputmode="decimal" data-orc="pecasPagarTexto" autocomplete="off" placeholder="0,00">
+            </div>
+            <p class="erro"></p>
+          </div>
+
+          <div id="bloco-acrescimo">
+            <div class="campo">
+              <label for="orc-acrescimo">Quanto você põe em cima da peça</label>
+              <div class="entrada com-sufixo">
+                <input id="orc-acrescimo" class="num" type="text" inputmode="decimal" data-orc="acrescimoTexto" autocomplete="off" placeholder="0">
+                <span class="sufixo">%</span>
+              </div>
+              <p class="erro"></p>
+              <p class="info" id="info-pecas-cliente"></p>
+            </div>
+            <button type="button" class="link" id="ir-pecas-valor">Prefiro digitar o valor das peças</button>
+          </div>
+
+          <div id="bloco-pecas-valor" hidden>
+            <div class="campo">
+              <label for="orc-pecas-cobrar">Peças – quanto vai cobrar do cliente</label>
+              <div class="entrada com-prefixo">
+                <span class="prefixo">R$</span>
+                <input id="orc-pecas-cobrar" class="num" type="text" inputmode="decimal" data-orc="pecasCobrarTexto" autocomplete="off" placeholder="Igual ao que você paga">
+              </div>
+              <p class="erro"></p>
+              <p class="ajuda">Se deixar vazio, usa o mesmo valor que você paga.</p>
+            </div>
+            <button type="button" class="link" id="ir-pecas-acrescimo">Prefiro usar o acréscimo (%)</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="coluna">
+        <div id="orc-vazio" class="dica">
+          <svg class="ic" aria-hidden="true"><use href="#i-calc"/></svg>
+          Preencha as horas (ou o valor) e as peças para ver o preço.
+        </div>
+
+        <div id="orc-resultado" hidden>
+          <div class="card card-avista">
+            <div class="titulo-valor"><svg class="ic" aria-hidden="true"><use href="#i-dinheiro"/></svg>À vista (Pix ou dinheiro)</div>
+            <div class="valor-grande" id="res-avista"></div>
+          </div>
+
+          <div class="card" id="card-cartao">
+            <div id="bloco-bandeiras">
+              <p class="rotulo">Cartão do cliente</p>
+              <div class="chips" id="chips-bandeira" role="radiogroup" aria-label="Cartão do cliente"></div>
+              <p class="ajuda">Não sabe o cartão do cliente? Deixe em "Não sei": o preço cobre qualquer bandeira.</p>
+            </div>
+            <div id="cards-destaque"></div>
+            <details id="outras-formas">
+              <summary>Ver outras formas de pagamento<svg class="ic" aria-hidden="true"><use href="#i-seta"/></svg></summary>
+              <ul class="lista-formas" id="lista-outras"></ul>
+            </details>
+          </div>
+          <p class="dica-discreta" id="dica-sem-cartoes" hidden>
+            Cadastre seus cartões em <button type="button" class="link link-inline" data-ir="ajustes">Ajustes</button> para ver as parcelas.
+          </p>
+
+          <div class="card" id="card-lucro">
+            <div class="titulo-valor">Seu lucro neste serviço</div>
+            <div class="valor-grande" id="res-lucro"></div>
+            <p class="alerta" id="res-lucro-alerta" hidden>Esse preço não cobre seus gastos do mês</p>
+            <p class="pequeno" id="res-lucro-cartao" hidden></p>
+            <details>
+              <summary>Ver detalhes<svg class="ic" aria-hidden="true"><use href="#i-seta"/></svg></summary>
+              <dl class="detalhes" id="res-detalhes"></dl>
+            </details>
+          </div>
+
+          <button type="button" class="btn btn-primario" id="btn-copiar">
+            <svg class="ic" aria-hidden="true"><use href="#i-mensagem"/></svg>Copiar para WhatsApp
+          </button>
+          <button type="button" class="btn btn-fantasma" id="btn-compartilhar" hidden>
+            <svg class="ic" aria-hidden="true"><use href="#i-compartilhar"/></svg>Compartilhar
+          </button>
+        </div>
+
+        <button type="button" class="btn btn-fantasma" id="btn-novo">
+          <svg class="ic" aria-hidden="true"><use href="#i-novo"/></svg>Novo orçamento
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ MEUS GASTOS ============================ -->
+  <section id="tela-gastos" role="tabpanel" aria-labelledby="aba-gastos" hidden>
+    <div id="faixa-primeiro" class="faixa" hidden>Comece colocando seus gastos do mês. Leva 2 minutos.</div>
+
+    <fieldset id="fs-gastos" disabled>
+      <div class="grade-2">
+        <div class="coluna">
+          <div class="card">
+            <h2 class="card-titulo">Gastos da oficina</h2>
+            <div id="lista-Oficina"></div>
+            <div class="chips sugestoes" id="sugestoes-Oficina"></div>
+            <button type="button" class="btn-adicionar" data-adicionar="Oficina">
+              <svg class="ic ic-sm" aria-hidden="true"><use href="#i-mais"/></svg>Adicionar gasto
+            </button>
+            <div class="total-linha"><span>Total da oficina</span><strong id="total-Oficina"></strong></div>
+          </div>
+
+          <div class="card">
+            <h2 class="card-titulo">Gastos de casa</h2>
+            <div id="lista-Casa"></div>
+            <div class="chips sugestoes" id="sugestoes-Casa"></div>
+            <button type="button" class="btn-adicionar" data-adicionar="Casa">
+              <svg class="ic ic-sm" aria-hidden="true"><use href="#i-mais"/></svg>Adicionar gasto
+            </button>
+            <div class="total-linha"><span>Total de casa</span><strong id="total-Casa"></strong></div>
+          </div>
+        </div>
+
+        <div class="coluna">
+          <div class="card">
+            <h2 class="card-titulo">Sua rotina</h2>
+            <div class="campo">
+              <label for="p-diasPorSemana">Dias de trabalho por semana</label>
+              <div class="entrada"><input id="p-diasPorSemana" class="num" type="text" inputmode="decimal" data-param="diasPorSemana" autocomplete="off"></div>
+              <p class="erro"></p>
+            </div>
+            <div class="campo">
+              <label for="p-horasPorDia">Horas de trabalho por dia</label>
+              <div class="entrada"><input id="p-horasPorDia" class="num" type="text" inputmode="decimal" data-param="horasPorDia" autocomplete="off"></div>
+              <p class="erro"></p>
+            </div>
+            <div class="campo">
+              <label for="p-horasCobradasPorDia">Das suas horas de trabalho por dia, quantas você consegue cobrar do cliente?</label>
+              <div class="entrada"><input id="p-horasCobradasPorDia" class="num" type="text" inputmode="decimal" data-param="horasCobradasPorDia" autocomplete="off"></div>
+              <p class="erro"></p>
+              <p class="ajuda">Tem orçamento, busca de peça, espera… Normalmente 6 de 8.</p>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="resumo-linha"><span>Você gasta por mês</span><strong id="res-gasto-mes"></strong></div>
+            <hr class="separador">
+            <div class="titulo-valor">Sua hora precisa valer no mínimo</div>
+            <div class="valor-grande" id="res-preco-minimo"></div>
+            <hr class="separador">
+            <div class="campo">
+              <label for="p-valorHoraCobrado">Quanto você vai cobrar por hora</label>
+              <div class="entrada com-prefixo">
+                <span class="prefixo">R$</span>
+                <input id="p-valorHoraCobrado" class="num" type="text" inputmode="decimal" data-param="valorHoraCobrado" data-formato="dinheiro" autocomplete="off">
+              </div>
+              <p class="erro"></p>
+              <p class="info" id="res-ganho-hora"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </fieldset>
+  </section>
+
+  <!-- ============================ AJUSTES ============================ -->
+  <section id="tela-ajustes" role="tabpanel" aria-labelledby="aba-ajustes" hidden>
+    <fieldset id="fs-ajustes" disabled>
+      <div class="grade-2 grade-ajustes">
+        <div class="coluna">
+          <div class="card">
+            <h2 class="card-titulo">Seus cartões</h2>
+            <p class="ajuda" style="margin:0 0 16px">Cadastre os cartões que você aceita e copie as taxas da calculadora da sua maquininha.</p>
+            <div class="chips" id="chips-cartoes" role="radiogroup" aria-label="Cartão que você está editando"></div>
+            <p class="ajuda" id="sem-cartoes" hidden>Nenhum cartão cadastrado. Toque em "Adicionar cartão".</p>
+
+            <!-- Adicionar cartão -->
+            <div class="painel" id="painel-adicionar" hidden>
+              <p class="rotulo">Qual cartão você quer adicionar?</p>
+              <div class="chips" id="sugestoes-cartao"></div>
+              <div id="bloco-outro" hidden>
+                <div class="campo" style="margin-top:16px">
+                  <label for="novo-cartao-nome">Nome do cartão</label>
+                  <div class="entrada"><input id="novo-cartao-nome" type="text" maxlength="30" autocomplete="off" placeholder="Ex.: Banescard"></div>
+                  <p class="erro"></p>
+                </div>
+                <button type="button" class="btn btn-fantasma" id="btn-criar-cartao">Adicionar este cartão</button>
+              </div>
+              <button type="button" class="link" id="btn-cancelar-adicionar">Cancelar</button>
+            </div>
+
+            <!-- Editar cartão -->
+            <div class="painel" id="painel-cartao" hidden>
+              <div class="campo">
+                <label for="cartao-nome">Nome do cartão</label>
+                <div class="entrada"><input id="cartao-nome" type="text" maxlength="30" autocomplete="off" data-cartao-nome="1"></div>
+                <p class="erro"></p>
+              </div>
+              <p class="faixa" id="aviso-cartao-vazio" hidden>Copie as taxas da calculadora da sua maquininha para este cartão.</p>
+              <div class="taxas-grade" id="lista-taxas"></div>
+              <p class="ajuda">Campo vazio = sem taxa: essa opção não aparece no orçamento.</p>
+
+              <div class="acoes-cartao">
+                <button type="button" class="link" id="btn-preencher-padrao">Preencher com as taxas padrão Visa/Master da InfinitePay</button>
+                <div class="confirma" id="confirma-padrao" hidden>
+                  <p><strong>Tem certeza?</strong> As taxas deste cartão serão trocadas pelas da InfinitePay (Visa/Master).</p>
+                  <button type="button" class="btn btn-perigo" id="btn-padrao-sim">Sim, preencher</button>
+                  <button type="button" class="btn btn-fantasma" id="btn-padrao-nao">Cancelar</button>
+                </div>
+                <button type="button" class="link link-perigo" id="btn-remover-cartao">
+                  <svg class="ic ic-sm" aria-hidden="true"><use href="#i-lixeira"/></svg>Remover cartão
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="coluna">
+          <div class="card">
+            <h2 class="card-titulo">Outros ajustes</h2>
+            <div class="campo">
+              <label for="p-acrescimoPecasPadrao">Acréscimo padrão nas peças</label>
+              <div class="entrada com-sufixo">
+                <input id="p-acrescimoPecasPadrao" class="num" type="text" inputmode="decimal" data-param="acrescimoPecasPadrao" autocomplete="off">
+                <span class="sufixo">%</span>
+              </div>
+              <p class="erro"></p>
+              <p class="ajuda">Cada orçamento novo começa com este número.</p>
+            </div>
+            <div class="campo">
+              <label for="p-impostoPercentual">Imposto</label>
+              <div class="entrada com-sufixo">
+                <input id="p-impostoPercentual" class="num" type="text" inputmode="decimal" data-param="impostoPercentual" autocomplete="off">
+                <span class="sufixo">%</span>
+              </div>
+              <p class="erro"></p>
+              <p class="ajuda">Se for MEI, deixe 0 e coloque o DAS em Meus gastos.</p>
+            </div>
+            <div class="campo">
+              <label for="p-parcelasDestaque">Parcelas que aparecem no orçamento</label>
+              <div class="entrada"><input id="p-parcelasDestaque" type="text" inputmode="decimal" data-param="parcelasDestaque" autocomplete="off" placeholder="Ex.: 5,10"></div>
+              <p class="erro"></p>
+              <p class="ajuda">Ex.: 5,10. Deixe vazio para não destacar nenhuma.</p>
+            </div>
+            <div class="campo">
+              <label for="p-nomeOficina">Nome da oficina</label>
+              <div class="entrada"><input id="p-nomeOficina" type="text" data-param="nomeOficina" maxlength="60" autocomplete="off"></div>
+              <p class="erro"></p>
+              <p class="ajuda">Aparece no texto do WhatsApp.</p>
+            </div>
+          </div>
+
+          <a class="btn btn-fantasma" id="link-planilha" target="_blank" rel="noopener" hidden>
+            <svg class="ic" aria-hidden="true"><use href="#i-abrir"/></svg>Abrir minha planilha
+          </a>
+          <p class="ajuda" id="info-salvo" style="text-align:center"></p>
+        </div>
+      </div>
+    </fieldset>
+
+    <!-- Fora do fieldset: funciona mesmo sem conexão. -->
+    <div class="card card-aparelho">
+      <h2 class="card-titulo">Este aparelho</h2>
+      <div class="resumo-linha"><span>Planilha conectada</span><strong id="aparelho-planilha"></strong></div>
+      <div class="resumo-linha" style="margin-top:8px"><span>Versão do app</span><strong id="aparelho-versao">—</strong></div>
+      <button type="button" class="btn btn-fantasma" id="btn-instalar" hidden style="margin-top:16px">Instalar app</button>
+      <button type="button" class="link link-perigo" id="btn-desconectar" style="margin-top:8px">Desconectar este aparelho</button>
+      <div class="confirma" id="confirma-desconectar" hidden>
+        <p><strong>Desconectar?</strong> Este aparelho deixa de ver a planilha. Para voltar, será preciso abrir o link de configuração de novo. Os dados da planilha não são apagados.</p>
+        <button type="button" class="btn btn-perigo" id="btn-desconectar-sim">Sim, desconectar</button>
+        <button type="button" class="btn btn-fantasma" id="btn-desconectar-nao">Cancelar</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="aviso" class="toast" role="status" aria-live="polite" hidden></div>
+
+<div id="barra-desfazer" class="toast barra-desfazer" role="status" aria-live="polite" hidden>
+  <span id="texto-desfazer">Gasto removido</span>
+  <button type="button" id="btn-desfazer">DESFAZER</button>
+</div>
+
+<div id="barra-versao" class="toast barra-desfazer" role="status" aria-live="polite" hidden>
+  <span>Nova versão disponível</span>
+  <button type="button" id="btn-atualizar">ATUALIZAR</button>
+</div>
+
+<div id="barra-instalar" class="toast barra-desfazer" role="status" aria-live="polite" hidden>
+  <span>Instale o Preço Certo para abrir pelo ícone, mesmo sem internet.</span>
+  <button type="button" id="btn-instalar-aviso">INSTALAR</button>
+</div>
+
+<div id="caixa-copia" class="modal" role="dialog" aria-modal="true" aria-labelledby="caixa-copia-titulo" hidden>
+  <div class="modal-corpo">
+    <p id="caixa-copia-titulo" style="margin:0 0 4px;font-weight:600">Copie o texto abaixo</p>
+    <p class="ajuda" style="margin:0 0 12px">Toque e segure no texto → Selecionar tudo → Copiar. Depois cole no WhatsApp.</p>
+    <textarea id="texto-copia" readonly></textarea>
+    <button type="button" class="btn btn-fantasma" id="btn-fechar-copia" style="margin-top:12px">Fechar</button>
+  </div>
+</div>
+
+<script src="js/calculo.js"></script>
+<script src="js/config.js"></script>
+<script src="js/api.js"></script>
+<script src="js/pwa.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -1,17 +1,45 @@
 /**
  * Preço Certo – Oficina
- * Backend Google Apps Script (projeto vinculado à planilha).
+ * API da planilha (Google Apps Script VINCULADO à planilha: Extensões → Apps Script).
  *
+ * A tela do app fica no GitHub Pages; este script só lê e grava a planilha.
+ * Implantação: App da Web · Executar como: Eu · Quem pode acessar: Qualquer pessoa.
  * Fonte da verdade das regras: docs/DESENHO.md
- * Públicas (as únicas que a página chama): doGet, obterDados, salvarDados, obterTaxasPadraoVisa.
- * Todas as outras terminam em "_" e são internas: o google.script.run não as enxerga.
  *
- * Regra geral: tudo o que obterDados() devolve precisa passar em validarDados_() sem erro.
+ * PROTOCOLO (só POST; corpo JSON enviado como text/plain, para o navegador não fazer preflight de CORS):
+ *   { token, action: "obterDados" }                    → { ok:true, gastos, parametros, cartoes, atualizadoEm, urlPlanilha }
+ *   { token, action: "salvarDados", dados: {…} }       → { ok:true, atualizadoEm }
+ *   { token, action: "obterTaxasPadraoVisa" }          → { ok:true, taxas: { debito, p1 … p12 } }
+ *   qualquer erro                                       → { ok:false, erro: "mensagem em português" }
+ *   GET                                                 → { ok:false, erro: "Acesso não autorizado" }
+ *
+ * SEGURANÇA
+ * - O token fica nas Propriedades do script (chave TOKEN). Nenhum segredo neste arquivo.
+ * - A checagem do token acontece ANTES de qualquer acesso à planilha.
+ * - Funções PÚBLICAS (sem "_") deste arquivo: doGet, doPost, gerarLinkDeConfiguracao, trocarToken, testarApi.
+ *   As três últimas são para rodar À MÃO no editor (menu "Executar") e por isso não podem terminar em "_"
+ *   (funções com "_" são privadas e não aparecem no menu). Isso é seguro porque este projeto NÃO usa
+ *   HtmlService: não existe google.script.run, e a ÚNICA porta de entrada externa é o doPost, que só
+ *   executa as ações da lista ACOES_ (obterDados, salvarDados, obterTaxasPadraoVisa). Qualquer outro
+ *   nome em "action" — inclusive o de uma função pública — recebe "Ação desconhecida.".
+ * - Todas as demais funções terminam em "_" (privadas).
+ *
+ * Regra geral dos dados: tudo o que obterDados devolve precisa passar em validarDados_() sem erro.
  * Por isso leitura e validação usam os MESMOS limites
  * (LIMITES_PARAMETROS_, LIMITE_TAXA_, LIMITE_VALOR_GASTO_, MAX_CARTOES_, MAX_NOME_CARTAO_).
  *
  * @OnlyCurrentDoc
  */
+
+// ============================================================
+// PREENCHA (uma vez em cada planilha) — veja docs/DEPLOY.md
+// ============================================================
+
+/** Endereço do app no GitHub Pages. */
+var URL_DO_APP = 'https://marquesarao.github.io/preco-certo/';
+
+/** URL "/exec" DESTA implantação (Implantar → Gerenciar implantações → copiar URL do app da Web). */
+var URL_DA_API = '';
 
 // ============================================================
 // Constantes
@@ -90,33 +118,216 @@ var COLUNAS_BANDEIRAS_ANTIGAS_ = [
 ];
 
 var PROP_ATUALIZADO_EM_ = 'atualizadoEm';
+var PROP_TOKEN_ = 'TOKEN';
+var MSG_SEM_ACESSO_ = 'Acesso não autorizado';
+var MSG_ACAO_DESCONHECIDA_ = 'Ação desconhecida.';
+var MSG_ERRO_INTERNO_ = 'Erro interno no servidor. Tente de novo.';
+
+/** Formato da URL /exec (igual ao validado pelo app em js/config.js). */
+var URL_API_VALIDA_ = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
 
 // ============================================================
-// Funções públicas (chamadas pela página)
+// Entrada HTTP (a ÚNICA porta de entrada externa)
+// ============================================================
+
+/** GET nunca devolve dados nem HTML. */
+function doGet() {
+  return responder_({ ok: false, erro: MSG_SEM_ACESSO_ });
+}
+
+function doPost(e) {
+  try {
+    var req = lerRequisicao_(e);
+    validarToken_(req.token); // antes de QUALQUER acesso à planilha
+    if (typeof req.action !== 'string' || !Object.prototype.hasOwnProperty.call(ACOES_, req.action)) {
+      throw erroApi_(MSG_ACAO_DESCONHECIDA_);
+    }
+    var acao = ACOES_[req.action];
+    return responder_(comLock_(function () {
+      configurarPlanilha_(); // cria abas que faltam e migra a aba Taxas antiga (uma vez)
+      return acao(req);
+    }));
+  } catch (err) {
+    if (err && err.api) return responder_({ ok: false, erro: err.message });
+    console.error('Preço Certo – erro interno: ' + (err && err.stack ? err.stack : err));
+    return responder_({ ok: false, erro: MSG_ERRO_INTERNO_ });
+  }
+}
+
+/** As únicas ações que a API executa. */
+var ACOES_ = {
+  obterDados: function () {
+    var dados = obterDados_();
+    dados.ok = true;
+    return dados;
+  },
+  salvarDados: function (req) {
+    var limpo;
+    try {
+      limpo = validarDados_(req.dados);
+    } catch (e) {
+      throw erroApi_(e.message); // mensagem de validação vai para o usuário
+    }
+    return { ok: true, atualizadoEm: salvarDados_(limpo) };
+  },
+  obterTaxasPadraoVisa: function () {
+    return { ok: true, taxas: obterTaxasPadraoVisa_() };
+  }
+};
+
+function lerRequisicao_(e) {
+  var req;
+  try {
+    req = JSON.parse((e && e.postData && e.postData.contents) || '');
+  } catch (_) {
+    throw erroApi_('Pedido inválido.');
+  }
+  if (!req || typeof req !== 'object' || Array.isArray(req)) throw erroApi_('Pedido inválido.');
+  return req;
+}
+
+function responder_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+/** Erro cuja mensagem pode ir para o usuário. */
+function erroApi_(mensagem) {
+  var e = new Error(mensagem);
+  e.api = true;
+  return e;
+}
+
+/** Token ausente, errado, ou servidor sem token → "Acesso não autorizado". Não toca na planilha. */
+function validarToken_(token) {
+  var esperado = PropertiesService.getScriptProperties().getProperty(PROP_TOKEN_);
+  if (!esperado || typeof token !== 'string' || !iguais_(token, esperado)) throw erroApi_(MSG_SEM_ACESSO_);
+}
+
+/** Comparação em tempo constante (não revela quantos caracteres coincidem). */
+function iguais_(a, b) {
+  if (a.length !== b.length) return false;
+  var dif = 0;
+  for (var i = 0; i < a.length; i++) dif |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return dif === 0;
+}
+
+function comLock_(fn) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(ESPERA_LOCK_MS_)) throw erroApi_('A planilha está ocupada. Tente de novo em alguns segundos.');
+  try {
+    return fn();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ============================================================
+// Funções para rodar À MÃO no editor (Executar). Não são ações da API.
 // ============================================================
 
 /**
- * Abre o app. Garante que as abas existem (e migra a aba Taxas antiga) antes de servir a página.
- * Usa lock para evitar que dois acessos simultâneos (celular + notebook) criem a mesma aba.
- * Sem lock, segue em frente: o outro acesso está configurando.
+ * Gera (ou reaproveita) o token e mostra no Registro de execução o LINK DE CONFIGURAÇÃO do aparelho:
+ *   URL_DO_APP + "#cfg=" + base64url({"api": URL_DA_API, "token": …})
+ * Abra o link no aparelho (no do mecânico, mande pelo WhatsApp e depois apague a mensagem).
  */
-function doGet() {
-  var lock = LockService.getScriptLock();
-  if (lock.tryLock(ESPERA_LOCK_MS_)) {
-    try {
-      configurarPlanilha_();
-    } finally {
-      lock.releaseLock();
-    }
+function gerarLinkDeConfiguracao() {
+  var problema = problemaNasUrls_(URL_DO_APP, URL_DA_API);
+  if (problema) {
+    Logger.log('⚠️ ' + problema);
+    return;
   }
-  return HtmlService.createHtmlOutputFromFile('Index')
-    .setTitle('Preço Certo')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
+  var token = obterOuCriarToken_();
+  var link = montarLinkDeConfiguracao_(URL_DO_APP, URL_DA_API, token);
+  Logger.log(
+    'LINK DE CONFIGURAÇÃO deste aparelho (copie a linha inteira):\n\n' + link + '\n\n' +
+    'Como usar:\n' +
+    '1. Abra o link no navegador do aparelho (Chrome). Deve aparecer "Aparelho conectado à planilha ✓".\n' +
+    '2. No celular do mecânico: mande o link pelo WhatsApp, peça para ele abrir e DEPOIS APAGUE a mensagem.\n' +
+    '3. Este link dá acesso aos dados desta planilha: mande só para o dono. Se vazar, rode trocarToken() e gere um link novo.'
+  );
+  return link;
 }
 
-/** Retorna tudo o que a página precisa. */
-function obterDados() {
+/**
+ * Troca o token: TODOS os aparelhos ligados a esta planilha perdem o acesso na hora.
+ * Use se o link de configuração vazou ou se um aparelho foi perdido. Depois rode gerarLinkDeConfiguracao().
+ */
+function trocarToken() {
+  PropertiesService.getScriptProperties().setProperty(PROP_TOKEN_, gerarToken_());
+  Logger.log('Token trocado. Todos os aparelhos ligados a esta planilha perderam o acesso.\n' +
+    'Agora rode gerarLinkDeConfiguracao() e abra o link novo em cada aparelho que deve continuar usando o app.');
+}
+
+/** Teste de ponta a ponta da API, rodando doPost() aqui no editor. Não altera os dados (regrava os mesmos). */
+function testarApi() {
+  var token = obterOuCriarToken_();
+  var chamar = function (corpo) { return JSON.parse(doPost({ postData: { contents: corpo } }).getContent()); };
+  var json = function (obj) { return JSON.stringify(obj); };
+  var conferir = function (condicao, descricao, r) {
+    if (!condicao) throw new Error('FALHOU: ' + descricao + '\nResposta: ' + JSON.stringify(r));
+    Logger.log('✓ ' + descricao);
+  };
+  var r;
+
+  r = JSON.parse(doGet().getContent());
+  conferir(r.ok === false && r.erro === MSG_SEM_ACESSO_, 'GET é recusado', r);
+  r = chamar(json({ action: 'obterDados' }));
+  conferir(r.ok === false && r.erro === MSG_SEM_ACESSO_, 'pedido sem token é recusado', r);
+  r = chamar(json({ token: 'token-errado', action: 'obterDados' }));
+  conferir(r.ok === false && r.erro === MSG_SEM_ACESSO_, 'token errado é recusado', r);
+  r = chamar('isto não é json');
+  conferir(r.ok === false, 'corpo que não é JSON é recusado', r);
+  ['apagarTudo', 'gerarLinkDeConfiguracao', 'trocarToken', 'testarApi'].forEach(function (acao) {
+    r = chamar(json({ token: token, action: acao }));
+    conferir(r.ok === false && r.erro === MSG_ACAO_DESCONHECIDA_, 'ação "' + acao + '" não é executada pela API', r);
+  });
+  r = chamar(json({ token: token, action: 'obterDados' }));
+  conferir(r.ok === true && Array.isArray(r.cartoes) && r.parametros, 'obterDados devolve os dados', r);
+  var atuais = { gastos: r.gastos, parametros: r.parametros, cartoes: r.cartoes };
+  r = chamar(json({ token: token, action: 'salvarDados', dados: atuais }));
+  conferir(r.ok === true && r.atualizadoEm, 'salvarDados regrava os mesmos dados', r);
+  r = chamar(json({ token: token, action: 'salvarDados', dados: { gastos: [], parametros: {}, cartoes: [] } }));
+  conferir(r.ok === false && typeof r.erro === 'string' && r.erro !== MSG_ERRO_INTERNO_, 'dados inválidos voltam com mensagem clara', r);
+  r = chamar(json({ token: token, action: 'obterTaxasPadraoVisa' }));
+  conferir(r.ok === true && r.taxas && r.taxas.p5 === 7.57, 'obterTaxasPadraoVisa devolve as taxas', r);
+  Logger.log('Todos os testes da API passaram.');
+}
+
+/** Diz o que falta/está errado nas URLs do topo do arquivo; '' = tudo certo. (Pura, testável.) */
+function problemaNasUrls_(urlApp, urlApi) {
+  if (!urlApp) return 'Preencha URL_DO_APP com o endereço do app (ex.: https://marquesarao.github.io/preco-certo/) e rode de novo.';
+  if (!/^https:\/\/[^\s#?]+$/.test(urlApp)) return 'A URL_DO_APP precisa começar com https:// e não pode ter espaços, "#" nem "?". Corrija e rode de novo.';
+  if (!urlApi) return 'Preencha URL_DA_API com a URL /exec da implantação (Implantar → Gerenciar implantações) e rode de novo.';
+  if (!URL_API_VALIDA_.test(urlApi)) return 'A URL_DA_API não está no formato https://script.google.com/macros/s/…/exec. Copie de novo em Implantar → Gerenciar implantações e rode de novo.';
+  return '';
+}
+
+function montarLinkDeConfiguracao_(urlApp, urlApi, token) {
+  var conteudo = JSON.stringify({ api: urlApi, token: token });
+  var b64 = Utilities.base64EncodeWebSafe(conteudo, Utilities.Charset.UTF_8).replace(/=+$/, '');
+  return urlApp + '#cfg=' + b64;
+}
+
+function obterOuCriarToken_() {
+  var props = PropertiesService.getScriptProperties();
+  var token = props.getProperty(PROP_TOKEN_);
+  if (!token) {
+    token = gerarToken_();
+    props.setProperty(PROP_TOKEN_, token);
+  }
+  return token;
+}
+
+/** 64 caracteres hexadecimais (dois UUIDs aleatórios sem hífen). */
+function gerarToken_() {
+  return (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
+}
+
+// ============================================================
+// Ações (internas)
+// ============================================================
+
+function obterDados_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   return {
     gastos: lerGastos_(ss),
@@ -127,45 +338,30 @@ function obterDados() {
   };
 }
 
-/**
- * Valida e regrava as 3 abas.
- * @param {Object} dados {gastos, parametros, cartoes}, no formato de docs/DESENHO.md, seção 5
- * @return {string} atualizadoEm (ISO 8601)
- */
-function salvarDados(dados) {
-  var limpo = validarDados_(dados);
+/** Regrava as 3 abas com dados JÁ validados. Quem chama segura o lock. @return atualizadoEm (ISO) */
+function salvarDados_(limpo) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
 
-  var lock = LockService.getScriptLock();
-  if (!lock.tryLock(ESPERA_LOCK_MS_)) {
-    throw new Error('A planilha está ocupada. Tente de novo em alguns segundos.');
-  }
-  try {
-    configurarPlanilha_(); // já dentro do lock: chamada direta, sem lock aninhado
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var linhasGastos = limpo.gastos.map(function (g) {
+    return [g.tipo, g.descricao, g.valor === null ? '' : g.valor];
+  });
+  regravarCorpo_(ss.getSheetByName(ABA_GASTOS_), CAB_GASTOS_.length, linhasGastos);
 
-    var linhasGastos = limpo.gastos.map(function (g) {
-      return [g.tipo, g.descricao, g.valor === null ? '' : g.valor];
-    });
-    regravarCorpo_(ss.getSheetByName(ABA_GASTOS_), CAB_GASTOS_.length, linhasGastos);
+  var shParametros = ss.getSheetByName(ABA_PARAMETROS_);
+  shParametros.getRange('B:B').setNumberFormat('@');
+  regravarCorpo_(shParametros, CAB_PARAMETROS_.length, linhasParametros_(limpo.parametros));
 
-    var shParametros = ss.getSheetByName(ABA_PARAMETROS_);
-    shParametros.getRange('B:B').setNumberFormat('@');
-    regravarCorpo_(shParametros, CAB_PARAMETROS_.length, linhasParametros_(limpo.parametros));
+  regravarCorpo_(ss.getSheetByName(ABA_TAXAS_), CAB_TAXAS_.length, linhasCartoes_(limpo.cartoes));
 
-    regravarCorpo_(ss.getSheetByName(ABA_TAXAS_), CAB_TAXAS_.length, linhasCartoes_(limpo.cartoes));
+  SpreadsheetApp.flush();
 
-    SpreadsheetApp.flush();
-
-    var atualizadoEm = new Date().toISOString();
-    PropertiesService.getDocumentProperties().setProperty(PROP_ATUALIZADO_EM_, atualizadoEm);
-    return atualizadoEm;
-  } finally {
-    lock.releaseLock();
-  }
+  var atualizadoEm = new Date().toISOString();
+  PropertiesService.getDocumentProperties().setProperty(PROP_ATUALIZADO_EM_, atualizadoEm);
+  return atualizadoEm;
 }
 
 /** Taxas Visa/Master padrão da InfinitePay, para o botão "Preencher com as taxas padrão". */
-function obterTaxasPadraoVisa() {
+function obterTaxasPadraoVisa_() {
   var taxas = {};
   CAMPOS_TAXA_.forEach(function (campo, i) { taxas[campo] = TAXAS_VISA_PADRAO_[i]; });
   return taxas;
@@ -177,8 +373,7 @@ function obterTaxasPadraoVisa() {
 
 /**
  * Cria as abas que faltam (ou que estão totalmente vazias) com cabeçalho, formatos e dados padrão,
- * e migra a aba Taxas do formato antigo (uma única vez). Idempotente.
- * Quem chama deve segurar o lock (doGet e salvarDados já fazem isso).
+ * e migra a aba Taxas do formato antigo (uma única vez). Idempotente. Quem chama segura o lock.
  */
 function configurarPlanilha_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -380,11 +575,11 @@ function limparCartoesLidos_(brutos) {
 }
 
 // ============================================================
-// Validação (servidor: rígida, mesmos limites da leitura)
+// Validação (rígida, mesmos limites da leitura)
 // ============================================================
 
 /**
- * Valida e normaliza os dados recebidos da página.
+ * Valida e normaliza os dados recebidos do app.
  * Lança Error com mensagem em português se algo estiver errado.
  */
 function validarDados_(dados) {
@@ -553,7 +748,7 @@ function linhasCartoes_(cartoes) {
 // ============================================================
 
 /**
- * Converte texto em formato brasileiro para número. Mesmas regras do frontend:
+ * Converte texto em formato brasileiro para número. Mesmas regras do app (js/calculo.js):
  *   "150,50" → 150.5 · "1.234,56" → 1234.56 · "R$ 1.234,56" → 1234.56 · "7,57%" → 7.57
  *   sem vírgula: "1.234" → 1234 (milhar) · "1.5" → 1.5 (decimal)
  *   vazio ou inválido → null

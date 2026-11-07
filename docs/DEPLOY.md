@@ -1,118 +1,148 @@
-# Deploy automático (GitHub Actions + clasp)
+# Publicação e instalação (GitHub Pages + Apps Script como API)
 
-A cada `git push` na branch `main` que altere algo em `src/`, o workflow [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) faz duas coisas:
+Mesmo modelo do app **Pendências**:
 
-1. **`clasp push --force`**: envia `src/Codigo.gs`, `src/Index.html` e `src/appsscript.json` para o projeto Apps Script.
-2. **`clasp deploy --deploymentId … --description …`**: cria uma versão nova e atualiza a **implantação existente**. A URL `/exec` continua a mesma.
+- **Tela** (HTML/CSS/JS) no **GitHub Pages**: você dá `git push` e o GitHub publica sozinho.
+  - Repositório **público** `marquesarao/preco-certo`.
+  - Endereço do app: **https://marquesarao.github.io/preco-certo/**
+- **Apps Script vinculado a cada planilha**, funcionando só como **API** (lê e grava a planilha). Ele é colado à mão, **uma vez em cada planilha**: a sua planilha de teste e a do mecânico.
+- **Um único app para todos.** Cada **aparelho** fica ligado à planilha do seu dono por um **link de configuração**.
 
-A descrição da versão fica `<sha curto> – <1ª linha do commit, até 60 caracteres>`, por exemplo `452f361 – Fatia 3: frontend (Index.html) com identidade CliniCar`.
-
-**Versões fixadas** (conferidas em 07/11/2026):
-
-| Item | Versão | Evidência |
-|---|---|---|
-| `@google/clasp` | 3.4.1 (major 3) | `npm view @google/clasp version` → 3.4.1 (tag `latest`). Flags conferidas no `--help`: `push -f/--force`, `deploy -i/--deploymentId`, `deploy -d/--description` |
-| `actions/checkout` | `@v7` | última versão estável: v7.0.1, publicada em 20/07/2026 — https://github.com/actions/checkout/releases/tag/v7.0.1 |
-| `actions/setup-node` | `@v7` | última versão estável: v7.1.0, publicada em 08/10/2026 — https://github.com/actions/setup-node/releases/tag/v7.1.0 |
-
-> **O `clasp login` local precisa usar a mesma versão do workflow (3.4.1).** Veja o item c.
-
-> Os comandos abaixo são para **você** rodar. Nada aqui é executado automaticamente fora do GitHub Actions.
+> Os comandos e passos abaixo são para **você** fazer. Nada aqui roda sozinho.
 
 ---
 
-## a) Criar o repositório privado e ligar o repositório local
+## Antes de cada `git push`: nada sensível no repositório
+
+O repositório é **público**. Nunca podem ir para ele:
+
+- o **token** (64 letras e números; fica nas Propriedades do script e no aparelho);
+- a **URL `/exec`** de uma implantação real (`https://script.google.com/macros/s/AKfy…/exec`);
+- um **link de configuração** (`…#cfg=…`);
+- o endereço ou o ID de uma planilha;
+- prints com qualquer um desses dados.
+
+No código, `apps-script/Codigo.gs` vai com `URL_DA_API = ''` (vazia). Você preenche **só no editor do Apps Script de cada planilha**, nunca no arquivo do repositório.
+
+Conferência rápida antes do push, no PowerShell, na pasta do projeto. **Os dois comandos devem voltar vazios:**
+
+```powershell
+git add -A
+git grep --cached -nE "macros/s/[A-Za-z0-9_-]{20,}"   # alguma URL /exec real?
+git grep --cached -nE "#cfg=[A-Za-z0-9_-]{40,}"       # algum link de configuração?
+```
+
+Se algum mostrar uma linha, **não faça o push**: tire o valor do arquivo, rode `git add -A` de novo e repita.
+
+---
+
+## a) Criar o repositório público e fazer o primeiro push
 
 1. No GitHub: **New repository**.
-   - Nome sugerido: `preco-certo`.
-   - **Private**.
-   - **Não** marque README, .gitignore nem licença: o repositório precisa nascer vazio.
-2. No terminal, dentro da pasta do projeto:
+   - Nome: **`preco-certo`**.
+   - **Public** (o GitHub Pages gratuito exige repositório público, como no Pendências).
+   - **Não** marque README, .gitignore nem licença.
+2. No PowerShell, na pasta do projeto:
 
-```bash
-git remote add origin https://github.com/<seu-usuario>/preco-certo.git
+```powershell
+cd "C:\Users\leand\OneDrive\Pessoal\APP-Andre"
+git remote add origin https://github.com/marquesarao/preco-certo.git
 git push -u origin main
 ```
 
-O primeiro push dispara o workflow, mas ele vai falhar em "Conferir secrets" até você criar os 3 secrets (itens d e e). É o esperado.
+## b) Ligar o GitHub Pages
 
-## b) Ativar a Apps Script API
+1. Repositório → **Settings** → **Pages** (menu lateral, em "Code and automation").
+2. **Build and deployment → Source: Deploy from a branch**.
+3. **Branch: `main`**, pasta **`/ (root)`** → **Save**.
 
-1. Abra https://script.google.com/home/usersettings, logado na **conta Google dona da planilha**.
-2. Ligue **"API do Google Apps Script"**.
+**A primeira publicação leva alguns minutos** (às vezes 5 a 10). Até lá, o endereço pode mostrar "404". Não quebrou: é só esperar.
 
-Sem isso, o `clasp push` falha com uma mensagem sobre a API desativada. O workflow avisa qual é o problema.
+Como saber que publicou:
+- aba **Actions**: o fluxo **"pages build and deployment"** fica com ✓ verde;
+- em **Settings → Pages** aparece "Your site is live at **https://marquesarao.github.io/preco-certo/**".
 
-## c) Instalar o clasp e fazer login (uma vez, no seu computador)
+Abra o endereço no Chrome. Sem configuração, o app mostra "Este aparelho ainda não está ligado a uma planilha" (é o esperado).
 
-> ⚠️ **IMPORTANTE: faça o `clasp login` local com a MESMA versão usada no workflow (`@google/clasp@3.4.1`).**
-> O formato do `.clasprc.json` mudou no clasp 3. Um arquivo gerado por outra versão (por exemplo, o clasp 2) pode não funcionar no GitHub Actions. Confira com `clasp --version` antes do login: tem de aparecer `3.4.1`.
-> Se um dia o workflow mudar de versão (`CLASP_VERSION` no `deploy.yml`), refaça o login local com a nova versão e atualize o secret `CLASPRC_JSON`.
+> O arquivo `.nojekyll` (vazio) faz o Pages servir os arquivos como estão.
 
-```bash
-npm install -g @google/clasp@3.4.1
-clasp --version        # deve mostrar 3.4.1
-clasp login
-```
+## c) Em cada planilha: colar a API e implantar
 
-O `clasp login` abre o navegador. Entre com a **conta dona da planilha** e autorize.
+Faça isto **na sua planilha de teste** e depois **na planilha do mecânico** (na conta Google dele).
 
-## d) Copiar o `.clasprc.json` para o secret `CLASPRC_JSON`
+1. Abra a planilha → **Extensões → Apps Script**.
+2. **Código:** apague o que houver no arquivo de código (ex.: o antigo "Código.gs", que também tinha a tela) e cole o conteúdo de **`apps-script/Codigo.gs`**.
+   - Se houver um arquivo **`Index.html`** antigo no projeto, **apague** (a tela agora fica no Pages).
+3. **Manifesto:** ⚙️ **Configurações do projeto** → marque **"Mostrar arquivo de manifesto 'appsscript.json' no editor"** → abra o `appsscript.json` e cole o conteúdo de **`apps-script/appsscript.json`**.
+4. Confira no topo do `Codigo.gs`: `URL_DO_APP = 'https://marquesarao.github.io/preco-certo/'` (já vem preenchida).
+5. **Salve** (Ctrl+S).
+6. **Implantar:**
+   - Primeira vez: **Implantar → Nova implantação** → engrenagem → **App da Web**.
+     - **Executar como: Eu**
+     - **Quem pode acessar: Qualquer pessoa**
+     - → **Implantar**.
+   - Se já existia uma implantação (do app antigo): **Implantar → Gerenciar implantações** → lápis → **Versão: Nova versão** → confirme **Executar como: Eu** e **Quem pode acessar: Qualquer pessoa** → **Implantar**. A URL continua a mesma.
+7. **Autorize** quando pedir. Na tela "O Google não verificou este app": **Avançado → Acessar (não seguro)** → **Permitir**. O app só pede acesso a **esta** planilha.
+8. Copie a **URL do app da Web**, que termina em **`/exec`**.
+9. Cole essa URL na constante **`URL_DA_API`** no topo do `Codigo.gs` **do editor** e salve. (Mudar só essa constante não exige nova versão: ela é usada pela função manual do passo d.)
 
-- O login grava as credenciais em:
-  - **Windows:** `%USERPROFILE%\.clasprc.json` (por exemplo, `C:\Users\leand\.clasprc.json`);
-  - **macOS/Linux:** `~/.clasprc.json`.
-- Abra o arquivo no Bloco de Notas, selecione **tudo** (Ctrl+A) e copie.
-- Não mostre esse conteúdo a ninguém, não cole em chat e não commite (veja o item g).
+> Por que "Qualquer pessoa": o app chama a URL sem login do Google. Quem protege os dados é o **token**. Sem ele, toda chamada recebe `{"ok": false, "erro": "Acesso não autorizado"}`, e a planilha nem é lida.
 
-## e) Achar `SCRIPT_ID` e `DEPLOYMENT_ID` e criar os 3 secrets
+## d) Gerar o link de configuração e ligar o aparelho
 
-| Secret | Onde achar |
-|---|---|
-| `CLASPRC_JSON` | conteúdo inteiro do `.clasprc.json` (item d) |
-| `SCRIPT_ID` | Planilha → Extensões → Apps Script → ⚙️ **Configurações do projeto** → **ID do script** |
-| `DEPLOYMENT_ID` | No editor do Apps Script: **Implantar → Gerenciar implantações** → selecione a implantação "App da Web" → **ID da implantação** (começa com `AKfy…`) |
+1. No editor do Apps Script, escolha a função **`gerarLinkDeConfiguracao`** no seletor e clique em **Executar**.
+2. Abra o **Registro de execução**. Aparece o **link de configuração**: copie a linha inteira.
+   - Se aparecer um aviso ⚠️ (ex.: "Preencha URL_DA_API…"), corrija a constante, salve e rode de novo.
+   - Rodar de novo **não** troca o token: o link continua o mesmo, e os aparelhos já ligados continuam funcionando.
+3. **No seu aparelho:** abra o link no Chrome. Deve aparecer **"Aparelho conectado à planilha ✓"**. O endereço é limpo sozinho (o token sai da barra de endereço).
+4. **No celular do mecânico:**
+   1. mande o link **para ele, pelo WhatsApp**;
+   2. ele toca no link e abre no **Chrome**;
+   3. confira que apareceu "Aparelho conectado à planilha ✓";
+   4. **depois, apague a mensagem com o link, dos dois lados** ("Apagar para todos"). Ela dá acesso à planilha.
+5. Instale o app:
+   - no celular: Chrome → **"Instalar app"** (ou ⋮ → "Adicionar à tela inicial");
+   - no notebook: ícone de instalar na barra de endereço, ou ⋮ → **"Instalar Preço Certo"**.
+   - O ícone é o logo da CliniCar.
 
-Para criar cada secret: no GitHub, abra o repositório → **Settings → Secrets and variables → Actions → New repository secret**. O nome deve ser exatamente o da tabela, e o valor é colado sem espaços nem linhas a mais.
+Para conferir a API sem o app: rode **`testarApi`** no editor. O registro mostra "✓" para cada verificação e não altera os dados (regrava os mesmos).
 
-> O `DEPLOYMENT_ID` precisa ser o da implantação **App da Web** que você já usa, aquela cuja URL termina em `/exec`. Não use o ID da implantação de teste (`/dev`).
+## e) Quando o backend mudar (`apps-script/Codigo.gs` ou `appsscript.json`)
 
-## f) Rodar manualmente e ver o log
+Em **cada planilha** (a sua e a do mecânico):
+1. Extensões → Apps Script → cole o `Codigo.gs` novo.
+2. **Mantenha** o valor da sua `URL_DA_API`: copie antes de colar o arquivo novo e recoloque depois.
+3. Salve → **Implantar → Gerenciar implantações** → lápis → **Versão: Nova versão** → **Implantar**. A URL continua a mesma, e os aparelhos não precisam de nada.
 
-- **Rodar à mão:** repositório no GitHub → **Actions** → **Deploy Apps Script** → **Run workflow** → branch `main` → **Run workflow**.
-- **Ver o log:** em Actions, clique na execução e depois no job **deploy**. Cada passo abre o seu log. O resumo final mostra a versão publicada.
-- **Erros já tratados** (aparecem em vermelho, com o que fazer):
-  - secrets ausentes;
-  - `CLASPRC_JSON` inválido;
-  - credencial expirada ("refaça clasp login e atualize o secret CLASPRC_JSON");
-  - API desativada;
-  - `SCRIPT_ID` errado;
-  - `DEPLOYMENT_ID` errado.
+Se a mudança for nas duas pontas (API e tela), atualize o Apps Script **antes** do `git push`.
+
+## f) Quando só a tela mudar
+
+1. **Aumente a versão** em `sw.js`: `const VERSAO = 'v1';` → `'v2'` (depois `'v3'`…). É isso que faz os aparelhos baixarem a versão nova.
+2. Faça a conferência de segredos (início deste documento) e dê o `git push`.
+3. Em 1 a 2 minutos o Pages publica. Ao abrir, o app mostra **"Nova versão disponível · ATUALIZAR"**. Ao tocar, ele recarrega já na versão nova (aparece em **Ajustes → Este aparelho → Versão do app**).
+
+Se trocar os ícones: rode `tools/gerar-icones.ps1` (veja `tools/LEIA-ME.md`) e suba a versão do `sw.js`.
 
 ## g) Segurança
 
-- O `CLASPRC_JSON` contém um **token de acesso aos projetos Apps Script da conta Google** que fez o `clasp login`. Trate como senha.
-- **Nunca** commite `.clasprc.json` nem `.clasp.json`. Os dois estão no `.gitignore`.
-- O workflow grava a credencial com permissão restrita (`umask 077`), não mostra o conteúdo no log e apaga o arquivo no fim, mesmo se der erro.
-- Se o token vazar ou você trocar a senha do Google: rode `clasp logout`, depois `clasp login` de novo, e atualize o secret. Você também pode revogar o acesso em https://myaccount.google.com/permissions ("clasp").
-- **Ao migrar para a conta do usuário final** (o mecânico):
-  1. refaça `clasp login` com a conta **dele**;
-  2. substitua os **3** secrets: `CLASPRC_JSON` (novo login), `SCRIPT_ID` (o script da planilha dele) e `DEPLOYMENT_ID` (a implantação dele).
+- **O link de configuração dá acesso aos dados daquela planilha.** Mande só para o dono. Depois de configurar o aparelho, **apague a mensagem**.
+- **Se o link vazar** (ou um celular for perdido):
+  1. no editor do Apps Script daquela planilha, rode **`trocarToken`**. Todos os aparelhos ligados a ela perdem o acesso na hora e passam a mostrar "Este aparelho perdeu o acesso à planilha";
+  2. rode **`gerarLinkDeConfiguracao`** e abra o **link novo** em cada aparelho que deve continuar usando o app.
+- O token fica só em dois lugares:
+  - nas **Propriedades do script** (⚙️ Configurações do projeto → Propriedades do script → `TOKEN`);
+  - no armazenamento do navegador de cada aparelho.
+- A parte do link depois do `#` **não é enviada a nenhum servidor** (nem ao GitHub Pages, nem à prévia de link do WhatsApp).
+- No aparelho, **Ajustes → Este aparelho → Desconectar este aparelho** apaga a ligação e os dados guardados naquele aparelho. A planilha não é afetada.
+- As funções `gerarLinkDeConfiguracao`, `trocarToken` e `testarApi` são públicas no editor, mas **não podem ser chamadas pela internet**: a única entrada externa é a API, que só aceita as ações `obterDados`, `salvarDados` e `obterTaxasPadraoVisa`.
 
-## h) Testar o último código antes de virar versão (`/dev`)
+## Problemas comuns
 
-No editor do Apps Script: **Implantar → Testar implantações** → copie a URL que termina em `/dev`.
-
-- A `/dev` sempre roda o **último código enviado** (o `clasp push`), mesmo sem versão nova. Só a conta dona consegue abrir.
-- Para conferir sem publicar, rode `clasp push` local (sem `deploy`) e abra a `/dev`.
-- Para o autoteste, abra a `/dev` com `?teste=1` no fim.
-
-## i) Primeira vez: o código colado à mão será substituído
-
-Hoje o projeto Apps Script tem o código que foi colado à mão, num arquivo **"Código.gs"** (com acento). O primeiro `clasp push --force` **substitui todos os arquivos do projeto** pelos de `src/`. Depois dele, o projeto fica com exatamente:
-
-- `Codigo.gs` (sem acento; o "Código.gs" antigo é removido);
-- `Index.html`;
-- `appsscript.json` (o manifesto, com fuso `America/Sao_Paulo`, `executeAs: USER_DEPLOYING`, `access: MYSELF` e o escopo `spreadsheets.currentonly`).
-
-A planilha e os dados não são afetados: o push mexe só no código. A implantação continua com a mesma URL, porque é atualizada pelo `DEPLOYMENT_ID`.
+| Sintoma | Causa provável |
+|---|---|
+| App mostra "Resposta inesperada da planilha" | Implantação com acesso diferente de "Qualquer pessoa", ou URL `/dev` no lugar de `/exec` |
+| "Este aparelho perdeu o acesso à planilha" | O token foi trocado (`trocarToken`). Gere e abra um link novo |
+| "O link de configuração está incompleto…" | O link foi cortado ao copiar. Copie a linha inteira do Registro de execução |
+| Endereço do Pages dá 404 | A primeira publicação ainda não terminou (espere alguns minutos) ou Pages não está ligado (item b) |
+| Versão nova não aparece | Esqueceu de subir a `VERSAO` no `sw.js` antes do push |

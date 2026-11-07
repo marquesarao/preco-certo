@@ -6,13 +6,23 @@
 
 App web gratuito para um mecânico que abriu uma oficina e tem pouca familiaridade com finanças e tecnologia. Ele calcula quanto cobrar em um serviço, já com a taxa da maquininha repassada ao cliente, e mostra o lucro real.
 
-- Roda 100% na conta Google do usuário: uma **Planilha Google** guarda os dados, e um **Apps Script vinculado** serve a página (App da Web).
-- Implantação: **Executar como: Eu** · **Quem tem acesso: Somente eu**. A implantação é feita na conta Google **dele**.
-- **Instalação (opção A):** atalho no navegador. Não há página própria nem GitHub Pages.
-  - Celular: Chrome → ⋮ → "Adicionar à tela inicial".
-  - Notebook: Chrome → ⋮ → "Salvar e compartilhar" → "Criar atalho" → marcar "Abrir como janela".
-  - O ícone do atalho não pode ser personalizado: o Apps Script não permite manifesto próprio, e o `setFaviconUrl` exige uma URL pública.
-- Sem servidor próprio, sem login próprio, sem custo. A única chamada externa é a folha de estilo da fonte Inter (Google Fonts); se ela não carregar, a página usa a fonte do sistema.
+### Arquitetura (modelo do app Pendências)
+- **Tela no GitHub Pages:** HTML, CSS e JS estáticos, num repositório **público** `marquesarao/preco-certo`, publicado em **https://marquesarao.github.io/preco-certo/**. Publicar a tela = `git push`.
+- **Apps Script como API:** vinculado a **cada planilha**, colado à mão uma vez, só lê e grava a planilha. App da Web com **Executar como: Eu** e **Quem pode acessar: Qualquer pessoa**. O que protege os dados é o **token**.
+- **Um único app (mesmo link) para todos.** Cada **aparelho** fica ligado à planilha do seu dono (a planilha de teste do dono do projeto; a planilha do mecânico, na conta dele) por um **link de configuração** `#cfg=`.
+- **PWA instalável** (manifest, service worker, ícones CliniCar): botão "Instalar" no celular e no notebook; abre sem internet, mas, sem conexão, só para orçar.
+- Sem servidor próprio, sem login próprio, sem custo, **sem nenhuma chamada a terceiros além da planilha**. A fonte Inter fica hospedada no próprio app.
+
+**O que foi copiado do Pendências e o que é diferente:**
+
+| Copiado | Diferente, e por quê |
+|---|---|
+| Só `doPost`, com corpo JSON enviado como texto puro (`text/plain`, sem a checagem prévia de CORS); leitura com `resp.text()` + `JSON.parse`; tempo limite de 30 s | Ações `obterDados`, `salvarDados` e `obterTaxasPadraoVisa`, em vez de pull/push incremental. Os dados são pequenos e a planilha é a fonte da verdade |
+| Token nas Propriedades do script (2 UUIDs = 64 hex), comparação em tempo constante, checagem antes de tudo | Mensagem única "Acesso não autorizado" (também quando o servidor ainda não tem token) |
+| Funções manuais públicas no editor (`trocarToken`, `testarApi`) | `gerarLinkDeConfiguracao()` gera o **link `#cfg=`**. O Pendências só tem configuração manual; aqui ela fica como opção discreta |
+| `sw.js` com `VERSAO`, cache-first da casca, `cache:'reload'`, sem `skipWaiting` automático ("Nova versão · ATUALIZAR"); `beforeinstallprompt` | — |
+| Manifest com `id`, `start_url` e `scope` em `"./"`, `standalone`, ícones 192, 512, maskable e apple-touch | Ícones gerados do logo CliniCar por `tools/gerar-icones.ps1` |
+| Fonte hospedada no repositório; Pages "Deploy from a branch" (main, raiz), `.nojekyll`; conferência de segredos antes do push | **Sem IndexedDB nem fila de envio offline:** sem conexão, só orçar (regra que já existia), mais simples e sem conflitos |
 
 ### Diretriz principal: simples e intuitivo
 - Menos campos, menos telas, menos números. Na dúvida, esconder em "Ver detalhes" ou "Ver outras formas de pagamento".
@@ -22,8 +32,8 @@ App web gratuito para um mecânico que abriu uma oficina e tem pouca familiarida
 
 ### Identidade e direção visual (CliniCar Motors Tech)
 - **Referência:** app de banco digital (Nubank, InfinitePay, Mercado Pago): limpo, leve e respirado.
-- **Logo:** recortado do perfil da oficina (240 px, JPEG) e embutido no `Index.html` como `data:` URI. Aparece no topo (52 px) e na tela de carregamento.
-- **Fonte:** Inter (400, 500, 600 e 700) via Google Fonts, com reserva `system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`.
+- **Logo:** recortado do perfil da oficina (`tools/logo-origem.jpg`, 700 px) e gerado em `icons/logo-clinicar.jpg` (256 px). Aparece no topo (52 px), na tela de carregamento e na tela de conexão. É também o ícone do app instalado.
+- **Fonte:** Inter variável, hospedada em `fonts/inter-var.woff2` (subconjunto latino, licença OFL em `fonts/OFL.txt`), com reserva `system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`.
 - **Hierarquia por peso e tamanho:**
   - texto e campos: 400;
   - rótulos: 500, 14px, cinza-escuro;
@@ -59,19 +69,31 @@ App web gratuito para um mecânico que abriu uma oficina e tem pouca familiarida
 ## 2. Estrutura do repositório
 
 ```
-/src/Codigo.gs                 backend Apps Script
-/src/Index.html                app inteiro (HTML + CSS + JS)
-/src/appsscript.json           manifesto
+/index.html                    telas (markup) — publicado no GitHub Pages
+/manifest.webmanifest          PWA
+/sw.js                         service worker (cache da casca, VERSAO)
+/.nojekyll                     Pages serve os arquivos como estão
+/css/app.css                   visual
+/js/calculo.js                 funções puras de cálculo + casos de teste (script comum, também roda em Node)
+/js/config.js                  conexão do aparelho (localStorage) e leitura do link #cfg=
+/js/api.js                     chamada à API (fetch POST text/plain)
+/js/pwa.js                     service worker, "Nova versão · ATUALIZAR", instalar
+/js/app.js                     telas, eventos, cache, Desfazer
+/fonts/inter-var.woff2  /fonts/OFL.txt
+/icons/                        logo-clinicar.jpg, icon-192/512, icon-maskable-512, apple-touch-icon
+/apps-script/Codigo.gs         API (colar em cada planilha)
+/apps-script/appsscript.json   manifesto do Apps Script
+/tools/gerar-icones.ps1  /tools/logo-origem.jpg  /tools/LEIA-ME.md
 /docs/DESENHO.md               este documento
 /docs/GUIA-DO-USUARIO.md       guia para o mecânico (uso no dia a dia, instalação, cartões)
-/docs/LEIAME-instalacao.md     instalação (colar no editor ou clasp) e atualização — Fatia 5
 /docs/testes-calculo.md        casos de teste e resultados
-/docs/DEPLOY.md                deploy automático: secrets, clasp login, segurança
-/.github/workflows/deploy.yml  GitHub Actions: clasp push + atualização da implantação
-.gitignore  .claspignore  .clasp.json.exemplo (rootDir "src", scriptId vazio)
+/docs/DEPLOY.md                publicação no Pages, Apps Script em cada planilha, link de configuração, segurança
+.gitignore
 ```
 
-**Disciplina de trabalho:** só commits locais. Nunca rodar `git push`, `clasp login`, `clasp push` nem `clasp deploy`; isso cabe ao dono do projeto.
+**Disciplina de trabalho:** só commits locais. Nunca rodar `git push` nem `clasp` de qualquer tipo; publicar cabe ao dono do projeto.
+
+**Repositório público, nada sensível:** não entram token, URL `/exec`, link `#cfg=`, nem endereço ou ID de planilha. `URL_DA_API` vai vazia no `Codigo.gs`; a `URL_DO_APP` (endereço do Pages, que não é segredo) vai preenchida. Um teste automático varre o repositório procurando esses padrões, e o DEPLOY.md traz a conferência com `git grep` antes do push.
 
 ## 3. Planilha (abas criadas automaticamente por `configurarPlanilha_()`)
 
@@ -205,26 +227,76 @@ dados = {
                 acrescimoPecasPadrao: number, parcelasDestaque: string, nomeOficina: string },
   cartoes:    [{ nome: string, debito, p1, …, p12: number|null }]     // 0 a 12 cartões
 }
-obterDados()            → { ...dados, atualizadoEm: string|null, urlPlanilha: string }
-salvarDados(dados)      → atualizadoEm (ISO)
-obterTaxasPadraoVisa()  → { debito, p1, …, p12 }   // InfinitePay, para "Preencher com as taxas padrão"
 ```
 
-### Backend (`src/Codigo.gs`)
-**Só ficam públicas as funções que a página chama:** `doGet`, `obterDados`, `salvarDados` e `obterTaxasPadraoVisa`. Todas as outras terminam em `_`.
+### API (Apps Script `/exec`)
+```
+POST <URL /exec>   corpo como texto (text/plain): {"token":"…","action":"…", …}
+  action "obterDados"                → {ok:true, gastos, parametros, cartoes, atualizadoEm, urlPlanilha}
+  action "salvarDados", dados:{…}    → {ok:true, atualizadoEm}
+  action "obterTaxasPadraoVisa"      → {ok:true, taxas:{debito, p1 … p12}}
+  qualquer erro                      → {ok:false, erro:"mensagem em PT-BR"}
+GET <URL /exec>                      → {ok:false, erro:"Acesso não autorizado"}   (nunca HTML)
+```
+**Ordem no `doPost`:**
+1. ler o JSON (inválido → "Pedido inválido.");
+2. **conferir o token** (ausente, errado ou servidor sem token → **"Acesso não autorizado"**). **Nada da planilha é tocado antes disso;**
+3. conferir a ação, que tem de estar na lista `ACOES_` (fora dela → **"Ação desconhecida."**);
+4. pegar o lock;
+5. `configurarPlanilha_()` (cria abas e migra a aba Taxas antiga);
+6. executar a ação.
 
+Erros de validação voltam com a própria mensagem ("Dias de trabalho por semana: digite um número."). Erros inesperados voltam como "Erro interno no servidor. Tente de novo.", e o detalhe vai só para o log.
+
+### Segurança
+- O token tem 64 caracteres hexadecimais (2 UUIDs). Fica nas **Propriedades do script** (chave `TOKEN`) e no `localStorage` de cada aparelho. Nunca entra no repositório.
+- **Funções públicas** (sem `_`) do `Codigo.gs`: `doGet`, `doPost` e as três manuais `gerarLinkDeConfiguracao()`, `trocarToken()` e `testarApi()`.
+  - As manuais precisam ser públicas: funções com `_` são privadas e não aparecem no menu "Executar" do editor.
+  - Isso é seguro porque o projeto **não usa HtmlService**. Não existe `google.script.run`, e a **única porta de entrada externa é o `doPost`**, que só executa as ações de `ACOES_`.
+  - Mesmo com o token válido, `action: "trocarToken"` (ou qualquer outro nome) recebe "Ação desconhecida.". Um teste automático confere isso.
+- Todas as outras funções terminam em `_`.
+- **Link de configuração:** `URL_DO_APP + "#cfg=" + base64url({"api": URL_DA_API, "token": …})`.
+  - A parte depois do `#` não é enviada a nenhum servidor (nem ao Pages, nem à prévia de link do WhatsApp).
+  - O app limpa o endereço (`history.replaceState`) assim que lê o link.
+  - Quem recebe o link tem acesso à planilha. Depois de configurar o aparelho do mecânico, **apagar a mensagem do WhatsApp**. Se vazar: `trocarToken()` + link novo.
+- `trocarToken()` invalida todos os aparelhos daquela planilha. Eles passam a mostrar "Este aparelho perdeu o acesso à planilha", e a edição fica bloqueada.
+
+### Backend (`apps-script/Codigo.gs`)
 | Função | Papel |
 |---|---|
-| `doGet()` | `tryLock` (10 s) e `configurarPlanilha_()`; sem lock, segue sem configurar. Devolve `Index` (título "Preço Certo", viewport, XFrame DEFAULT) |
-| `configurarPlanilha_()` | Idempotente: cria abas ausentes ou vazias e roda `migrarTaxasAntigas_` (uma única vez). Quem chama segura o lock |
-| `obterDados()` | Lê gastos, parâmetros e cartões, mais `atualizadoEm` e a URL da planilha |
-| `salvarDados(d)` | Valida, pega o lock, regrava as 3 abas e grava `atualizadoEm` |
-| `obterTaxasPadraoVisa()` | Taxas InfinitePay Visa/Master |
-| `converterTaxasAntigas_`, `limparCartoesLidos_` | Funções puras de migração e de leitura tolerante dos cartões (testadas em Node) |
-| `validarCartoes_`, `validarGastos_`, `validarParametros_`, `lerCartoes_`, `lerGastos_`, `lerParametros_`, `chaveNome_`, `lerNumeroBR_` … | Internas |
+| `doGet()` | Sempre `{ok:false, erro:"Acesso não autorizado"}` |
+| `doPost(e)` | Roteador da API (ordem acima) |
+| `ACOES_` | `obterDados`, `salvarDados`, `obterTaxasPadraoVisa` — as únicas ações |
+| `gerarLinkDeConfiguracao()` | **Manual.** Confere `URL_DO_APP` e `URL_DA_API` e, se faltar algo ou o formato estiver errado, para com uma mensagem clara no Logger. Cria o token se não existir e imprime o link com instruções |
+| `trocarToken()` | **Manual.** Gera um token novo (todos os aparelhos perdem o acesso) |
+| `testarApi()` | **Manual.** Teste de ponta a ponta do `doPost` no editor, sem alterar os dados |
+| `configurarPlanilha_()` | Idempotente: cria abas ausentes ou vazias e roda `migrarTaxasAntigas_` (uma única vez). Roda dentro do lock |
+| `obterDados_()`, `salvarDados_(limpo)`, `obterTaxasPadraoVisa_()` | Ações internas |
+| `converterTaxasAntigas_`, `limparCartoesLidos_`, `problemaNasUrls_`, `montarLinkDeConfiguracao_` | Funções puras (testadas em Node) |
+| `validarToken_`, `iguais_`, `validarDados_`, `validarCartoes_`, `lerCartoes_`, `chaveNome_`, `lerNumeroBR_` … | Internas |
 
-### Frontend (`src/Index.html`)
-- **Cálculo** (funções puras, no bloco `<script id="calculo">`):
+**Constantes no topo** (preenchidas em cada planilha):
+- `URL_DO_APP` = `https://marquesarao.github.io/preco-certo/` (já vem preenchida);
+- `URL_DA_API` = a URL `/exec` daquela implantação. Vai vazia no repositório; preenchida à mão, sem `ScriptApp`.
+
+**Manifesto:** `executeAs: USER_DEPLOYING`, `access: ANYONE_ANONYMOUS`, escopo **`spreadsheets.currentonly`**. `ContentService`, `PropertiesService`, `LockService`, `Utilities` e `Logger` não pedem escopo.
+
+### Frontend (GitHub Pages)
+- **Conexão do aparelho** (`js/config.js`):
+  - fica no `localStorage` (chave `precoCerto.conexao.v1`, `{api, token}`);
+  - **link `#cfg=`:** o app decodifica o base64url (com ou sem `=`), valida o JSON (`api` no formato `/exec`, igual ao do backend; `token` com 32 a 256 caracteres `[A-Za-z0-9_-]`), **testa com `obterDados`**, só então guarda, limpa o endereço e mostra "Aparelho conectado à planilha ✓". Com erro, aparece uma mensagem simples e nada é guardado;
+  - **sem configuração:** tela "Este aparelho ainda não está ligado a uma planilha. Abra o link de configuração que você recebeu.", com a opção discreta **"Configurar manualmente"** (colar a URL e o token, com as mesmas validações);
+  - ao ligar o aparelho a **outra** planilha, o cache de dados da anterior é apagado.
+- **Chamada à API** (`js/api.js`): `fetch` POST com o corpo como texto, segue o redirecionamento do Apps Script e tem tempo limite de 30 s. Os erros têm tipo:
+  - `rede`: "Sem conexão" ou falha de rede;
+  - `acesso`: "Acesso não autorizado";
+  - `servidor`: resposta que não é JSON (implantação errada) ou `{ok:false}`.
+- **PWA** (`js/pwa.js`, `sw.js`, `manifest.webmanifest`):
+  - **service worker:** cache `preco-certo-vN` com a casca (15 arquivos); a navegação recebe sempre o `index.html` do cache; a API não passa pelo cache;
+  - **versão nova:** barra "Nova versão disponível · ATUALIZAR". Só recarrega quando a pessoa toca;
+  - **instalação:** `beforeinstallprompt` → aviso único "Instale o Preço Certo…" e botão "Instalar app" em Ajustes;
+  - **manifest:** "Preço Certo", `./`, `standalone`, `theme_color` e `background_color` `#0e0e0e`.
+- **Cálculo** (funções puras, em `js/calculo.js`):
   - números e validação: `lerNumeroBR`, `validarNumeroCampo`, `validarHorasCobradas`, `normalizarParcelas`, `centavos`, `formatarBRL`, `formatarHoras`;
   - gastos e horas: `horasCobradasMes`, `precoMinimoHora`, `calcularMaoDeObra`, `calcularPecasCobrar`;
   - cartões: `chaveNome`, `acharCartao`, `cartaoEfetivo`, `taxaDaForma`, `validarNomeCartao`;
@@ -234,10 +306,11 @@ obterTaxasPadraoVisa()  → { debito, p1, …, p12 }   // InfinitePay, para "Pre
   - **cache e servidor:** o cache local abre o app rápido, e em seguida a planilha (fonte da verdade) substitui o cache. O app recarrega da planilha quando volta a ficar visível, se não houver nada pendente.
   - **salvamento:** acontece 800 ms depois da última alteração, com o status "Salvando…", "Salvo ✓" ou "Erro ao salvar – tentar de novo". Ao sair do app, o que estiver pendente é salvo na hora.
   - **antes de carregar a planilha:** "Meus gastos" e "Ajustes" ficam bloqueados.
-  - **sem conexão e com cache:** aparece a faixa "Sem conexão: só orçamento".
+  - **sem conexão e com cache:** aparece a faixa "Sem conexão: só orçamento". O app abre pela casca do service worker, inclusive em modo avião.
+  - **token trocado:** aparece a faixa "Este aparelho perdeu o acesso à planilha. Abra o novo link de configuração." e a edição fica bloqueada.
   - **remover gasto ou cartão:** some na hora e aparece a barra "Gasto removido · DESFAZER" (ou "Cartão removido · DESFAZER") por 6 s. O salvamento só acontece quando a barra some, ou junto com a próxima alteração.
-- **Copiar:** tenta em 3 níveis: clipboard, depois `execCommand`, depois uma caixa com o texto selecionado. O botão "Compartilhar" só aparece se funcionar.
-- **Autoteste:** `?teste=1`.
+- **Copiar:** fora do iframe do Apps Script, a área de transferência funciona em HTTPS. São 2 níveis: área de transferência e, se falhar, a caixa com o texto selecionado. O botão "Compartilhar" aparece sempre que o navegador tiver `navigator.share`.
+- **Autoteste:** `?teste=1`, lido direto de `location.search`.
 
 ## 6. Telas
 
@@ -312,10 +385,20 @@ Peças: R$ …
   - Renomear o cartão escolhido no orçamento mantém a escolha.
 - **Card "Outros ajustes":** acréscimo padrão nas peças (%), imposto (%), parcelas em destaque e nome da oficina.
 - "Abrir minha planilha" e "Última alteração salva: …".
+- **Card "Este aparelho"** (fora do bloqueio de edição, funciona sem conexão):
+  - "Planilha conectada: …/s/…a1B2c3/exec", só o final da URL;
+  - "Versão do app";
+  - "Instalar app", quando o navegador oferece;
+  - "Desconectar este aparelho", com confirmação na página. Apaga a conexão e o cache de dados (o rascunho do orçamento fica) e volta para a tela de conexão.
+
+### 6.4 Tela de conexão (aparelho sem planilha)
+- Logo, "Preço Certo" e o texto "Este aparelho ainda não está ligado a uma planilha. Abra o link de configuração que você recebeu.".
+- O link discreto "Configurar manualmente" abre os campos "URL da planilha (termina em /exec)" e "Chave de acesso", mais o botão "Conectar".
+- Nessa tela as abas e o status ficam escondidos.
 
 ## 7. Casos de teste (igualdade exata em centavos)
 
-Ficam no próprio `Index.html` (`casosDeTeste()`). Rodam no app com `?teste=1` e em Node. Resultados em `docs/testes-calculo.md`.
+Ficam em `js/calculo.js` (`casosDeTeste()`). Rodam no app com `?teste=1` e em Node. Resultados em `docs/testes-calculo.md`, junto com os testes da API (R, L, P), do link `#cfg=` (F), da varredura de segredos e de tela.
 
 | # | Caso | Esperado |
 |---|---|---|
@@ -340,34 +423,27 @@ Ficam no próprio `Index.html` (`casosDeTeste()`). Rodam no app com `?teste=1` e
 | P1–P4 | Peças com acréscimo | 735,00 · 0% = mesmo valor · 489,9951 → 490,00 · lucro nas peças = cobrar − pagar |
 | W1–W4 | Texto do WhatsApp | fecha com o à vista no centavo; negrito; acréscimo não aparece |
 
-Os casos C4 (leitura), C6 e C7 são testes do **backend** (Node, com a planilha simulada). Os demais são do bloco de cálculo do frontend.
+Os casos C4 (leitura), C6 e C7 são testes do **backend** (Node, com a planilha simulada). Os demais estão em `js/calculo.js`.
 
 Se algum caso divergir, a fórmula **não** é ajustada para forçar o número: a divergência é reportada.
 
-## 8. Deploy
+## 8. Publicação
 
-- **Repositório:** privado, no GitHub do dono do projeto. Só ele faz `git push`; aqui só há commits locais.
-- **Automático:** a cada push na `main` que altere `src/**`, ou manualmente por `workflow_dispatch`, o workflow `.github/workflows/deploy.yml` roda.
-  - Ambiente: `ubuntu-latest`, Node LTS e `@google/clasp@3.4.1` fixado.
-  - Passos: `clasp push --force` e depois `clasp deploy --deploymentId $DEPLOYMENT_ID --description "<sha curto> – <título do commit até 60 caracteres>"`.
-  - O deploy cria uma versão nova e atualiza a implantação existente, mantendo a mesma URL `/exec`.
-  - `concurrency` impede dois deploys ao mesmo tempo.
-- **Versões fixadas e comprovadas** (releases oficiais, 07/11/2026): `actions/checkout@v7` (v7.0.1, 20/07/2026) e `actions/setup-node@v7` (v7.1.0, 08/10/2026).
-- **O `clasp login` local precisa usar a mesma versão do workflow (3.4.1):** o formato do `.clasprc.json` mudou no clasp 3.
-- **Secrets:** `CLASPRC_JSON`, `SCRIPT_ID` e `DEPLOYMENT_ID`.
-  - O `.clasp.json` é gerado na hora (`rootDir: "src"`).
-  - As credenciais são gravadas com `umask 077`, nunca aparecem no log e são apagadas no fim.
-- **Envio:** o `push` manda exatamente `src/Codigo.gs`, `src/Index.html` e `src/appsscript.json`. O primeiro push substitui o "Código.gs" colado à mão.
-- **Teste antes de publicar:** URL `/dev` (Implantar → Testar implantações).
-- **Migração para a conta do mecânico:** novo `clasp login` e substituição dos 3 secrets.
+O clasp e o GitHub Actions foram **removidos** (`.github/workflows/deploy.yml`, `.claspignore`, `.clasp.json.exemplo`).
+
+- **Tela:** `git push` na `main` → GitHub Pages ("Deploy from a branch", `main` / raiz), igual ao Pendências. A primeira publicação leva alguns minutos.
+  - A cada mudança na tela, **subir a `VERSAO` em `sw.js`**. É isso que mostra "Nova versão · ATUALIZAR" nos aparelhos.
+- **API:** colar `apps-script/Codigo.gs` e `appsscript.json` em **cada planilha** (Extensões → Apps Script). Implantar como App da Web com **Eu** e **Qualquer pessoa**, preencher `URL_DA_API` e rodar `gerarLinkDeConfiguracao()`.
+  - Quando o backend mudar: colar de novo e usar "Gerenciar implantações → Nova versão", que mantém a mesma URL.
+- **Primeira vez em uma planilha que já usava o app antigo:** apagar o `Index.html` do projeto Apps Script e substituir o "Código.gs". As abas e os dados não mudam, e a migração da aba Taxas continua valendo.
 - Passo a passo: `docs/DEPLOY.md`.
 
 ## 9. Fatias
 1. Desenho ✅
-2. Backend: `src/Codigo.gs` e `src/appsscript.json` ✅
-3. Frontend: `src/Index.html` ✅
-   - Parte 2: novo visual, acréscimo nas peças e cartões cadastráveis (aguardando aprovação)
-4. Testes de cálculo: autoteste completo (T14, T15) e `docs/testes-calculo.md`
-5. Documentação: `docs/LEIAME-instalacao.md` (o `GUIA-DO-USUARIO.md` já existe)
+2. Backend ✅
+3. Frontend ✅ (Parte 2: novo visual, acréscimo nas peças e cartões cadastráveis ✅)
+4. **Arquitetura Pendências:** tela no GitHub Pages, Apps Script como API, PWA e link de configuração (aguardando aprovação)
+5. Testes de cálculo: autoteste completo (T14, T15)
+6. Documentação final (`GUIA-DO-USUARIO.md` já existe; o `DEPLOY.md` cobre a instalação)
 
 Cada fatia termina com uma parada para revisão. O commit local só é feito depois da aprovação.

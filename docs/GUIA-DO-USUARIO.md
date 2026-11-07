@@ -4,21 +4,25 @@ O Preço Certo mostra **quanto cobrar** em cada serviço, **já com a taxa da ma
 
 ---
 
-## 1. Colocar o app no celular e no computador
+## 1. Ligar o app à sua planilha e instalar
 
-**No celular (Chrome):**
-1. Abra o link do app.
-2. Toque nos **3 pontinhos (⋮)** no canto de cima.
-3. Toque em **"Adicionar à tela inicial"** → **Adicionar**.
-4. Pronto: o app aparece na tela do celular, como os outros.
+**Primeira vez (uma vez só em cada aparelho):**
+1. Você vai receber pelo WhatsApp um **link de configuração**.
+2. Toque no link e abra no **Chrome**.
+3. Deve aparecer **"Aparelho conectado à planilha ✓"**.
+4. **Pronto. Agora apague a mensagem com o link.** Ela dá acesso aos seus dados.
 
-**No computador (Chrome):**
-1. Abra o link do app.
-2. Clique nos **3 pontinhos (⋮)** → **"Salvar e compartilhar"** → **"Criar atalho"**.
-3. Marque **"Abrir como janela"** e clique em **Criar**.
+**Instalar no celular (Chrome):**
+1. Com o app aberto, toque em **"Instalar"** quando aparecer o aviso embaixo, ou em **Ajustes → Instalar app**.
+2. Se não aparecer: toque nos **3 pontinhos (⋮)** → **"Instalar app"** (ou "Adicionar à tela inicial").
+3. O app aparece na tela do celular com o **ícone da CliniCar**. Abra sempre por ele.
 
-> Use o navegador entrando **só com a sua conta do Google**. Com várias contas abertas, o app pode dar erro.
-> A faixa de aviso do Google que às vezes aparece no topo é normal.
+**Instalar no computador (Chrome):**
+1. Abra o app e clique no **ícone de instalar** na barra de endereço, ou nos **3 pontinhos (⋮)** → **"Instalar Preço Certo"**.
+2. Ele abre numa janela própria, com o ícone da CliniCar.
+
+> O app funciona **mesmo sem internet**, só que aí ele serve só para orçar (aparece "Sem conexão: só orçamento").
+> Quando sair uma versão nova, aparece **"Nova versão disponível · ATUALIZAR"**. Toque em ATUALIZAR.
 
 ---
 
@@ -93,3 +97,5 @@ Cada cartão (Visa, Master, Elo, Amex…) tem uma taxa diferente na maquininha. 
 - **Sem internet?** Dá para orçar com os últimos dados do aparelho (aparece **"Sem conexão: só orçamento"**). Gastos e ajustes voltam a funcionar quando a internet voltar.
 - **É MEI?** Deixe o **Imposto** em 0 e coloque o DAS em **Meus gastos**.
 - Quer ver os dados? Em **Ajustes**, toque em **"Abrir minha planilha"**.
+- Apareceu **"Este aparelho perdeu o acesso à planilha"**? Peça um **link de configuração novo** e abra no aparelho.
+- Vai trocar de celular ou emprestar o aparelho? Em **Ajustes → Este aparelho → "Desconectar este aparelho"**. Seus dados continuam na planilha.
