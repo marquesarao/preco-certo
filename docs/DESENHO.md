@@ -36,6 +36,17 @@ App web gratuito para um mecânico que abriu uma oficina e tem pouca familiarida
 
 ## 3. Planilha (abas criadas automaticamente por `configurarPlanilha()`)
 
+### 3.0 Regra geral: leitura tolerante, gravação rígida, mesmos limites
+- **Tudo o que `obterDados()` devolve precisa passar em `validarDados_()` sem erro.** Assim, uma edição manual errada na planilha nunca deixa o app preso em "Erro ao salvar".
+- Os limites ficam num lugar só no backend (`LIMITES_PARAMETROS_`, `LIMITE_TAXA_`, `LIMITE_VALOR_GASTO_`) e valem tanto para a leitura quanto para a validação.
+- **Leitura:**
+  - parâmetro inválido ou fora do limite → usa o **padrão** daquela chave;
+  - taxa ou valor de gasto inválido ou fora do limite → **vazio** (`null`);
+  - parcela em destaque inválida → descartada;
+  - textos longos → cortados no limite.
+- **Validação (salvar):** dado inválido ou fora do limite → erro com mensagem em português.
+- **Frontend:** nunca envia o que `validarDados_` rejeitaria. Valida no campo, mostra a mensagem em linguagem simples junto do campo e não dispara o salvamento enquanto houver campo inválido.
+
 ### 3.1 Aba `Gastos`
 | Tipo | Descrição | Valor por mês (R$) |
 |---|---|---|
@@ -55,7 +66,7 @@ Colunas `Chave` | `Valor`. A coluna `Valor` fica em formato **texto (`@`)**. Os 
 | horasCobradasPorDia | 6 | maior que 0 e no máximo `horasPorDia` |
 | valorHoraCobrado | 150 | ≥ 0 |
 | impostoPercentual | 0 | de 0 a 99 |
-| parcelasDestaque | "5,10" | inteiros de 1 a 12 separados por vírgula (pode ficar vazio) |
+| parcelasDestaque | "5,10" | inteiros de 1 a 12 separados por vírgula. Pode ficar vazio: aí nenhum card de cartão aparece em destaque, só "Ver outras formas de pagamento" |
 | nomeOficina | "" | texto (até 60 caracteres) |
 
 O `atualizadoEm` **não** fica na planilha; vai para `PropertiesService.getDocumentProperties()`.
@@ -149,12 +160,12 @@ obterTaxasPadraoVisa() → [{ forma, parcelas, taxa }]   // Débito e Crédito 1
 ### Backend (`src/Codigo.gs`)
 | Função | Papel |
 |---|---|
-| `doGet()` | Chama `configurarPlanilha()` e devolve `Index` com título "Preço Certo", viewport e XFrameOptionsMode DEFAULT |
-| `configurarPlanilha()` | Idempotente: cria abas ausentes ou vazias com cabeçalho, formatos e dados padrão |
+| `doGet()` | Pega o `LockService` (`tryLock`, 10 s) e chama `configurarPlanilha()`. Sem lock, segue sem configurar (outro acesso está configurando). Devolve `Index` com título "Preço Certo", viewport e XFrameOptionsMode DEFAULT |
+| `configurarPlanilha()` | Idempotente: cria abas ausentes ou vazias com cabeçalho, formatos e dados padrão. Quem chama segura o lock (`doGet`, ou `salvarDados` chamando direto, sem lock aninhado) |
 | `obterDados()` | Lê as 3 abas, `atualizadoEm` e a URL da planilha |
 | `salvarDados(d)` | Valida, pega o `LockService` (até 10 s), regrava o corpo das 3 abas, grava e retorna `atualizadoEm` |
 | `obterTaxasPadraoVisa()` | Coluna Visa/Master padrão, para o botão "Voltar taxas da InfinitePay" |
-| `validarDados_`, `lerGastos_`, `lerParametros_`, `lerTaxas_`, `regravarCorpo_`, `lerNumeroBR_`, `formatarNumeroBR_` | Internas |
+| `validarDados_`, `lerGastos_`, `lerParametros_`, `lerTaxas_`, `dentroDoLimite_`, `exigirNumero_`, `regravarCorpo_`, `lerNumeroBR_`, `formatarNumeroBR_` | Internas. Leitura e validação compartilham os limites (seção 3.0) |
 
 ### Frontend (`src/Index.html`)
 - **Cálculo (funções puras, testáveis):** `lerNumeroBR`, `centavos`, `formatarBRL`, `horasCobradasMes`, `precoMinimoHora`, `calcularMaoDeObra`, `taxaDaLinha(linha, bandeira)`, `bandeirasDisponiveis(taxas)`, `calcularOpcao(aVista, taxa, n)`, `calcularOrcamento(...)`, `textoWhatsApp(...)`.
@@ -279,7 +290,7 @@ Se algum caso divergir, a fórmula **não** é ajustada para forçar o número: 
 
 ## 8. Fatias
 1. Desenho ✅ (este documento)
-2. Backend: `src/Codigo.gs` e `src/appsscript.json`
+2. Backend: `src/Codigo.gs` e `src/appsscript.json` ✅
 3. Frontend: `src/Index.html`
 4. Testes de cálculo: autoteste e `docs/testes-calculo.md`
 5. Documentação: `docs/LEIAME-instalacao.md` e `docs/GUIA-DO-USUARIO.md`
