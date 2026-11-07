@@ -19,6 +19,13 @@ App web gratuito para um mecânico que abriu uma oficina e tem pouca familiarida
 - `inputmode="decimal"` em todos os campos de valor.
 - Toda a interface em PT-BR com acentuação correta.
 
+### Identidade visual: CliniCar Motors Tech
+- Oficina do usuário: **CliniCar Motors Tech**. O logo (recortado do perfil da oficina, 240 px, JPEG) vai embutido no `Index.html` como `data:` URI, sem arquivo externo.
+- Cores: preto `#0e0e0e` (topo), laranja `#ed8a1f` (faixa do topo, aba ativa, chips selecionados, card à vista, foco), laranja escuro `#a85a00` (links e "Ver…" sobre fundo branco, para ter contraste) e prata `#c9ccd1` (textos secundários no topo).
+- **Verde e vermelho continuam reservados** para lucro e prejuízo. O botão "Copiar para WhatsApp" continua verde.
+- `nomeOficina` vem com o padrão "CliniCar Motors Tech" e pode ser mudado em Ajustes.
+- O ícone da tela inicial do celular não pode ser personalizado: o Apps Script não permite manifesto próprio e o `setFaviconUrl` exige uma URL pública.
+
 ## 2. Estrutura do repositório
 
 ```
@@ -67,7 +74,7 @@ Colunas `Chave` | `Valor`. A coluna `Valor` fica em formato **texto (`@`)**. Os 
 | valorHoraCobrado | 150 | ≥ 0 |
 | impostoPercentual | 0 | de 0 a 99 |
 | parcelasDestaque | "5,10" | inteiros de 1 a 12 separados por vírgula. Pode ficar vazio: aí nenhum card de cartão aparece em destaque, só "Ver outras formas de pagamento" |
-| nomeOficina | "" | texto (até 60 caracteres) |
+| nomeOficina | "CliniCar Motors Tech" | texto (até 60 caracteres) |
 
 O `atualizadoEm` **não** fica na planilha; vai para `PropertiesService.getDocumentProperties()`.
 
@@ -128,8 +135,10 @@ O arredondamento é comercial e feito em centavos inteiros (`Math.round(valor ×
 - parcela = `arredondar(totalExato ÷ n)`
 - Não exibir "parcela × n"; mostrar só "N× de R$ X" e "Total R$ Y".
 
+**Divergência conhecida (aceita):** 1x 3,15% sobre R$ 1.000. O app InfinitePay mostra 1.032,53; nosso cálculo dá 1.032,52 (total exato 1.032,5245). A diferença é de R$ 0,01, provavelmente porque a taxa real é exibida arredondada. A fórmula não muda. Nenhuma regra simples bate com os 4 casos conferidos: arredondar para cima acerta o 1x, mas erra o 2x. Detalhes em `docs/testes-calculo.md`.
+
 **Lucro:**
-- `imposto = totalDaOpcao × impostoPercentual/100`
+- `imposto = totalDaOpcao × impostoPercentual/100`, em que `totalDaOpcao` é o **total já arredondado**, ou seja, o que o cliente paga.
 - `lucro = (maoDeObra − horas × precoMinimoHora) + lucroPecas − imposto`
 - O valor grande usa a opção à vista.
 - Se o imposto for maior que 0, aparece embaixo e em letra pequena: "No cartão em {maior parcela em destaque}x: R$ …", na bandeira selecionada.
@@ -170,14 +179,19 @@ obterTaxasPadraoVisa() → [{ forma, parcelas, taxa }]   // Débito e Crédito 1
 | `validarDados_`, `lerGastos_`, `lerParametros_`, `lerTaxas_`, `dentroDoLimite_`, `exigirNumero_`, `regravarCorpo_`, `lerNumeroBR_`, `formatarNumeroBR_` | Internas. Leitura e validação compartilham os limites (seção 3.0) |
 
 ### Frontend (`src/Index.html`)
-- **Cálculo (funções puras, testáveis):** `lerNumeroBR`, `centavos`, `formatarBRL`, `horasCobradasMes`, `precoMinimoHora`, `calcularMaoDeObra`, `taxaDaLinha(linha, bandeira)`, `bandeirasDisponiveis(taxas)`, `calcularOpcao(aVista, taxa, n)`, `calcularOrcamento(...)`, `textoWhatsApp(...)`.
+- **Cálculo (funções puras, testáveis, no bloco `<script id="calculo">`):** `lerNumeroBR`, `validarNumeroCampo`, `validarHorasCobradas`, `normalizarParcelas`, `centavos`, `formatarBRL`, `formatarHoras`, `horasCobradasMes`, `precoMinimoHora`, `calcularMaoDeObra`, `taxaDaLinha(linha, bandeira)`, `bandeirasDisponiveis(taxas)`, `calcularOpcao(aVista, taxa, n)`, `calcularOrcamento(...)`, `valoresWhatsApp(res)`, `textoWhatsApp(...)`.
+- **Dados de teste** (`VISA_TESTE`, `taxasDeTeste`, `casosDeTeste`) ficam no bloco de cálculo e só são usados pelo autoteste. O app nunca os usa; um teste automático confere isso.
 - **Sincronização:**
   - `carregarCache` lê o `localStorage` para abrir rápido; em seguida `carregarServidor` substitui o cache, porque a planilha é a fonte da verdade.
   - `agendarSalvar` espera 800 ms após a última alteração e salva; `mostrarStatus` exibe "Salvando…", "Salvo ✓" ou "Erro ao salvar – tentar de novo".
   - Quando o app volta a ficar visível (`visibilitychange`) e não há alteração pendente, recarrega do servidor. Não há detecção de conflito: quem salvar por último vence.
-  - O frontend só envia dados válidos. Um campo inválido mostra o aviso no próprio campo e não dispara o salvamento.
+  - O frontend só envia dados válidos. Um campo inválido mostra o aviso no próprio campo e não dispara o salvamento; o status mostra "Corrija o campo em vermelho".
+  - Texto inválido num gasto ou numa taxa é descartado quando a lista é redesenhada (ao remover uma linha ou trocar de bandeira). O campo volta ao último valor válido.
+  - **Antes de carregar a planilha**, "Meus gastos" e "Ajustes" ficam bloqueados para edição, para um cache antigo não sobrescrever a planilha. **Sem conexão** e com cache, o app mostra a faixa discreta "Sem conexão: só orçamento" e o status "Sem conexão – tentar de novo"; o Orçamento funciona com os dados do cache.
+  - **Remover gasto:** a linha some na hora e aparece por 6 s a barra "Gasto removido · DESFAZER". O salvamento só dispara quando a barra some (ou junto com a próxima alteração). Desfazer uma remoção que ainda não foi salva não gera salvamento. Ao sair do app (aba oculta), a remoção é confirmada e salva na hora. Sem diálogo de confirmação.
+  - Ao sair do app (`visibilitychange` para oculto ou `pagehide`), o que estiver esperando o salvamento é enviado na hora.
 - **Telas:** `trocarTela`, `renderOrcamento`, `renderGastos`, `renderAjustes`.
-- **Copiar e compartilhar:** `copiarTexto` tenta em 3 níveis: `navigator.clipboard`, depois `execCommand('copy')`, depois uma caixa de texto selecionada para copiar à mão. `testarCompartilhar` só mostra o botão "Compartilhar" se o recurso funcionar.
+- **Copiar e compartilhar:** `copiarTexto` tenta em 3 níveis: `navigator.clipboard`, depois `execCommand('copy')`, depois uma caixa de texto selecionada para copiar à mão. `testarCompartilhar` só mostra o botão "Compartilhar" se o recurso existir. Se falhar de verdade (não só ser cancelado pela pessoa), o botão fica escondido naquele aparelho.
 - **Teste:** `executarAutoteste()`, ativado por `?teste=1` (lido com `google.script.url.getLocation()`).
 - O orçamento não é salvo na planilha; fica só em memória e no `localStorage`.
 
@@ -208,17 +222,25 @@ Cartão do cliente:  ( Não sei ✓ ) ( Visa/Master ) ( Elo ) ( Amex ) ( Hiper )
 Não sabe o cartão do cliente? Deixe em "Não sei": o preço cobre qualquer bandeira.
 ┌ 💳 Cartão em 5x ─ 5× de R$ 367,85 · Total R$ 1.839,23 ┐   ← um card por parcelasDestaque
 ┌ 💳 Cartão em 10x ─ … ┐                                     (some se a linha estiver vazia)
-▸ Ver outras formas de pagamento  → Débito — total R$ … ; "Nx de R$ X — total R$ Y" de 1x a 12x
+▸ Ver outras formas de pagamento  → Débito — total R$ … ; "Nx de R$ X — total R$ Y"
+                                    (sem repetir as parcelas que já estão em destaque;
+                                     sem nenhuma linha: "Nenhuma taxa cadastrada para este cartão. Veja em Ajustes.")
 
 ┌ Seu lucro neste serviço ─ R$ 740,00 (verde; vermelho se < 0) ┐
   (se < 0) "Esse preço não cobre seus gastos do mês"
   (se imposto > 0) "No cartão em 10x: R$ …"
-  ▸ Ver detalhes → Mão de obra · Gasto das horas · Lucro nas peças · Imposto
+  ▸ Ver detalhes → Mão de obra: R$ 1.200,00
+                   Gasto das suas 8 horas: − R$ 430,77     ← nenhuma multiplicação visível
+                   Lucro nas peças: R$ 100,00
+                   Imposto (à vista): − R$ …               ← só se imposto > 0
   (sem gastos) faixa "Coloque seus gastos em Meus gastos para ver o lucro"
 
 [ 📲 Copiar para WhatsApp ] (verde, grande)  [ Compartilhar ] (se funcionar)  [ Novo orçamento ]
 ```
-A taxa em R$ **não** aparece para o usuário; ela já está embutida no que o cliente paga. A bandeira volta para "Não sei" a cada novo orçamento.
+- Enquanto o à vista for 0, os resultados ficam escondidos e aparece a dica "Preencha as horas (ou o valor) e as peças para ver o preço."
+- Horas aparecem por extenso, sem zeros desnecessários: "8 horas", "6,5 horas", "1 hora".
+- Um card de destaque em 1x mostra só o total ("Cartão em 1x: R$ X"), sem a parcela.
+- A taxa em R$ **não** aparece para o usuário; ela já está embutida no que o cliente paga. A bandeira volta para "Não sei" a cada novo orçamento.
 
 **Texto do WhatsApp** (sem custo, lucro, taxa, nem bandeira quando for "Não sei"):
 ```
@@ -233,6 +255,10 @@ Peças: R$ …
 💳 Cartão em até 10x: R$ … (10x de R$ …)
 ```
 Com uma bandeira escolhida, a linha vira "💳 Cartão Elo em até 5x: R$ … (5x de R$ …)". As linhas de cartão seguem `parcelasDestaque`. Linhas sem valor (nome da oficina, serviço, peças zeradas) são omitidas.
+
+**O texto sempre fecha com o à vista, no centavo** (`valoresWhatsApp`):
+- com mão de obra e peças: mão de obra = arredondada; peças = à vista arredondado − mão de obra;
+- só peças: peças = à vista; só mão de obra: mão de obra = à vista.
 
 ### 6.2 📋 Meus gastos
 ```
@@ -251,7 +277,7 @@ Sua rotina
 Quanto você vai cobrar por hora  [150,00]
 Você ganha R$ 96,15 a mais por hora   (vermelho se negativo)
 ```
-Um chip clicado cria a linha com o nome preenchido e coloca o foco no valor.
+Um chip clicado cria a linha com o nome preenchido e coloca o foco no valor. O valor do gasto é formatado ao sair do campo ("4.000,00"). O 🗑 remove com "Desfazer" (seção 5).
 
 ### 6.3 ⚙️ Ajustes (um layout só, no celular e no notebook)
 ```
@@ -260,7 +286,8 @@ Copie as taxas da calculadora do app da sua maquininha, bandeira por bandeira.
 Editando: [ Visa/Master ▾ ]      (Visa/Master · Elo · Amex · Hipercard)
   Débito [1,37] %   1x [3,15] % … 12x [12,40] %
   Campo vazio = sem taxa: essa opção não aparece no orçamento.
-[ Voltar taxas da InfinitePay ]  ← restaura só Visa/Master, pede confirmação
+[ Voltar taxas da InfinitePay ]  ← restaura só Visa/Master; confirmação dentro da própria página
+                                   (sem confirm() do navegador, que pode ser bloqueado no Apps Script)
 
 Imposto (%) [0]   Se for MEI, deixe 0 e coloque o DAS em Meus gastos.
 Parcelas que aparecem no orçamento [5,10]
@@ -272,7 +299,7 @@ Nome da oficina [        ]
 
 | # | Caso | Esperado |
 |---|---|---|
-| T1 | Visa, à vista 1.000, 1x 3,15% | total 1.032,53 · parcela 1.032,53 |
+| T1 | Visa, à vista 1.000, 1x 3,15% | total 1.032,52 · parcela 1.032,52 (o app InfinitePay mostra 1.032,53: divergência conhecida e aceita, seção 4) |
 | T2 | Visa, à vista 1.000, 2x 5,39% | 1.056,97 · 528,49 |
 | T3 | Visa, à vista 1.000, 3x 6,12% | 1.065,19 · 355,06 |
 | T4 | Visa, à vista 1.000, 4x 6,85% | 1.073,54 · 268,38 |
@@ -287,13 +314,16 @@ Nome da oficina [        ]
 | T13 | `lerNumeroBR("1.234,56")`, `"150,50"`, `""` | 1234,56 · 150,5 · `null` |
 | T14 | Horas cobradas = 0 | preço mínimo da hora 0, sem erro |
 | T15 | Valor fechado 900, horas vazias, valor da hora 150 | horas 6 · aviso ligado |
+| W1 | WhatsApp: 7,3 h × 150 + peças 333,33 | mão de obra 1.095,00 + peças 333,33 = à vista 1.428,33 |
+| W2 | WhatsApp: 1,5 h × 133,33 (= 199,995) + peças 10,005 | 200,00 + 10,00 = à vista 210,00 (sem o ajuste daria 200,00 + 10,01) |
+| W3 | WhatsApp: só peças (99,995) ou só mão de obra (1,2345 h × 150) | a linha que existe = à vista (100,00 · 185,18) |
 
 Se algum caso divergir, a fórmula **não** é ajustada para forçar o número: a divergência é reportada.
 
 ## 8. Fatias
 1. Desenho ✅ (este documento)
 2. Backend: `src/Codigo.gs` e `src/appsscript.json` ✅
-3. Frontend: `src/Index.html`
+3. Frontend: `src/Index.html` ✅
 4. Testes de cálculo: autoteste e `docs/testes-calculo.md`
 5. Documentação: `docs/LEIAME-instalacao.md` e `docs/GUIA-DO-USUARIO.md`
 

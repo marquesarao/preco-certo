@@ -193,7 +193,7 @@ function parametrosPadrao_() {
     valorHoraCobrado: 150,
     impostoPercentual: 0,
     parcelasDestaque: '5,10',
-    nomeOficina: ''
+    nomeOficina: 'CliniCar Motors Tech'
   };
 }
 
