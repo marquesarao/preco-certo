@@ -6,6 +6,8 @@
 
 var CHAVE_CACHE = 'precoCerto.dados.v1';
 var CHAVE_ORCAMENTO = 'precoCerto.orcamento.v1';
+var CHAVE_DESCONTO_PADRAO = 'precoCerto.descontoPadrao.v1'; // só deste aparelho; "Desconectar" NÃO apaga
+var CHAVE_PIN = 'precoCerto.pin.v1';                        // só deste aparelho; "Desconectar" e novo link apagam
 var ESPERA_SALVAR_MS = 800;
 var TEMPO_DESFAZER_MS = 6000;
 var TIPOS = ['Oficina', 'Casa'];
@@ -22,9 +24,11 @@ var sync = { sujo: false, salvando: false, erro: false, timer: null };
 var desfazer = { tipo: null, item: null, indice: -1, timer: null }; // último gasto/cartão removido (barra "Desfazer")
 var remocoesNaoSalvas = 0;     // remoções que ainda não entraram em nenhum salvamento
 var usuarioEscolheuTela = false;
+var nav = { tela: 'orcamento', aba: 'gastos', abaPin: 'gastos' }; // tela: 'orcamento' | 'pin' | 'config'
 var ui = { cartao: 0, adicionandoCartao: false, outroAberto: false }; // tela "Seus cartões"
 var SUGESTOES_CARTAO = ['Elo', 'Amex', 'Hipercard', 'Visa', 'Mastercard', 'Cabal', 'Banescard', 'Sorocred'];
 var ultimoResultado = null;
+var ultimoPreco = null;        // calcularPrecoComDesconto do último render (vai para o WhatsApp)
 var timerAviso = null;
 
 // ------------------------------------------------------------------
@@ -50,6 +54,22 @@ function gravarStorage(chave, valor) {
 }
 function apagarStorage(chave) {
   try { localStorage.removeItem(chave); } catch (e) { /* ignora */ }
+}
+
+function lerTexto(chave) {
+  try { return localStorage.getItem(chave); } catch (e) { return null; }
+}
+function gravarTexto(chave, valor) {
+  try { localStorage.setItem(chave, valor); return true; } catch (e) { return false; }
+}
+
+/** Desconto à vista padrão deste aparelho (0 a 99). Nada guardado ou valor inválido → 5. */
+function lerDescontoPadrao() { return descontoPadraoDoAparelho(lerTexto(CHAVE_DESCONTO_PADRAO)); }
+
+/** PIN deste aparelho (4 números) ou null se desligado. */
+function lerPin() {
+  var p = lerTexto(CHAVE_PIN);
+  return p && /^\d{4}$/.test(p) ? p : null;
 }
 
 function clonar(o) { return JSON.parse(JSON.stringify(o)); }
@@ -211,10 +231,13 @@ function receberDadosDoServidor(r) {
 function carregarServidor() {
   if (!conexao) return;
   if (!estado.dados) mostrarStatus('carregando');
+  var usada = conexao;
   PrecoCertoApi.chamar(conexao, 'obterDados').then(function (r) {
+    if (conexao !== usada) return; // desconectou (ou trocou de planilha) enquanto esperava: resposta velha
     if (estado.carregadoDoServidor && temPendencia()) return; // mudou algo nesse meio tempo: mantém o que está na tela
     receberDadosDoServidor(r);
   }, function (e) {
+    if (conexao !== usada) return;
     if (e && e.tipo === 'acesso') { perdeuAcesso(); return; }
     mostrarStatus('erroCarregar');
     if (!estado.dados) mostrarFalhaCarregamento(e && e.tipo === 'rede'
@@ -293,17 +316,98 @@ function limparInvalidos(prefixo) {
 // ------------------------------------------------------------------
 function mostrarApp() { $('carregando').hidden = true; }
 
-function trocarTela(nome, peloUsuario) {
-  if (peloUsuario) usuarioEscolheuTela = true;
-  ['orcamento', 'gastos', 'ajustes'].forEach(function (t) {
-    $('tela-' + t).hidden = t !== nome;
-    $('aba-' + t).setAttribute('aria-selected', t === nome ? 'true' : 'false');
+/*
+ * Navegação: a tela principal é só o Orçamento. A engrenagem abre "Configurações" (abas Meus gastos | Ajustes).
+ * Abrir Configurações (ou a tela do PIN) empilha uma entrada no histórico: o botão "voltar" do celular
+ * (popstate), o Esc e o "← Voltar ao orçamento" levam de volta ao orçamento.
+ */
+function mostrarTela(nome) {
+  if (document.body.classList.contains('sem-conexao')) return; // tela "conectar" manda: nada aparece por trás
+  nav.tela = nome;
+  $('tela-orcamento').hidden = nome !== 'orcamento';
+  $('tela-pin').hidden = nome !== 'pin';
+  $('tela-config').hidden = nome !== 'config';
+  ['gastos', 'ajustes'].forEach(function (t) {
+    $('tela-' + t).hidden = !(nome === 'config' && nav.aba === t);
+    $('aba-' + t).setAttribute('aria-selected', nav.aba === t ? 'true' : 'false');
   });
-  if (peloUsuario) window.scrollTo(0, 0);
+  document.body.classList.toggle('em-config', nome !== 'orcamento');
 }
 
+function trocarAbaConfig(aba) {
+  nav.aba = aba === 'ajustes' ? 'ajustes' : 'gastos';
+  mostrarTela('config');
+  window.scrollTo(0, 0);
+}
+
+function empilharHistorico(tela) {
+  try {
+    if (history.state && history.state.precoCerto) history.replaceState({ precoCerto: tela }, '');
+    else history.pushState({ precoCerto: tela }, '');
+  } catch (e) { /* sem histórico: os botões da tela continuam funcionando */ }
+}
+
+/** Engrenagem (ou link "Meus gastos"/"Ajustes"): pede o PIN se estiver ligado; senão abre direto. */
+function abrirConfig(aba, peloUsuario) {
+  if (peloUsuario) usuarioEscolheuTela = true;
+  aba = aba === 'ajustes' ? 'ajustes' : 'gastos';
+  if (nav.tela === 'config') { trocarAbaConfig(aba); return; }
+  if (lerPin()) { abrirPin(aba); return; }
+  empilharHistorico('config');
+  trocarAbaConfig(aba);
+}
+
+function abrirPin(aba) {
+  nav.abaPin = aba;
+  empilharHistorico('pin');
+  $('pin-entrada').value = '';
+  $('pin-erro').textContent = '';
+  $('pin-entrada').classList.remove('invalido');
+  $('pin-esqueci').hidden = true;
+  $('pin-confirma-desconectar').hidden = true;
+  $('btn-pin-desconectar').hidden = false;
+  mostrarTela('pin');
+  window.scrollTo(0, 0);
+  $('pin-entrada').focus();
+}
+
+function conferirPin() {
+  var digitado = $('pin-entrada').value.trim();
+  if (digitado !== lerPin()) {
+    $('pin-erro').textContent = 'PIN errado. Tente de novo.';
+    $('pin-entrada').classList.add('invalido');
+    $('pin-entrada').value = '';
+    $('pin-entrada').focus();
+    return;
+  }
+  empilharHistorico('config');
+  trocarAbaConfig(nav.abaPin);
+}
+
+/** "← Voltar ao orçamento", Esc ou "Cancelar" do PIN. */
+function voltarAoOrcamento(peloUsuario) {
+  if (peloUsuario) usuarioEscolheuTela = true;
+  if (nav.tela === 'orcamento') return;
+  var temEntrada = false;
+  try { temEntrada = !!(history.state && history.state.precoCerto); } catch (e) { /* ignora */ }
+  if (temEntrada) { history.back(); return; } // o popstate mostra o orçamento
+  mostrarTela('orcamento');
+  window.scrollTo(0, 0);
+}
+
+function aoVoltarHistorico() {
+  if (document.body.classList.contains('sem-conexao')) return;
+  usuarioEscolheuTela = true;
+  mostrarTela('orcamento'); // nunca reabre Configurações pelo "avançar" (o PIN seria pulado)
+  try { if (history.state && history.state.precoCerto) history.replaceState(null, ''); } catch (e) { /* ignora */ }
+  window.scrollTo(0, 0);
+}
+
+/** 1º acesso (sem gastos e sem PIN): abre direto em Configurações → Meus gastos. Senão, o orçamento. */
 function escolherTelaInicial() {
-  trocarTela(totalGastos(estado.dados.gastos) === 0 ? 'gastos' : 'orcamento', false);
+  if (totalGastos(estado.dados.gastos) === 0 && !lerPin()) abrirConfig('gastos', false);
+  else if (nav.tela !== 'orcamento') voltarAoOrcamento(false);
+  else mostrarTela('orcamento');
 }
 
 function renderTudo() {
@@ -320,6 +424,7 @@ function orcamentoVazio() {
     descricao: '', modo: 'horas',
     horasTexto: '', valorTexto: '', horasFechadoTexto: '',
     pecasPagarTexto: '', pecasModo: 'acrescimo', acrescimoTexto: null, pecasCobrarTexto: '',
+    descontoTexto: null, extraTexto: '',   // descontoTexto null = segue o padrão deste aparelho
     bandeira: NAO_SEI
   };
 }
@@ -340,9 +445,16 @@ function textoAcrescimo() {
   return estado.dados ? numeroParaCampo(estado.dados.parametros.acrescimoPecasPadrao, false) : '';
 }
 
+/** Texto do desconto à vista deste orçamento: o digitado, ou o padrão deste aparelho enquanto ele não mexeu. */
+function textoDesconto() {
+  if (orc.descontoTexto !== null) return orc.descontoTexto;
+  return numeroParaCampo(lerDescontoPadrao(), false);
+}
+
 function preencherOrcamento() {
   document.querySelectorAll('[data-orc]').forEach(function (el) {
-    el.value = el.dataset.orc === 'acrescimoTexto' ? textoAcrescimo() : (orc[el.dataset.orc] || '');
+    var k = el.dataset.orc;
+    el.value = k === 'acrescimoTexto' ? textoAcrescimo() : k === 'descontoTexto' ? textoDesconto() : (orc[k] || '');
   });
 }
 
@@ -424,13 +536,57 @@ function renderOrcamento() {
   $('orc-resultado').hidden = !temValor;
   if (!temValor) return;
 
-  $('res-avista').textContent = formatarCentavos(res.aVista.totalCentavos);
+  // Desconto à vista (desconto + extra somam; vazio = 0)
+  var msgDesconto = 'Use um número de 0 a 99.';
+  var desconto = lerCampoOrcamento('orc-desconto', textoDesconto(), LIMITE_DESCONTO, msgDesconto);
+  var extra = lerCampoOrcamento('orc-extra', orc.extraTexto, LIMITE_DESCONTO, msgDesconto);
+  var preco = calcularPrecoComDesconto(res, d.parametros, desconto, extra);
+  ultimoPreco = preco;
+
+  // Preço cheio no cartão (âncora) + chips do cartão do cliente
   renderChipsBandeira(d.cartoes, res.cartao);
+  $('card-ancora').hidden = res.semCartoes;
+  var anc = preco.ancora;
+  $('ancora-titulo').textContent = anc
+    ? 'Cartão em ' + anc.parcelas + 'x' + (res.cartaoNoTexto ? ' (' + res.cartaoNoTexto + ')' : '')
+    : 'Cartão';
+  $('ancora-parcela').textContent = !anc ? '—'
+    : anc.parcelas === 1 ? formatarCentavos(anc.totalCentavos)
+    : anc.parcelas + '× de ' + formatarCentavos(anc.parcelaCentavos);
+  $('ancora-total').textContent = anc && anc.parcelas > 1 ? 'Total ' + formatarCentavos(anc.totalCentavos) : '';
+  $('ancora-total').hidden = !(anc && anc.parcelas > 1);
+
+  // À vista oferecido
+  $('res-avista').textContent = formatarCentavos(preco.precoCentavos);
+  $('res-avista-desconto').textContent = preco.temAncora && preco.descontoTotal > 0
+    ? '· ' + formatarPercentual(preco.descontoTotal) + ' de desconto'
+    : '';
+  $('bloco-desconto').hidden = !preco.temAncora;
+  $('dica-sem-ancora').hidden = preco.temAncora || res.semCartoes;
+  var campoDesconto = $('orc-desconto');
+  if (orc.descontoTexto === null && document.activeElement !== campoDesconto) campoDesconto.value = textoDesconto();
+
+  // Só para o mecânico: quanto ainda pode dar / quanto abre mão do lucro
+  var faixaAinda = $('faixa-ainda-pode');
+  var faixaAbre = $('faixa-abre-mao');
+  faixaAinda.hidden = !preco.temAncora || preco.acimaDoMaximo;
+  faixaAbre.hidden = !preco.temAncora || !preco.acimaDoMaximo;
+  if (preco.temAncora && !preco.acimaDoMaximo) {
+    faixaAinda.textContent = preco.aindaPodeCentavos > 0
+      ? 'Se o cliente pedir mais: ainda pode dar até ' + formatarPercentual(preco.aindaPodePct) +
+        ' (' + formatarCentavos(preco.aindaPodeCentavos) + ') sem mexer no seu lucro.'
+      : 'Esse é o máximo de desconto sem mexer no seu lucro.';
+  }
+  if (preco.temAncora && preco.acimaDoMaximo) {
+    faixaAbre.textContent = 'Com esse desconto você abre mão de ' + formatarCentavos(preco.abreMaoCentavos) + ' do seu lucro.';
+  }
+
   $('card-cartao').hidden = res.semCartoes;
   $('dica-sem-cartoes').hidden = !res.semCartoes;
 
-  // Parcelas em destaque
-  $('cards-destaque').innerHTML = res.destaques.map(function (op) {
+  // Demais parcelas em destaque (sobre a base; a 1ª já está no card do cartão)
+  var demais = preco.temAncora ? res.destaques.slice(1) : res.destaques;
+  $('cards-destaque').innerHTML = demais.map(function (op) {
     var valor = op.parcelas === 1
       ? formatarCentavos(op.totalCentavos)
       : op.parcelas + '× de ' + formatarCentavos(op.parcelaCentavos);
@@ -450,8 +606,8 @@ function renderOrcamento() {
       }).join('')
     : '<li>Nenhuma taxa cadastrada para este cartão. Veja em Ajustes.</li>';
 
-  // Lucro (opção à vista)
-  var lucro = centavos(res.aVista.lucro);
+  // Lucro (à vista oferecido)
+  var lucro = centavos(preco.lucro);
   var negativo = lucro < 0;
   $('res-lucro').textContent = formatarCentavos(lucro);
   $('res-lucro').className = 'valor-grande ' + (negativo ? 'negativo' : 'positivo');
@@ -473,10 +629,15 @@ function renderOrcamento() {
     ['Gasto das suas ' + formatarHoras(res.horas), '− ' + formatarBRL(res.gastoHoras)],
     ['Lucro nas peças', formatarBRL(res.lucroPecas)]
   ];
-  if (impostoPct > 0) linhas.push(['Imposto (à vista)', '− ' + formatarBRL(res.aVista.imposto)]);
+  var diferenca = preco.precoCentavos / 100 - res.aVista.totalExato;
+  if (preco.temAncora && centavos(diferenca) !== 0) {
+    linhas.push(['Diferença pelo desconto à vista', (diferenca < 0 ? '− ' : '+ ') + formatarBRL(Math.abs(diferenca))]);
+  }
+  if (impostoPct > 0) linhas.push(['Imposto (à vista)', '− ' + formatarBRL(preco.imposto)]);
   $('res-detalhes').innerHTML = linhas.map(function (l) {
     return '<dt>' + esc(l[0]) + '</dt><dd>' + esc(l[1]) + '</dd>';
   }).join('');
+  $('res-piso').textContent = 'Abaixo de ' + formatarBRL(preco.piso) + ' você trabalha no prejuízo.';
 }
 
 function onOrcamentoInput(el) {
@@ -513,7 +674,7 @@ function novoOrcamento() {
 // ---------------- Copiar e compartilhar ----------------
 function textoAtual() {
   if (!ultimoResultado || !estado.dados) return '';
-  return textoWhatsApp(ultimoResultado, estado.dados.parametros, orc.descricao);
+  return textoWhatsApp(ultimoResultado, estado.dados.parametros, orc.descricao, ultimoPreco);
 }
 
 /**
@@ -912,7 +1073,11 @@ function preencherTaxasPadrao() {
 // ------------------------------------------------------------------
 function mostrarTelaConectar(mensagemErro) {
   document.body.classList.add('sem-conexao');
-  ['orcamento', 'gastos', 'ajustes'].forEach(function (t) { $('tela-' + t).hidden = true; });
+  ['orcamento', 'pin', 'config', 'gastos', 'ajustes'].forEach(function (t) { $('tela-' + t).hidden = true; });
+  nav.tela = 'orcamento';
+  usuarioEscolheuTela = false; // ao ligar de novo, a tela inicial é escolhida outra vez
+  document.body.classList.remove('em-config');
+  try { if (history.state && history.state.precoCerto) history.replaceState(null, ''); } catch (e) { /* ignora */ }
   $('carregando').hidden = true;
   $('faixa-offline').hidden = true;
   $('faixa-acesso').hidden = true;
@@ -935,6 +1100,7 @@ function conectar(nova) {
     var anterior = PrecoCertoConfig.ler();
     if (anterior && anterior.api !== nova.api) apagarStorage(CHAVE_CACHE);
     if (!PrecoCertoConfig.salvar(nova)) return 'Este navegador não deixou guardar a configuração (modo anônimo?).';
+    apagarStorage(CHAVE_PIN); // abrir o link de configuração de novo apaga o PIN ("Esqueci o PIN")
     conexao = nova;
     esconderTelaConectar();
     receberDadosDoServidor(r);
@@ -979,10 +1145,14 @@ function conectarManual() {
   });
 }
 
-/** Esquece a planilha neste aparelho: configuração e cache de dados (o rascunho do orçamento fica). */
+/**
+ * Esquece a planilha neste aparelho: configuração, cache de dados e PIN.
+ * Ficam: o rascunho do orçamento e o desconto à vista padrão deste aparelho.
+ */
 function desconectar() {
   PrecoCertoConfig.apagar();
   apagarStorage(CHAVE_CACHE);
+  apagarStorage(CHAVE_PIN);
   conexao = null;
   estado.dados = null;
   estado.carregadoDoServidor = false;
@@ -992,9 +1162,11 @@ function desconectar() {
   invalidos = {};
   $('confirma-desconectar').hidden = true;
   $('btn-desconectar').hidden = false;
+  $('pin-novo').hidden = true;
   $('fs-gastos').disabled = true;
   $('fs-ajustes').disabled = true;
   mostrarTelaConectar('');
+  renderAparelho();
   mostrarAviso('Aparelho desconectado.');
 }
 
@@ -1003,6 +1175,62 @@ function renderAparelho() {
   var pwa = PrecoCertoPwa.estado;
   $('aparelho-versao').textContent = pwa.versao || '—';
   $('btn-instalar').hidden = !pwa.podeInstalar;
+  var campo = $('desconto-padrao');
+  if (document.activeElement !== campo) {
+    campo.value = numeroParaCampo(lerDescontoPadrao(), false);
+    mostrarErroCampo(campo, '');
+  }
+  renderPin();
+}
+
+/** Desconto à vista padrão (Ajustes → Este aparelho): grava só quando válido (0 a 99). */
+function onDescontoPadraoInput(el) {
+  var r = validarNumeroCampo(el.value, LIMITE_DESCONTO, { vazioPermitido: false, mensagem: 'Use um número de 0 a 99.' });
+  mostrarErroCampo(el, r.erro);
+  if (r.erro) return;
+  gravarTexto(CHAVE_DESCONTO_PADRAO, numeroParaCampo(r.valor, false));
+  if (orc.descontoTexto === null) renderOrcamento(); // orçamento que ainda segue o padrão
+}
+
+// ---------------- PIN (opcional; só deste aparelho) ----------------
+function renderPin() {
+  var ligado = !!lerPin();
+  $('pin-situacao').textContent = ligado
+    ? 'Ligado: a engrenagem pede o PIN.'
+    : 'Desligado: qualquer pessoa com o aparelho abre as configurações.';
+  $('btn-pin-ligar').hidden = ligado || !$('pin-novo').hidden;
+  $('btn-pin-desligar').hidden = !ligado;
+}
+
+function abrirNovoPin() {
+  $('pin-novo-1').value = '';
+  $('pin-novo-2').value = '';
+  $('pin-novo-erro').textContent = '';
+  $('pin-novo').hidden = false;
+  renderPin();
+  $('pin-novo-1').focus();
+}
+
+function fecharNovoPin() {
+  $('pin-novo').hidden = true;
+  renderPin();
+}
+
+function salvarNovoPin() {
+  var a = $('pin-novo-1').value.trim();
+  var b = $('pin-novo-2').value.trim();
+  var erro = !/^\d{4}$/.test(a) ? 'O PIN tem 4 números.' : a !== b ? 'Os dois PINs não são iguais.' : '';
+  $('pin-novo-erro').textContent = erro;
+  if (erro) return;
+  if (!gravarTexto(CHAVE_PIN, a)) { $('pin-novo-erro').textContent = 'Este navegador não deixou guardar o PIN.'; return; }
+  fecharNovoPin();
+  mostrarAviso('PIN ligado neste aparelho.');
+}
+
+function desligarPin() {
+  apagarStorage(CHAVE_PIN);
+  renderPin();
+  mostrarAviso('PIN desligado.');
 }
 
 // ------------------------------------------------------------------
@@ -1059,8 +1287,8 @@ function ligarEventos() {
     var alvo = e.target.closest('button, a');
     if (!alvo) return;
     var ds = alvo.dataset;
-    if (ds.tela) { trocarTela(ds.tela, true); return; }
-    if (ds.ir) { trocarTela(ds.ir, true); return; }
+    if (ds.abaConfig) { trocarAbaConfig(ds.abaConfig); return; }
+    if (ds.ir) { abrirConfig(ds.ir, true); return; }
     if (ds.adicionar) { adicionarGasto(ds.adicionar, ''); return; }
     if (ds.sugestao) { adicionarGasto(ds.tipo, ds.sugestao); return; }
     if (ds.remover !== undefined) { removerComDesfazer('gasto', Number(ds.remover)); return; }
@@ -1158,6 +1386,45 @@ function ligarEventos() {
   $('btn-instalar-aviso').addEventListener('click', function () { $('barra-instalar').hidden = true; PrecoCertoPwa.instalar(); });
   $('btn-atualizar').addEventListener('click', function () { PrecoCertoPwa.atualizar(); });
   window.addEventListener('online', function () { if (conexao && !estado.carregadoDoServidor) carregarServidor(); });
+
+  // Engrenagem, Configurações e PIN
+  $('btn-engrenagem').addEventListener('click', function () { abrirConfig(nav.aba, true); });
+  $('btn-voltar-orcamento').addEventListener('click', function () { voltarAoOrcamento(true); });
+  window.addEventListener('popstate', aoVoltarHistorico);
+  // Link de configuração aberto com o app já aberto na mesma aba (só muda o "#"): o navegador não recarrega.
+  window.addEventListener('hashchange', function () {
+    if (window.location.hash.indexOf('#cfg=') === 0) processarLinkDeConfiguracao();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || nav.tela === 'orcamento' || document.body.classList.contains('sem-conexao')) return;
+    if (!$('caixa-copia').hidden) return; // Esc fecha primeiro a caixa de copiar, se aberta
+    voltarAoOrcamento(true);
+  });
+  $('btn-pin-entrar').addEventListener('click', conferirPin);
+  $('pin-entrada').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); conferirPin(); }
+  });
+  $('pin-entrada').addEventListener('input', function () {
+    $('pin-erro').textContent = '';
+    $('pin-entrada').classList.remove('invalido');
+  });
+  $('btn-pin-cancelar').addEventListener('click', function () { voltarAoOrcamento(true); });
+  $('btn-pin-esqueci').addEventListener('click', function () { $('pin-esqueci').hidden = !$('pin-esqueci').hidden; });
+  $('btn-pin-desconectar').addEventListener('click', function () {
+    $('pin-confirma-desconectar').hidden = false;
+    $('btn-pin-desconectar').hidden = true;
+    $('btn-pin-desconectar-sim').focus();
+  });
+  $('btn-pin-desconectar-nao').addEventListener('click', function () {
+    $('pin-confirma-desconectar').hidden = true;
+    $('btn-pin-desconectar').hidden = false;
+  });
+  $('btn-pin-desconectar-sim').addEventListener('click', desconectar);
+  $('btn-pin-ligar').addEventListener('click', abrirNovoPin);
+  $('btn-pin-cancelar-novo').addEventListener('click', fecharNovoPin);
+  $('btn-pin-salvar').addEventListener('click', salvarNovoPin);
+  $('btn-pin-desligar').addEventListener('click', desligarPin);
+  $('desconto-padrao').addEventListener('input', function (e) { onDescontoPadraoInput(e.target); });
 
   document.addEventListener('visibilitychange', aoMudarVisibilidade);
   window.addEventListener('pagehide', salvarAoSair);

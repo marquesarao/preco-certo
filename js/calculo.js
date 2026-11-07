@@ -342,26 +342,77 @@ function calcularOrcamento(entrada, parametros, cartoes, cartaoEscolhido, precoM
   };
 }
 
-/**
- * Valores de "Mão de obra" e "Peças" para o texto do cliente, em centavos, de forma que
- * Mão de obra + Peças = À vista SEMPRE, no centavo.
- * - Com mão de obra e peças: mão de obra = arredondada; peças = à vista − mão de obra.
- * - Só peças: peças = à vista. Só mão de obra: mão de obra = à vista.
- */
-function valoresWhatsApp(res) {
-  var aVista = res.aVista.totalCentavos;
-  var mao = centavos(res.maoDeObra);
-  var pecas = centavos(res.pecasCobrar);
-  if (mao > 0 && pecas > 0) return { maoDeObraCentavos: mao, pecasCentavos: aVista - mao };
-  if (pecas > 0) return { maoDeObraCentavos: 0, pecasCentavos: aVista };
-  return { maoDeObraCentavos: aVista, pecasCentavos: 0 };
+// ---------------- Desconto à vista (âncora no cartão) ----------------
+
+/** Desconto padrão deste aparelho (texto guardado no localStorage) → número de 0 a 99; inválido/ausente → 5. */
+var DESCONTO_PADRAO_DE_FABRICA = 5;
+var LIMITE_DESCONTO = { min: 0, max: 99 };
+function descontoPadraoDoAparelho(texto) {
+  var n = lerNumeroBR(texto);
+  return dentroDoLimite(n, LIMITE_DESCONTO) ? n : DESCONTO_PADRAO_DE_FABRICA;
 }
 
 /**
- * Texto para o cliente (WhatsApp). Negrito do WhatsApp com *…* no título e no valor à vista.
- * Sem custo, lucro, taxa, e sem nome de cartão quando for "Não sei" (ou quando só há um cartão).
+ * Preço com desconto à vista, ancorado no cartão.
+ * - Base = res.aVista (mão de obra + peças cobradas): o piso sem perder lucro.
+ * - Âncora (preço cheio) = PRIMEIRA parcela em destaque com taxa, no cartão escolhido ("Não sei" = maior taxa).
+ *   Sem nenhuma → âncora = base e o desconto não se aplica (temAncora = false).
+ * - À vista oferecido = âncora exata × (1 − (desconto + extra)/100); desconto e extra SOMAM, total limitado a 99.
+ * - Máximo sem perder lucro = (1 − base ÷ âncora) × 100 (= a taxa da âncora).
+ * - Ainda pode dar = máximo − total (mín. 0), em % e em R$ (= oferecido − base, mín. 0).
+ * - Acima do máximo: abreMao = base − oferecido (R$ do lucro de que ele abre mão).
+ * - Lucro = oferecido − gasto das horas − peças pagas − imposto sobre o oferecido (arredondado, o que o cliente paga).
+ * - Piso de prejuízo = (gasto das horas + peças pagas) ÷ (1 − imposto/100).
+ * @param res resultado de calcularOrcamento
+ * @param parametros {impostoPercentual}
+ * @param desconto % oferecido (0 a 99)   @param extra % extra (0 a 99)
  */
-function textoWhatsApp(res, parametros, descricao) {
+function calcularPrecoComDesconto(res, parametros, desconto, extra) {
+  var impostoPct = typeof parametros.impostoPercentual === 'number' ? parametros.impostoPercentual : 0;
+  var base = res.aVista.totalExato;
+  var baseCentavos = res.aVista.totalCentavos;
+  var ancora = res.destaques.length ? res.destaques[0] : null;
+  var d = typeof desconto === 'number' && desconto > 0 ? desconto : 0;
+  var x = typeof extra === 'number' && extra > 0 ? extra : 0;
+  var total = ancora ? Math.min(LIMITE_DESCONTO.max, d + x) : 0;
+
+  var precoExato = ancora ? ancora.totalExato * (1 - total / 100) : base;
+  var precoCentavos = ancora ? centavos(precoExato) : baseCentavos;
+  var maximo = ancora ? (1 - base / ancora.totalExato) * 100 : 0;
+  var imposto = (precoCentavos / 100) * impostoPct / 100;
+  var lucro = precoCentavos / 100 - res.gastoHoras - res.pecasPagar - imposto;
+  var difCentavos = precoCentavos - baseCentavos; // > 0: ainda pode dar; < 0: abre mão do lucro
+
+  return {
+    temAncora: !!ancora,
+    ancora: ancora,
+    descontoTotal: total,
+    precoExato: precoExato,
+    precoCentavos: precoCentavos,
+    maximo: maximo,
+    aindaPodePct: Math.max(0, Math.round((maximo - total) * 10000) / 10000),
+    aindaPodeCentavos: Math.max(0, difCentavos),
+    acimaDoMaximo: difCentavos < 0,
+    abreMaoCentavos: Math.max(0, -difCentavos),
+    imposto: imposto,
+    lucro: lucro,
+    piso: (res.gastoHoras + res.pecasPagar) / (1 - impostoPct / 100)
+  };
+}
+
+/** "5%", "7,5%" (sem zeros desnecessários). */
+function formatarPercentual(p) {
+  return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(p) + '%';
+}
+
+/**
+ * Texto para o cliente (WhatsApp), ancorado no cartão: primeiro as parcelas em destaque, depois o à vista
+ * (com "— X% de desconto" só se houver desconto). Negrito do WhatsApp com *…* no título e no à vista.
+ * Sem quebra mão de obra/peças, sem custo, lucro, taxa, piso ou "ainda pode dar";
+ * sem nome de cartão quando for "Não sei" (ou quando só há um cartão).
+ * @param preco resultado de calcularPrecoComDesconto (opcional: sem ele, à vista = base)
+ */
+function textoWhatsApp(res, parametros, descricao, preco) {
   var linhas = [];
   var nome = String(parametros.nomeOficina || '').trim();
   linhas.push(nome ? '*Orçamento – ' + nome + '*' : '*Orçamento*');
@@ -369,13 +420,6 @@ function textoWhatsApp(res, parametros, descricao) {
   if (desc) linhas.push(desc);
   linhas.push('');
 
-  var itens = valoresWhatsApp(res);
-  var temItens = false;
-  if (itens.maoDeObraCentavos > 0) { linhas.push('Mão de obra: ' + formatarCentavos(itens.maoDeObraCentavos)); temItens = true; }
-  if (itens.pecasCentavos > 0) { linhas.push('Peças: ' + formatarCentavos(itens.pecasCentavos)); temItens = true; }
-  if (temItens) linhas.push('');
-
-  linhas.push('💵 À vista (Pix/dinheiro): *' + formatarCentavos(res.aVista.totalCentavos) + '*');
   var cartao = '💳 Cartão' + (res.cartaoNoTexto ? ' ' + res.cartaoNoTexto : '');
   res.destaques.forEach(function (op) {
     if (op.parcelas === 1) {
@@ -385,6 +429,11 @@ function textoWhatsApp(res, parametros, descricao) {
         ' (' + op.parcelas + 'x de ' + formatarCentavos(op.parcelaCentavos) + ')');
     }
   });
+
+  var aVistaCentavos = preco ? preco.precoCentavos : res.aVista.totalCentavos;
+  var comDesconto = preco && preco.temAncora && preco.descontoTotal > 0;
+  linhas.push('💵 À vista (Pix/dinheiro): *' + formatarCentavos(aVistaCentavos) + '*' +
+    (comDesconto ? ' — ' + formatarPercentual(preco.descontoTotal) + ' de desconto' : ''));
   return linhas.join('\n');
 }
 
@@ -512,38 +561,96 @@ function casosDeTeste() {
         return { obtido: [centavos(r.lucroPecas), centavos(t6.lucroPecas), t6.aVista.totalCentavos, centavos(t6.aVista.lucro)],
                  esperado: [15667, 10000, 170000, 74000] };
       } },
-    { id: 'W1', descricao: 'WhatsApp: 7,3 h × 150 + peças 333,33 → mão de obra 1.095,00 + peças 333,33 = à vista 1.428,33',
-      executar: function () {
-        var r = calcularOrcamento({ modo: 'horas', horas: 7.3, pecasPagar: 300, pecasCobrar: 333.33 }, paramsT6, [visa()], NAO_SEI, 0);
-        var v = valoresWhatsApp(r);
-        return { obtido: [v.maoDeObraCentavos, v.pecasCentavos, r.aVista.totalCentavos, v.maoDeObraCentavos + v.pecasCentavos === r.aVista.totalCentavos],
-                 esperado: [109500, 33333, 142833, true] };
-      } },
-    { id: 'W2', descricao: 'WhatsApp (centavo quebrado): 1,5 h × 133,33 = 199,995 + peças 10,005 → 200,00 + 10,00 = à vista 210,00',
-      executar: function () {
-        var p = { valorHoraCobrado: 133.33, impostoPercentual: 0, parcelasDestaque: '5,10' };
-        var r = calcularOrcamento({ modo: 'horas', horas: 1.5, pecasPagar: 10, pecasCobrar: 10.005 }, p, [visa()], NAO_SEI, 0);
-        var v = valoresWhatsApp(r);
-        return { obtido: [v.maoDeObraCentavos, v.pecasCentavos, r.aVista.totalCentavos], esperado: [20000, 1000, 21000] };
-      } },
-    { id: 'W3', descricao: 'WhatsApp: só peças ou só mão de obra → a linha que existe é igual ao à vista',
-      executar: function () {
-        var p = { valorHoraCobrado: 150, impostoPercentual: 0, parcelasDestaque: '' };
-        var soP = valoresWhatsApp(calcularOrcamento({ modo: 'horas', horas: null, pecasPagar: 99.995 }, p, [visa()], NAO_SEI, 0));
-        var soM = valoresWhatsApp(calcularOrcamento({ modo: 'horas', horas: 1.2345 }, p, [visa()], NAO_SEI, 0));
-        return { obtido: [soP.maoDeObraCentavos, soP.pecasCentavos, soM.maoDeObraCentavos, soM.pecasCentavos],
-                 esperado: [0, 10000, 18518, 0] };
-      } },
-    { id: 'W4', descricao: 'WhatsApp: negrito no título e no à vista; peças com acréscimo aparecem só como "Peças: R$ …"',
+    { id: 'W4', descricao: 'WhatsApp: negrito no título e no à vista; cartão primeiro, à vista por último; sem a quebra mão de obra/peças e sem o acréscimo',
       executar: function () {
         var r = calcularOrcamento({ modo: 'horas', horas: 8, pecasPagar: 500, pecasModo: 'acrescimo', pecasAcrescimo: 47 },
           paramsT6, [visa()], NAO_SEI, 0);
-        var linhas = textoWhatsApp(r, { nomeOficina: 'CliniCar Motors Tech' }, '').split('\n');
+        var texto = textoWhatsApp(r, { nomeOficina: 'CliniCar Motors Tech' }, '');
+        var linhas = texto.split('\n');
         var semNome = textoWhatsApp(r, { nomeOficina: '' }, '').split('\n')[0];
-        return { obtido: [linhas[0], linhas[3], linhas[5], semNome, linhas.join('\n').indexOf('47') < 0],
-                 esperado: ['*Orçamento – CliniCar Motors Tech*', 'Peças: R$ 735,00', '💵 À vista (Pix/dinheiro): *R$ 1.935,00*', '*Orçamento*', true] };
+        return { obtido: [linhas[0], linhas[2].indexOf('💳 Cartão em até 5x') === 0, linhas[linhas.length - 1], semNome,
+                          /Mão de obra|Peças|47/.test(texto)],
+                 esperado: ['*Orçamento – CliniCar Motors Tech*', true, '💵 À vista (Pix/dinheiro): *R$ 1.935,00*', '*Orçamento*', false] };
+      } },
+    // ---- Desconto à vista (cenário: MO 12 h × 165 = 1.980; peças 100 + 47% = 147; base 2.127;
+    //      Visa 5x 7,57%; imposto 10%; gasto das horas 936,92) ----
+    { id: 'D1', descricao: 'Âncora = Visa 5x 7,57% sobre a base 2.127 → Total 2.301,20 · 5× 460,24',
+      executar: function () {
+        var c = cenarioDesconto();
+        var p = calcularPrecoComDesconto(c.res, c.params, 5, 0);
+        return { obtido: [c.res.aVista.totalCentavos, p.ancora.parcelas, p.ancora.totalCentavos, p.ancora.parcelaCentavos], esperado: [212700, 5, 230120, 46024] };
+      } },
+    { id: 'D2', descricao: 'Desconto 5% → à vista 2.186,14',
+      executar: function () { var c = cenarioDesconto(); return { obtido: calcularPrecoComDesconto(c.res, c.params, 5, 0).precoCentavos, esperado: 218614 }; } },
+    { id: 'D3', descricao: 'Máximo sem perder lucro 7,57%; com 5% ainda pode 2,57% / R$ 59,14',
+      executar: function () {
+        var c = cenarioDesconto(); var p = calcularPrecoComDesconto(c.res, c.params, 5, 0);
+        return { obtido: [Math.round(p.maximo * 100) / 100, p.aindaPodePct, p.aindaPodeCentavos, p.acimaDoMaximo], esperado: [7.57, 2.57, 5914, false] };
+      } },
+    { id: 'D4', descricao: 'Lucro com 5% = 2.186,14 − 936,92 − 100 − 218,61 = 930,61',
+      executar: function () {
+        var c = cenarioDesconto(); var p = calcularPrecoComDesconto(c.res, c.params, 5, 0);
+        return { obtido: [centavos(c.res.gastoHoras), centavos(p.imposto), centavos(p.lucro)], esperado: [93692, 21861, 93061] };
+      } },
+    { id: 'D5', descricao: 'Desconto 10% → 2.071,08; ainda pode 0; abre mão de R$ 55,92',
+      executar: function () {
+        var c = cenarioDesconto(); var p = calcularPrecoComDesconto(c.res, c.params, 10, 0);
+        return { obtido: [p.precoCentavos, p.aindaPodePct, p.aindaPodeCentavos, p.acimaDoMaximo, p.abreMaoCentavos], esperado: [207108, 0, 0, true, 5592] };
+      } },
+    { id: 'D6', descricao: 'Extra 2% SOMA aos 5% (total 7%) → 2.140,12; ainda pode 0,57%; total limitado a 99',
+      executar: function () {
+        var c = cenarioDesconto(); var p = calcularPrecoComDesconto(c.res, c.params, 5, 2);
+        return { obtido: [p.descontoTotal, p.precoCentavos, p.aindaPodePct, calcularPrecoComDesconto(c.res, c.params, 90, 50).descontoTotal],
+                 esperado: [7, 214012, 0.57, 99] };
+      } },
+    { id: 'D7', descricao: 'Piso de prejuízo = (936,92 + 100) ÷ 0,9 = 1.152,13',
+      executar: function () { var c = cenarioDesconto(); return { obtido: centavos(calcularPrecoComDesconto(c.res, c.params, 5, 0).piso), esperado: 115213 }; } },
+    { id: 'D8', descricao: 'Sem taxa em nenhuma parcela em destaque → âncora = base, sem desconto, sem erro',
+      executar: function () {
+        var c = cenarioDesconto([cartaoDeTeste('Elo', { debito: 1.89, p3: 6.89 })]);
+        var p = calcularPrecoComDesconto(c.res, c.params, 5, 2);
+        return { obtido: [p.temAncora, p.descontoTotal, p.precoCentavos, p.aindaPodeCentavos, p.acimaDoMaximo], esperado: [false, 0, 212700, 0, false] };
+      } },
+    { id: 'D9', descricao: 'WhatsApp sem "ainda", "lucro", "taxa", "piso", "prejuízo"; com desconto 0 → sem "de desconto"',
+      executar: function () {
+        var c = cenarioDesconto();
+        var com = textoWhatsApp(c.res, { nomeOficina: 'CliniCar Motors Tech' }, 'Troca de embreagem', calcularPrecoComDesconto(c.res, c.params, 5, 0));
+        var acima = textoWhatsApp(c.res, { nomeOficina: '' }, '', calcularPrecoComDesconto(c.res, c.params, 10, 0));
+        var zero = textoWhatsApp(c.res, { nomeOficina: '' }, '', calcularPrecoComDesconto(c.res, c.params, 0, 0));
+        var proibido = /ainda|lucro|taxa|piso|preju/i;
+        return { obtido: [proibido.test(com + acima + zero), com.split('\n').pop(), zero.split('\n').pop(), /de desconto/.test(zero)],
+                 esperado: [false, '💵 À vista (Pix/dinheiro): *R$ 2.186,14* — 5% de desconto', '💵 À vista (Pix/dinheiro): *R$ 2.301,20*', false] };
+      } },
+    { id: 'D11', descricao: '10x Visa 11,06% sobre a BASE: 2.127 ÷ 0,8894 = 2.391,4999 → Total 2.391,50 · 10× 239,15 (também no WhatsApp)',
+      executar: function () {
+        var c = cenarioDesconto();
+        var op10 = c.res.destaques[1];
+        var texto = textoWhatsApp(c.res, { nomeOficina: '' }, '', calcularPrecoComDesconto(c.res, c.params, 5, 0));
+        return { obtido: [op10.parcelas, op10.totalCentavos, op10.parcelaCentavos, texto.indexOf('💳 Cartão em até 10x: R$ 2.391,50 (10x de R$ 239,15)') >= 0],
+                 esperado: [10, 239150, 23915, true] };
+      } },
+    { id: 'D12', descricao: 'Nenhuma parcela em destaque com total menor que o à vista oferecido (0%, 5%, 7%, 10%)',
+      executar: function () {
+        var c = cenarioDesconto();
+        var ok = [[0, 0], [5, 0], [5, 2], [10, 0]].every(function (dx) {
+          var p = calcularPrecoComDesconto(c.res, c.params, dx[0], dx[1]);
+          return c.res.destaques.every(function (op) { return op.totalCentavos >= p.precoCentavos; });
+        });
+        return { obtido: ok, esperado: true };
+      } },
+    { id: 'L1', descricao: 'Desconto padrão do aparelho: nada salvo → 5; "7" → 7; "7,5" → 7,5; "0" → 0; inválido ("abc", "150", "-1") → 5',
+      executar: function () {
+        return { obtido: [null, '7', '7,5', '0', 'abc', '150', '-1'].map(descontoPadraoDoAparelho), esperado: [5, 7, 7.5, 0, 5, 5, 5] };
       } }
   ];
+}
+
+/** Cenário dos casos D: MO 12 h × 165; peças 100 + 47%; Visa (padrão InfinitePay); imposto 10%; gasto das horas 936,92. */
+function cenarioDesconto(cartoes) {
+  var params = { valorHoraCobrado: 165, impostoPercentual: 10, parcelasDestaque: '5,10' };
+  var entrada = { modo: 'horas', horas: 12, pecasPagar: 100, pecasModo: 'acrescimo', pecasAcrescimo: 47 };
+  var res = calcularOrcamento(entrada, params, cartoes || [cartaoDeTeste('Visa/Master', VISA_TESTE)], NAO_SEI, 936.92 / 12);
+  return { res: res, params: params };
 }
 
 /** Roda os casos e devolve [{id, descricao, passou, obtido, esperado}]. */

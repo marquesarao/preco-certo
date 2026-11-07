@@ -202,10 +202,22 @@ Colunas: `Cartão` | `Débito (%)` | `1x (%)` | `2x (%)` | … | `12x (%)`. As t
 
 **Divergência conhecida (aceita):** 1x 3,15% sobre R$ 1.000. O app InfinitePay mostra 1.032,53, e o nosso cálculo dá 1.032,52 (total exato 1.032,5245). A diferença é de R$ 0,01, provavelmente porque a taxa real é exibida arredondada. Nenhuma regra simples bate com os 4 casos conferidos. Veja `docs/testes-calculo.md`.
 
+**Desconto à vista, ancorado no cartão** (`calcularPrecoComDesconto`):
+- **Base** = `aVista` (mão de obra + peças cobradas). É o piso **sem perder lucro**.
+- **Âncora** (preço cheio) = a **primeira parcela em destaque que tem taxa**, no cartão escolhido ("Não sei" = maior taxa). Sem nenhuma, âncora = base e não há desconto.
+- **À vista oferecido** = `âncora.totalExato × (1 − (desconto + extra)/100)`, arredondado em centavos. Desconto e extra **somam**, e o total fica limitado a 99.
+- **Máximo sem perder lucro** = `(1 − base ÷ âncora) × 100` (é a taxa da âncora).
+- **Ainda pode dar** = máximo − total (mín. 0), em % e em R$ (= oferecido − base).
+- **Acima do máximo:** faixa vermelha "Com esse desconto você abre mão de R$ X do seu lucro", com X = base − oferecido.
+- **Piso de prejuízo** = `(gasto das horas + peças pagas) ÷ (1 − imposto%)`: "Abaixo de R$ X você trabalha no prejuízo."
+- As **outras** parcelas em destaque e "Ver outras formas" continuam calculadas sobre a **base** (regra B). Nenhuma fica abaixo do à vista oferecido (D12).
+- Com desconto 0, o à vista é igual à âncora.
+- **Desconto à vista padrão:** fica **por aparelho**, no `localStorage` (`precoCerto.descontoPadrao.v1`, texto "7,5"), de 0 a 99, e é 5 de fábrica. Valor ausente ou inválido vale 5 (`descontoPadraoDoAparelho`). "Desconectar este aparelho" **não** apaga. Cada orçamento novo começa com ele, e dá para mudar só naquele orçamento.
+
 **Lucro:**
-- `imposto = totalDaOpcao × impostoPercentual/100`, sobre o **total arredondado** (o que o cliente paga);
+- `imposto = total × impostoPercentual/100`, sobre o **total arredondado** (o que o cliente paga);
 - `lucro = (maoDeObra − horas × precoMinimoHora) + lucroPecas − imposto`;
-- o valor grande usa o à vista;
+- o valor grande usa o **à vista oferecido**: `lucro = oferecido − gasto das horas − peças pagas − imposto sobre o oferecido`;
 - com imposto maior que 0, aparece embaixo "No cartão em {maior parcela em destaque}x: R$ …".
 
 **Assinatura da função pura principal** (o `precoMinimoHora` é calculado fora e injetado):
@@ -300,7 +312,7 @@ Erros de validação voltam com a própria mensagem ("Dias de trabalho por seman
   - números e validação: `lerNumeroBR`, `validarNumeroCampo`, `validarHorasCobradas`, `normalizarParcelas`, `centavos`, `formatarBRL`, `formatarHoras`;
   - gastos e horas: `horasCobradasMes`, `precoMinimoHora`, `calcularMaoDeObra`, `calcularPecasCobrar`;
   - cartões: `chaveNome`, `acharCartao`, `cartaoEfetivo`, `taxaDaForma`, `validarNomeCartao`;
-  - orçamento e texto: `calcularOpcao`, `calcularOrcamento`, `valoresWhatsApp`, `textoWhatsApp`.
+  - orçamento e texto: `calcularOpcao`, `calcularOrcamento`, `calcularPrecoComDesconto`, `descontoPadraoDoAparelho`, `formatarPercentual`, `textoWhatsApp` (`valoresWhatsApp` foi removida junto com a quebra mão de obra/peças).
 - **Dados de teste** (`VISA_TESTE`, `cartaoDeTeste`, `casosDeTeste`): só o autoteste usa. Um teste automático garante que o app nunca os usa.
 - **Sincronização:**
   - **cache e servidor:** o cache local abre o app rápido, e em seguida a planilha (fonte da verdade) substitui o cache. O app recarrega da planilha quando volta a ficar visível, se não houver nada pendente.
@@ -311,10 +323,23 @@ Erros de validação voltam com a própria mensagem ("Dias de trabalho por seman
   - **remover gasto ou cartão:** some na hora e aparece a barra "Gasto removido · DESFAZER" (ou "Cartão removido · DESFAZER") por 6 s. O salvamento só acontece quando a barra some, ou junto com a próxima alteração.
 - **Copiar:** fora do iframe do Apps Script, a área de transferência funciona em HTTPS. São 2 níveis: área de transferência e, se falhar, a caixa com o texto selecionado. O botão "Compartilhar" aparece sempre que o navegador tiver `navigator.share`.
 - **Autoteste:** `?teste=1`, lido direto de `location.search`.
+- **Navegação:** abrir Configurações (ou a tela do PIN) empilha uma entrada no histórico (`history.pushState`). O "voltar" do celular (`popstate`), o **Esc** e "← Voltar ao orçamento" levam ao orçamento. O "avançar" do navegador nunca reabre Configurações, para não pular o PIN.
+- **PIN (opcional):** 4 números no `localStorage` (`precoCerto.pin.v1`), só deste aparelho e desligado de fábrica. **Não é segurança forte:** serve para evitar mexida sem querer. "Desconectar este aparelho" e abrir de novo o link de configuração apagam o PIN.
+- **Link `#cfg=` com o app já aberto na mesma aba:** o navegador só troca o `#` e não recarrega. O app escuta `hashchange` e processa o link do mesmo jeito.
+- **Resposta velha da planilha:** se o aparelho foi desconectado (ou ligado a outra planilha) enquanto esperava, a resposta é ignorada.
+- **Google Tradutor:** `<html lang="pt-BR" translate="no">` e `<meta name="google" content="notranslate">`. Assim o Chrome não oferece traduzir a página nem troca números e palavras.
+- **Vários aparelhos:** orçamentos podem ser feitos em vários aparelhos ao mesmo tempo. Já "Meus gastos" e "Ajustes": só uma pessoa mexe por vez (o último a salvar vale). Sincronização entre aparelhos e histórico de orçamentos ficam para a v2.
 
 ## 6. Telas
 
-Topo preto com o logo, "Preço Certo" e o status. Abas com ícone SVG: **Orçamento · Meus gastos · Ajustes**. No primeiro acesso, sem gastos, o app abre em "Meus gastos".
+Topo preto: logo e "Preço Certo" à esquerda; status e **engrenagem** (SVG, área de toque de 44 px, `aria-label="Configurações"`) à direita. **Não há barra de abas:** a tela principal é **só o Orçamento**.
+
+- **Engrenagem:** abre a área **"Configurações"** em tela cheia, com o título, o botão visível "← Voltar ao orçamento" e as abas internas **Meus gastos | Ajustes** (o conteúdo é o mesmo de antes). Reabre na última aba usada.
+- **Voltar:** Esc (notebook) e o "voltar" do celular voltam ao orçamento.
+- **Primeiro acesso** sem gastos (e sem PIN): abre direto em Configurações → Meus gastos, com a faixa "Comece colocando seus gastos do mês. Leva 2 minutos.". Nos outros casos, abre no Orçamento.
+- Os links "Meus gastos" e "Ajustes" das dicas do orçamento abrem Configurações na aba certa (pedindo o PIN, se ligado).
+- **PIN ligado:** a engrenagem abre "Configurações protegidas" ("Digite o PIN deste aparelho", Entrar, "Voltar ao orçamento"). PIN errado: "PIN errado. Tente de novo." **"Esqueci o PIN"** explica que basta desconectar o aparelho e abrir o link de configuração de novo (isso apaga o PIN) e oferece "Desconectar este aparelho", com confirmação.
+- As telas "não conectado" e "perdeu o acesso" continuam como estavam.
 
 ### 6.1 Orçamento
 No notebook, os campos ficam à esquerda e os resultados à direita.
@@ -328,16 +353,17 @@ No notebook, os campos ficam à esquerda e os resultados à direita.
   - embaixo, "Cliente paga pelas peças: R$ 735,00";
   - link "Prefiro digitar o valor das peças", que troca para o valor direto (o link de volta é "Prefiro usar o acréscimo (%)").
 - **Resultados:**
-  - **card à vista**, com detalhe laranja à esquerda;
-  - **card de cartão:**
-    - chips "Não sei · Visa/Master · Elo…" (só com 2 ou mais cartões), com a ajuda "Não sabe o cartão do cliente? Deixe em 'Não sei': o preço cobre qualquer bandeira.";
-    - parcelas em destaque, em blocos leves: "5× de R$ X" e "Total R$ Y". O 1x mostra só o total;
-    - "Ver outras formas de pagamento", sem repetir as parcelas em destaque.
-  - **card de lucro:** valor verde (vermelho com "Esse preço não cobre seus gastos do mês"). Em "Ver detalhes":
+  - **card do cartão (âncora)**, com detalhe laranja à esquerda: "Cartão em 5x", "5× de R$ 460,24" e "Total R$ 2.301,20", mais os chips "Não sei · Visa/Master · Elo…" (só com 2 ou mais cartões) e a ajuda "Não sabe o cartão do cliente? Deixe em 'Não sei': o preço cobre qualquer bandeira.";
+  - **card à vista:** "R$ 2.186,14 · 5% de desconto", com os campos "Desconto à vista" (%) e "Desconto extra que vou dar (opcional)" (%), ambos de 0 a 99 e com erro na hora. Sem âncora, os campos somem e aparece "Cadastre a taxa do cartão em Ajustes para oferecer desconto à vista.";
+  - **só para o mecânico:** faixa verde "Se o cliente pedir mais: ainda pode dar até 2,57% (R$ 59,14) sem mexer no seu lucro." ou, acima do máximo, faixa vermelha "Com esse desconto você abre mão de R$ 55,92 do seu lucro.";
+  - **demais parcelas em destaque** (sobre a base), em blocos leves, e "Ver outras formas de pagamento", sem repetir as parcelas em destaque;
+  - **card de lucro** (sobre o à vista oferecido): valor verde (vermelho com "Esse preço não cobre seus gastos do mês"). Em "Ver detalhes":
     - Mão de obra;
     - "Gasto das suas 8 horas: − R$ 430,77" (nenhuma multiplicação visível);
     - Lucro nas peças;
-    - Imposto.
+    - "Diferença pelo desconto à vista" (± oferecido − base);
+    - Imposto (à vista).
+    A soma das linhas é o lucro. Embaixo: "Abaixo de R$ X você trabalha no prejuízo."
   - **botões:** "Copiar para WhatsApp" (verde, ícone de balão), "Compartilhar" (fantasma) e "Novo orçamento" (fantasma).
   - Sem valor: a dica "Preencha as horas (ou o valor) e as peças para ver o preço."
 
@@ -346,16 +372,14 @@ No notebook, os campos ficam à esquerda e os resultados à direita.
 *Orçamento – {nomeOficina}*          (ou *Orçamento* sem nome)
 {serviço/veículo}
 
-Mão de obra: R$ …
-Peças: R$ …
-
-💵 À vista (Pix/dinheiro): *R$ …*
 💳 Cartão em até 5x: R$ … (5x de R$ …)
 💳 Cartão em até 10x: R$ … (10x de R$ …)
+💵 À vista (Pix/dinheiro): *R$ …* — 5% de desconto
 ```
+- Com desconto 0, o à vista fica sem o "— N% de desconto".
+- A quebra "Mão de obra / Peças" foi **removida** (com ela, `valoresWhatsApp` e os casos W1–W3).
 - Com um cartão **escolhido** (2 ou mais cartões cadastrados), a linha vira "💳 Cartão Cabal em até 5x: …". Com "Não sei", ou com um único cartão, não há nome.
-- O texto **sempre fecha com o à vista, no centavo** (`valoresWhatsApp`): peças = à vista − mão de obra arredondada.
-- Sem custo, lucro, taxa nem acréscimo.
+- **Nunca** contém "ainda", "lucro", "taxa", "piso" nem "prejuízo", nem custo ou acréscimo.
 
 ### 6.2 Meus gastos
 - **Cards "Gastos da oficina" e "Gastos de casa":**
@@ -389,12 +413,14 @@ Peças: R$ …
   - "Planilha conectada: …/s/…a1B2c3/exec", só o final da URL;
   - "Versão do app";
   - "Instalar app", quando o navegador oferece;
-  - "Desconectar este aparelho", com confirmação na página. Apaga a conexão e o cache de dados (o rascunho do orçamento fica) e volta para a tela de conexão.
+  - **"Desconto à vista padrão"** (%), com a ajuda "Vale só para este aparelho. Cada orçamento novo começa com este número."; inválido mostra erro e não grava;
+  - **"Proteger configurações com PIN"**: Ligar (PIN de 4 números, digitado 2 vezes) ou Desligar, com a ajuda "Não é uma senha forte: serve só para evitar que alguém mexa nos gastos e ajustes sem querer. Vale só para este aparelho.";
+  - "Desconectar este aparelho", com confirmação na página. Apaga a conexão, o cache de dados e o PIN (ficam o rascunho do orçamento e o desconto padrão) e volta para a tela de conexão.
 
 ### 6.4 Tela de conexão (aparelho sem planilha)
 - Logo, "Preço Certo" e o texto "Este aparelho ainda não está ligado a uma planilha. Abra o link de configuração que você recebeu.".
 - O link discreto "Configurar manualmente" abre os campos "URL da planilha (termina em /exec)" e "Chave de acesso", mais o botão "Conectar".
-- Nessa tela as abas e o status ficam escondidos.
+- Nessa tela, a engrenagem e o status ficam escondidos.
 
 ## 7. Casos de teste (igualdade exata em centavos)
 
@@ -421,7 +447,20 @@ Ficam em `js/calculo.js` (`casosDeTeste()`). Rodam no app com `?teste=1` e em No
 | C7 | Migração: Visa preenchida + Elo só no 5x | 2 cartões, valores idênticos, vazios preservados, cópia "Taxas (antigo)" |
 | C8 | WhatsApp com "Cabal" / "Não sei" | contém "Cartão Cabal" / sem nome de cartão |
 | P1–P4 | Peças com acréscimo | 735,00 · 0% = mesmo valor · 489,9951 → 490,00 · lucro nas peças = cobrar − pagar |
-| W1–W4 | Texto do WhatsApp | fecha com o à vista no centavo; negrito; acréscimo não aparece |
+| W4 | Texto do WhatsApp | negrito; cartão primeiro, à vista por último; sem quebra mão de obra/peças; acréscimo não aparece (W1–W3 removidos com a quebra) |
+| D1 | Âncora: Visa 5x 7,57% sobre a base 2.127 (12 h × 165 + peças 100 + 47%) | Total 2.301,20 · 5× 460,24 |
+| D2 | Desconto 5% | à vista 2.186,14 |
+| D3 | Máximo / ainda pode | 7,57% · com 5%: 2,57% = R$ 59,14 |
+| D4 | Lucro com 5% (imposto 10%, gasto das horas 936,92) | 2.186,14 − 936,92 − 100 − 218,61 = 930,61 |
+| D5 | Desconto 10% | 2.071,08 · ainda pode 0 · abre mão de R$ 55,92 |
+| D6 | Extra 2% soma aos 5% | 7% → 2.140,12 · ainda 0,57% · total limitado a 99 |
+| D7 | Piso de prejuízo | (936,92 + 100) ÷ 0,9 = 1.152,13 |
+| D8 | Nenhuma parcela em destaque com taxa | âncora = base, sem desconto, sem erro |
+| D9 | WhatsApp | sem "ainda/lucro/taxa/piso/prejuízo"; desconto 0 → sem "de desconto" |
+| D10 | `apps-script/` | `git diff` e `git status` vazios |
+| D11 | 10x Visa 11,06% sobre a base | 2.127 ÷ 0,8894 = 2.391,4999 → Total 2.391,50 · 10× 239,15 (também no WhatsApp) |
+| D12 | Parcelas em destaque × à vista oferecido (0%, 5%, 7%, 10%) | nenhum total abaixo do à vista |
+| L1 | Desconto padrão do aparelho | nada salvo → 5; "7" → 7; "7,5" → 7,5; "0" → 0; inválido → 5 |
 
 Os casos C4 (leitura), C6 e C7 são testes do **backend** (Node, com a planilha simulada). Os demais estão em `js/calculo.js`.
 
@@ -445,5 +484,6 @@ O clasp e o GitHub Actions foram **removidos** (`.github/workflows/deploy.yml`, 
 4. **Arquitetura Pendências:** tela no GitHub Pages, Apps Script como API, PWA e link de configuração (aguardando aprovação)
 5. Testes de cálculo: autoteste completo (T14, T15)
 6. Documentação final (`GUIA-DO-USUARIO.md` já existe; o `DEPLOY.md` cobre a instalação)
+7. **Desconto à vista negociável + engrenagem/Configurações + PIN opcional** (só frontend; `apps-script/` sem mudança; `sw.js` v2) (aguardando aprovação)
 
 Cada fatia termina com uma parada para revisão. O commit local só é feito depois da aprovação.

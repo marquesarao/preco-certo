@@ -120,7 +120,7 @@ Se a mudança for nas duas pontas (API e tela), atualize o Apps Script **antes**
 
 1. **Aumente a versão** em `sw.js`: `const VERSAO = 'v1';` → `'v2'` (depois `'v3'`…). É isso que faz os aparelhos baixarem a versão nova.
 2. Faça a conferência de segredos (início deste documento) e dê o `git push`.
-3. Em 1 a 2 minutos o Pages publica. Ao abrir, o app mostra **"Nova versão disponível · ATUALIZAR"**. Ao tocar, ele recarrega já na versão nova (aparece em **Ajustes → Este aparelho → Versão do app**).
+3. Em 1 a 2 minutos o Pages publica. Ao abrir, o app mostra **"Nova versão disponível · ATUALIZAR"**. Ao tocar, ele recarrega já na versão nova (aparece em **engrenagem (⚙) → Ajustes → Este aparelho → Versão do app**).
 
 Se trocar os ícones: rode `tools/gerar-icones.ps1` (veja `tools/LEIA-ME.md`) e suba a versão do `sw.js`.
 
@@ -134,7 +134,7 @@ Se trocar os ícones: rode `tools/gerar-icones.ps1` (veja `tools/LEIA-ME.md`) e 
   - nas **Propriedades do script** (⚙️ Configurações do projeto → Propriedades do script → `TOKEN`);
   - no armazenamento do navegador de cada aparelho.
 - A parte do link depois do `#` **não é enviada a nenhum servidor** (nem ao GitHub Pages, nem à prévia de link do WhatsApp).
-- No aparelho, **Ajustes → Este aparelho → Desconectar este aparelho** apaga a ligação e os dados guardados naquele aparelho. A planilha não é afetada.
+- No aparelho, **engrenagem (⚙) → Ajustes → Este aparelho → Desconectar este aparelho** apaga a ligação, os dados guardados e o PIN daquele aparelho (o desconto à vista padrão fica). A planilha não é afetada. Com PIN ligado e esquecido: **Esqueci o PIN → Desconectar este aparelho** e abrir o link de configuração de novo.
 - As funções `gerarLinkDeConfiguracao`, `trocarToken` e `testarApi` são públicas no editor, mas **não podem ser chamadas pela internet**: a única entrada externa é a API, que só aceita as ações `obterDados`, `salvarDados` e `obterTaxasPadraoVisa`.
 
 ## Problemas comuns

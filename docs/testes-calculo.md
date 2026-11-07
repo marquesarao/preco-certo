@@ -14,7 +14,9 @@
 
 ## Resultados (07/11/2026)
 
-**Frontend: 58 de 58 · Backend (dados): 45 de 45 · API: 26 de 26 · Tela: 10 cenários · PWA: install, modo avião e versão nova.**
+**Frontend: 72 de 72 · Backend (dados): 45 de 45 · API: 26 de 26 · Tela: 10 cenários + 58 verificações (desconto, engrenagem, PIN, desconto padrão), estável em 5 rodadas seguidas · PWA: install, modo avião e versão nova.**
+
+> Pacote "desconto à vista + engrenagem + PIN": `apps-script/` sem nenhuma mudança (D10). O cálculo novo está em `calcularPrecoComDesconto`.
 
 ### Taxas e cálculo base (T)
 | # | Caso | Esperado | Resultado |
@@ -54,10 +56,30 @@
 ### Texto do WhatsApp (W)
 | # | Caso | Esperado | Resultado |
 |---|---|---|---|
-| W1 | 7,3 h × 150 + peças 333,33 | 1.095,00 + 333,33 = à vista 1.428,33 | ✅ |
-| W2 | 1,5 h × 133,33 (= 199,995) + peças 10,005 | 200,00 + 10,00 = 210,00 (sem o ajuste daria 210,01) | ✅ |
-| W3 | Só peças (99,995) / só mão de obra (1,2345 h × 150) | a linha que existe = à vista (100,00 · 185,18) | ✅ |
-| W4 | Negrito e acréscimo | `*Orçamento – CliniCar Motors Tech*` (ou `*Orçamento*`); `💵 À vista (Pix/dinheiro): *R$ 1.935,00*`; "Peças: R$ 735,00"; o 47% não aparece | ✅ |
+| W4 | Negrito, ordem e acréscimo | `*Orçamento – CliniCar Motors Tech*` (ou `*Orçamento*`); cartão primeiro, `💵 À vista (Pix/dinheiro): *R$ 1.935,00*` por último; sem "Mão de obra"/"Peças"; o 47% não aparece | ✅ |
+
+W1–W3 (fechamento da quebra "Mão de obra + Peças" no centavo) foram **removidos** junto com a quebra e com `valoresWhatsApp`, a pedido.
+
+### Desconto à vista ancorado no cartão (D) e desconto padrão do aparelho (L)
+Cenário: 12 h × R$ 165 + peças R$ 100 com 47% → base R$ 2.127,00; Visa/Master; destaque 5x e 10x; imposto 10%; gasto das horas R$ 936,92.
+
+| # | Caso | Esperado | Resultado |
+|---|---|---|---|
+| D1 | Âncora = 1ª parcela em destaque com taxa (5x 7,57%) | Total 2.301,20 · 5× 460,24 | ✅ |
+| D2 | Desconto 5% | à vista 2.186,14 | ✅ |
+| D3 | Máximo e "ainda pode dar" | máximo 7,57%; com 5%: 2,57% = R$ 59,14 | ✅ |
+| D4 | Lucro com 5% | 2.186,14 − 936,92 − 100 − 218,61 = 930,61 | ✅ |
+| D5 | Desconto 10% (acima do máximo) | 2.071,08; ainda pode 0; abre mão de R$ 55,92 | ✅ |
+| D6 | Extra 2% soma aos 5% | 7% → 2.140,12; ainda 0,57%; total limitado a 99 | ✅ |
+| D7 | Piso de prejuízo | (936,92 + 100) ÷ 0,9 = 1.152,13 | ✅ |
+| D8 | Nenhuma parcela em destaque com taxa | âncora = base, sem desconto, sem erro | ✅ |
+| D9 | WhatsApp | sem "ainda", "lucro", "taxa", "piso", "prejuízo"; desconto 0 → sem "de desconto" | ✅ |
+| D10 | `apps-script/` | `git diff` e `git status` vazios | ✅ |
+| D11 | 10x Visa 11,06% sobre a base | 2.127 ÷ 0,8894 = 2.391,4999 → Total 2.391,50 · 10× 239,15, também no WhatsApp | ✅ |
+| D12 | Parcelas em destaque × à vista oferecido (0%, 5%, 7%, 10%) | nenhum total abaixo do à vista (Node e tela) | ✅ |
+| L1 | Desconto padrão do aparelho | nada salvo → 5; "7" → 7; "7,5" → 7,5; "0" → 0; "abc", "150", "-1" → 5 | ✅ |
+
+Com desconto 0, o à vista é igual à âncora (2.301,20).
 
 ### Verificações extras
 - **Paridade frontend × backend:**
@@ -112,18 +134,23 @@
 ### Tela (Chrome headless, API simulada em `localhost`)
 | Cenário | Resultado |
 |---|---|
-| Aparelho sem configuração | tela de conexão; abas escondidas; "Configurar manualmente" abre os campos ✅ |
+| Aparelho sem configuração | tela de conexão; engrenagem e status escondidos; "Configurar manualmente" abre os campos ✅ |
 | Abrir pelo link `#cfg=` | conexão guardada, **endereço limpo** (sem `#cfg`), "Aparelho conectado à planilha ✓", app aberto; uma edição salva com POST de texto ✅ |
 | Link inválido (`#cfg=@@@`) | mensagem simples; nada guardado; endereço limpo ✅ |
 | Link com token errado | "Este link não dá mais acesso à planilha. Peça um link novo."; nada guardado ✅ |
 | Configuração manual | URL `/dev` recusada com mensagem; com a URL certa conecta ✅ |
 | Desconectar | confirmação na página → tela de conexão; conexão e cache apagados ✅ |
-| Sem internet (com cache) | "Sem conexão: só orçamento"; edição bloqueada; orçamento calcula (R$ 447,00) ✅ |
+| Sem internet (com cache) | "Sem conexão: só orçamento"; edição bloqueada; orçamento calcula ✅ |
 | Token trocado | faixa "Este aparelho perdeu o acesso à planilha…"; status "Sem acesso à planilha"; edição bloqueada ✅ |
-| `?teste=1` | "22 de 22 passaram." ✅ |
-| PWA (Chrome em tempo real) | service worker ativo; casca com 15 arquivos; versão "v1"; **em modo avião o app abre** (faixa offline, fonte Inter, logo); publicação "v2" → "Nova versão disponível · ATUALIZAR" → recarrega na v2 e o cache antigo é apagado ✅ |
+| `?teste=1` | "31 de 31 passaram." ✅ |
+| PWA (Chrome em tempo real) | service worker ativo; casca com 15 arquivos; versão "v2"; **em modo avião o app abre** (faixa offline, fonte Inter, logo); publicação simulada "v3" → "Nova versão disponível · ATUALIZAR" → recarrega na v3 e o cache antigo é apagado ✅ |
+| **Engrenagem** | abre só no Orçamento, sem barra de abas; engrenagem com `aria-label="Configurações"` e área de toque ≥ 44 px; abre Configurações → Meus gastos; aba Ajustes; "← Voltar ao orçamento", **Esc** e o **voltar do navegador** voltam ao orçamento sem sair do app; reabre na última aba; links "Meus gastos"/"Ajustes" das dicas abrem a aba certa ✅ |
+| **Primeiro acesso** (sem gastos) | abre direto em Configurações → Meus gastos, com a faixa; "voltar" leva ao orçamento ✅ |
+| **PIN** | desligado: a engrenagem não pede nada; ligar recusa PIN curto e PINs diferentes; ligado: a engrenagem pede o PIN; PIN errado não abre ("PIN errado. Tente de novo."); Esc volta; PIN certo abre; "avançar" do navegador não pula o PIN; "Esqueci o PIN" → desconectar apaga o PIN e **mantém o desconto padrão**; abrir o link de configuração de novo apaga o PIN, inclusive com o app já aberto na mesma aba (só muda o `#`) ✅ |
+| **Desconto padrão do aparelho** | nada salvo → 5; Ajustes mostra 5 e "Vale só para este aparelho."; 150 → erro e não grava; 7 → gravado; mudar no orçamento não muda o padrão; Novo orçamento começa com 7; valor inválido guardado → 5 ✅ |
+| **Desconto na tela** | card do cartão 5x 460,24 / 2.301,20; à vista 2.186,14 "· 5% de desconto"; faixa "ainda pode dar até 2,57% (R$ 59,14)"; 10x 239,15 / 2.391,50; detalhes somam o lucro (com "Diferença pelo desconto à vista" e imposto); piso; extra 2% → 2.140,12 / 0,57% (R$ 13,12); extra 5% → 2.071,08 + faixa vermelha "abre mão de R$ 55,92"; desconto 0 → 2.301,20 sem sufixo; 120 → erro; texto do WhatsApp copiado de verdade (área de transferência) na ordem certa e sem palavras proibidas; sem rolagem horizontal em 390 px ✅ |
 
-Nenhum erro de JavaScript em nenhum cenário. Os fluxos já existentes (cartões, Desfazer, orçamento) continuam com a mesma lógica; só a camada de comunicação mudou.
+Nenhum erro de JavaScript em nenhum cenário. Os fluxos já existentes (cartões, Desfazer, link, manual, desconectar, offline, sem acesso) foram refeitos com a engrenagem no lugar das abas e continuam passando.
 
 ## Divergências conhecidas
 

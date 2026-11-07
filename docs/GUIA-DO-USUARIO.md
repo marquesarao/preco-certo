@@ -13,7 +13,7 @@ O Preço Certo mostra **quanto cobrar** em cada serviço, **já com a taxa da ma
 4. **Pronto. Agora apague a mensagem com o link.** Ela dá acesso aos seus dados.
 
 **Instalar no celular (Chrome):**
-1. Com o app aberto, toque em **"Instalar"** quando aparecer o aviso embaixo, ou em **Ajustes → Instalar app**.
+1. Com o app aberto, toque em **"Instalar"** quando aparecer o aviso embaixo, ou na **engrenagem (⚙) → Ajustes → Instalar app**.
 2. Se não aparecer: toque nos **3 pontinhos (⋮)** → **"Instalar app"** (ou "Adicionar à tela inicial").
 3. O app aparece na tela do celular com o **ícone da CliniCar**. Abra sempre por ele.
 
@@ -26,9 +26,17 @@ O Preço Certo mostra **quanto cobrar** em cada serviço, **já com a taxa da ma
 
 ---
 
+## Onde fica cada coisa
+
+- A tela do app é o **Orçamento**.
+- **Meus gastos** e **Ajustes** ficam atrás da **engrenagem (⚙)**, no canto de cima. Ela abre **Configurações**, com as duas abas.
+- Para voltar, toque em **"← Voltar ao orçamento"**, use o **voltar** do celular ou aperte **Esc** no computador.
+
+---
+
 ## 2. Primeira vez: seus gastos (leva 2 minutos)
 
-Abra **Meus gastos**:
+Na primeira vez, o app já abre em **Configurações → Meus gastos**. Depois, é só tocar na **engrenagem (⚙)**.
 1. Em **Gastos da oficina**, toque nas sugestões (Aluguel, Luz, Água…) e coloque quanto gasta **por mês**.
 2. Faça o mesmo em **Gastos de casa**: o que você precisa tirar da oficina para viver.
 3. Em **Sua rotina**, confira os dias e as horas de trabalho e **quantas horas por dia você consegue cobrar** (normalmente 6 de 8).
@@ -41,7 +49,7 @@ Errou e apagou um gasto? Toque em **DESFAZER** na barra que aparece embaixo.
 
 ## 3. Fazer um orçamento
 
-Abra **Orçamento**:
+Na tela do **Orçamento**:
 1. **Serviço / veículo:** ex.: "Troca de embreagem – Gol 2015".
 2. **Horas de serviço:** o app calcula a mão de obra.
    Prefere dar um preço fechado? Toque em **"Prefiro digitar o valor fechado"**.
@@ -50,10 +58,22 @@ Abra **Orçamento**:
    - em **"Quanto você põe em cima da peça"**, já vem o seu número de sempre (ex.: 47%). Mude só se quiser, naquele orçamento;
    - o app mostra **quanto o cliente paga pelas peças**.
 4. Veja o resultado:
-   - **À vista (Pix ou dinheiro):** o preço sem taxa;
-   - **Cartão em 5x / 10x:** o preço no cartão, já cobrindo a taxa da maquininha;
+   - **Cartão em 5x** (em cima): o preço cheio no cartão, já cobrindo a taxa da maquininha;
+   - **À vista (Pix ou dinheiro):** o preço do cartão **com desconto** (veja abaixo);
+   - **Cartão em 10x** e **"Ver outras formas"**: as outras opções no cartão;
    - **Seu lucro neste serviço:** em **verde** está bom; em **vermelho**, o preço não cobre seus gastos.
 5. **Não sabe o cartão do cliente?** Deixe em **"Não sei"**: o preço cobre qualquer cartão.
+
+### Desconto à vista
+
+O à vista é o preço do cartão **com um desconto**. Assim o cliente vê que pagar no Pix vale a pena.
+
+- **Desconto à vista:** já vem com o seu número de sempre (de fábrica, 5%). Mude só se quiser, naquele orçamento.
+- **Desconto extra que vou dar:** para quando o cliente pede mais. Ele **soma** com o desconto à vista (5% + 2% = 7%).
+- Embaixo aparece, **só para você**: **"Se o cliente pedir mais: ainda pode dar até X% (R$ Y) sem mexer no seu lucro."** Até esse ponto, o desconto sai da taxa que você não vai pagar, e não do seu bolso.
+- Passou desse ponto? Aparece em **vermelho**: **"Com esse desconto você abre mão de R$ X do seu lucro"**. Você ainda pode dar, mas sabendo quanto perde.
+- Em **Ver detalhes** aparece **"Abaixo de R$ X você trabalha no prejuízo."** Esse é o limite: abaixo dele, você paga para trabalhar.
+- Quer mudar o seu número de sempre? **Engrenagem (⚙) → Ajustes → Este aparelho → "Desconto à vista padrão"**. Vale só para este aparelho.
 
 ---
 
@@ -62,7 +82,7 @@ Abra **Orçamento**:
 1. Toque em **Copiar para WhatsApp**.
 2. Abra a conversa do cliente no WhatsApp e **cole**.
 
-O texto mostra só o que o cliente precisa ver: mão de obra, peças, à vista e cartão. **Nunca** mostra seu lucro, seus custos nem a taxa.
+O texto mostra só o que o cliente precisa ver: primeiro o **cartão** (5x, 10x), depois o **à vista** com o desconto (ex.: "— 5% de desconto"). **Nunca** mostra seu lucro, seus custos, a taxa nem quanto você ainda pode dar.
 
 Para começar outro, toque em **Novo orçamento**.
 
@@ -73,7 +93,7 @@ Para começar outro, toque em **Novo orçamento**.
 Cada cartão (Visa, Master, Elo, Amex…) tem uma taxa diferente na maquininha. O app já vem com **Visa/Master** preenchido com as taxas da InfinitePay.
 
 **Para cadastrar outro cartão:**
-1. Abra **Ajustes** → **Seus cartões**.
+1. Toque na **engrenagem (⚙)** → **Ajustes** → **Seus cartões**.
 2. Toque em **"+ Adicionar cartão"** e escolha o cartão (Elo, Amex, Hipercard…). Se não estiver na lista, toque em **"Outro…"** e escreva o nome.
 3. O cartão abre com as taxas em branco.
 
@@ -99,3 +119,11 @@ Cada cartão (Visa, Master, Elo, Amex…) tem uma taxa diferente na maquininha. 
 - Quer ver os dados? Em **Ajustes**, toque em **"Abrir minha planilha"**.
 - Apareceu **"Este aparelho perdeu o acesso à planilha"**? Peça um **link de configuração novo** e abra no aparelho.
 - Vai trocar de celular ou emprestar o aparelho? Em **Ajustes → Este aparelho → "Desconectar este aparelho"**. Seus dados continuam na planilha.
+- **Vários aparelhos:** orçamentos podem ser feitos em vários aparelhos ao mesmo tempo. Já **Meus gastos** e **Ajustes**: só uma pessoa mexe por vez (o último a salvar vale).
+
+### PIN (opcional)
+
+Não quer que alguém mexa nos seus gastos e ajustes sem querer? Em **Ajustes → Este aparelho → "Proteger configurações com PIN"**, toque em **Ligar** e escolha 4 números. Aí a engrenagem pede o PIN.
+
+- **Não é uma senha forte.** Serve só para evitar mexida sem querer, e vale só para este aparelho.
+- **Esqueceu o PIN?** Na tela do PIN, toque em **"Esqueci o PIN"** → **"Desconectar este aparelho"** e abra de novo o **link de configuração**. Isso apaga o PIN. Seus dados continuam na planilha, e o seu desconto padrão continua no aparelho.

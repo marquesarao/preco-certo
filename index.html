@@ -1,7 +1,9 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" translate="no">
 <head>
 <meta charset="utf-8">
+<meta name="google" content="notranslate">
+<meta http-equiv="Content-Language" content="pt-BR">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Preço Certo</title>
 <meta name="description" content="Quanto cobrar em cada serviço, já com a taxa da maquininha.">
@@ -29,25 +31,22 @@
     <symbol id="i-mais" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
     <symbol id="i-abrir" viewBox="0 0 24 24"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
     <symbol id="i-seta" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-engrenagem" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></symbol>
+    <symbol id="i-voltar" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></symbol>
+    <symbol id="i-cadeado" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
   </defs>
 </svg>
 
 <header class="topo">
   <div class="topo-linha">
     <div class="marca"><img class="logo" id="logo" alt="CliniCar Motors Tech" src="icons/logo-clinicar.jpg" width="52" height="52"><span>Preço Certo</span></div>
-    <button type="button" id="status" class="status" disabled>Carregando…</button>
+    <div class="topo-acoes">
+      <button type="button" id="status" class="status" disabled>Carregando…</button>
+      <button type="button" class="btn-engrenagem" id="btn-engrenagem" aria-label="Configurações" title="Configurações">
+        <svg class="ic" aria-hidden="true"><use href="#i-engrenagem"/></svg>
+      </button>
+    </div>
   </div>
-  <nav class="abas" role="tablist" aria-label="Telas">
-    <button type="button" class="aba" role="tab" id="aba-orcamento" data-tela="orcamento" aria-selected="false" aria-controls="tela-orcamento">
-      <svg class="ic" aria-hidden="true"><use href="#i-calc"/></svg><span>Orçamento</span>
-    </button>
-    <button type="button" class="aba" role="tab" id="aba-gastos" data-tela="gastos" aria-selected="false" aria-controls="tela-gastos">
-      <svg class="ic" aria-hidden="true"><use href="#i-recibo"/></svg><span>Meus gastos</span>
-    </button>
-    <button type="button" class="aba" role="tab" id="aba-ajustes" data-tela="ajustes" aria-selected="false" aria-controls="tela-ajustes">
-      <svg class="ic" aria-hidden="true"><use href="#i-ajustes"/></svg><span>Ajustes</span>
-    </button>
-  </nav>
 </header>
 
 <main>
@@ -87,7 +86,7 @@
   </div>
 
   <!-- ============================ ORÇAMENTO ============================ -->
-  <section id="tela-orcamento" role="tabpanel" aria-labelledby="aba-orcamento" hidden>
+  <section id="tela-orcamento" hidden>
     <div id="faixa-sem-gastos-orc" class="faixa" hidden>
       Coloque seus gastos em <button type="button" class="link link-inline" data-ir="gastos">Meus gastos</button> para ver o lucro.
     </div>
@@ -182,17 +181,48 @@
         </div>
 
         <div id="orc-resultado" hidden>
-          <div class="card card-avista">
-            <div class="titulo-valor"><svg class="ic" aria-hidden="true"><use href="#i-dinheiro"/></svg>À vista (Pix ou dinheiro)</div>
-            <div class="valor-grande" id="res-avista"></div>
-          </div>
-
-          <div class="card" id="card-cartao">
+          <!-- Preço cheio (âncora): primeira parcela em destaque com taxa -->
+          <div class="card card-ancora" id="card-ancora">
+            <div class="titulo-valor"><svg class="ic" aria-hidden="true"><use href="#i-cartao"/></svg><span id="ancora-titulo"></span></div>
+            <div class="valor-grande" id="ancora-parcela"></div>
+            <div class="parcela-total" id="ancora-total"></div>
             <div id="bloco-bandeiras">
-              <p class="rotulo">Cartão do cliente</p>
+              <p class="rotulo" style="margin-top:16px">Cartão do cliente</p>
               <div class="chips" id="chips-bandeira" role="radiogroup" aria-label="Cartão do cliente"></div>
               <p class="ajuda">Não sabe o cartão do cliente? Deixe em "Não sei": o preço cobre qualquer bandeira.</p>
             </div>
+          </div>
+
+          <!-- À vista com desconto -->
+          <div class="card card-avista">
+            <div class="titulo-valor"><svg class="ic" aria-hidden="true"><use href="#i-dinheiro"/></svg>À vista (Pix ou dinheiro)</div>
+            <div class="avista-linha"><span class="valor-grande" id="res-avista"></span><span class="avista-desconto" id="res-avista-desconto"></span></div>
+            <div class="campos-desconto" id="bloco-desconto">
+              <div class="campo">
+                <label for="orc-desconto">Desconto à vista</label>
+                <div class="entrada com-sufixo">
+                  <input id="orc-desconto" class="num" type="text" inputmode="decimal" data-orc="descontoTexto" autocomplete="off">
+                  <span class="sufixo">%</span>
+                </div>
+                <p class="erro"></p>
+              </div>
+              <div class="campo">
+                <label for="orc-extra">Desconto extra que vou dar (opcional)</label>
+                <div class="entrada com-sufixo">
+                  <input id="orc-extra" class="num" type="text" inputmode="decimal" data-orc="extraTexto" autocomplete="off" placeholder="0">
+                  <span class="sufixo">%</span>
+                </div>
+                <p class="erro"></p>
+              </div>
+            </div>
+            <p class="ajuda" id="dica-sem-ancora" hidden>Cadastre a taxa do cartão em <button type="button" class="link link-inline" data-ir="ajustes">Ajustes</button> para oferecer desconto à vista.</p>
+          </div>
+
+          <!-- Só para o mecânico (nunca vai para o WhatsApp) -->
+          <div class="faixa faixa-dica" id="faixa-ainda-pode" hidden></div>
+          <div class="faixa faixa-perigo" id="faixa-abre-mao" role="alert" hidden></div>
+
+          <div class="card" id="card-cartao">
             <div id="cards-destaque"></div>
             <details id="outras-formas">
               <summary>Ver outras formas de pagamento<svg class="ic" aria-hidden="true"><use href="#i-seta"/></svg></summary>
@@ -211,6 +241,7 @@
             <details>
               <summary>Ver detalhes<svg class="ic" aria-hidden="true"><use href="#i-seta"/></svg></summary>
               <dl class="detalhes" id="res-detalhes"></dl>
+              <p class="pequeno" id="res-piso"></p>
             </details>
           </div>
 
@@ -228,6 +259,47 @@
       </div>
     </div>
   </section>
+
+  <!-- ============================ PIN (antes de abrir Configurações) ============================ -->
+  <section id="tela-pin" class="conectar" hidden>
+    <div class="card">
+      <div class="titulo-valor" style="justify-content:center"><svg class="ic" aria-hidden="true"><use href="#i-cadeado"/></svg>Configurações protegidas</div>
+      <div class="campo" style="margin-top:16px">
+        <label for="pin-entrada">Digite o PIN deste aparelho</label>
+        <div class="entrada"><input id="pin-entrada" class="num pin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></div>
+        <p class="erro" id="pin-erro"></p>
+      </div>
+      <button type="button" class="btn btn-primario" id="btn-pin-entrar">Entrar</button>
+      <button type="button" class="btn btn-fantasma" id="btn-pin-cancelar">Voltar ao orçamento</button>
+      <button type="button" class="link" id="btn-pin-esqueci" style="margin:8px auto 0;display:flex">Esqueci o PIN</button>
+      <div id="pin-esqueci" hidden>
+        <p class="ajuda">Sem problema: desconecte este aparelho e abra de novo o link de configuração. Isso apaga o PIN. Seus dados continuam na planilha.</p>
+        <button type="button" class="link link-perigo" id="btn-pin-desconectar">Desconectar este aparelho</button>
+        <div class="confirma" id="pin-confirma-desconectar" hidden>
+          <p><strong>Desconectar?</strong> Para voltar a usar, abra o link de configuração de novo.</p>
+          <button type="button" class="btn btn-perigo" id="btn-pin-desconectar-sim">Sim, desconectar</button>
+          <button type="button" class="btn btn-fantasma" id="btn-pin-desconectar-nao">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ CONFIGURAÇÕES (Meus gastos + Ajustes) ============================ -->
+  <section id="tela-config" class="config" hidden aria-labelledby="config-titulo">
+    <div class="config-topo">
+      <button type="button" class="btn-voltar" id="btn-voltar-orcamento">
+        <svg class="ic" aria-hidden="true"><use href="#i-voltar"/></svg>Voltar ao orçamento
+      </button>
+      <h1 class="config-titulo" id="config-titulo">Configurações</h1>
+    </div>
+    <nav class="abas-config" role="tablist" aria-label="Configurações">
+      <button type="button" class="aba-config" role="tab" id="aba-gastos" data-aba-config="gastos" aria-selected="true" aria-controls="tela-gastos">
+        <svg class="ic" aria-hidden="true"><use href="#i-recibo"/></svg><span>Meus gastos</span>
+      </button>
+      <button type="button" class="aba-config" role="tab" id="aba-ajustes" data-aba-config="ajustes" aria-selected="false" aria-controls="tela-ajustes">
+        <svg class="ic" aria-hidden="true"><use href="#i-ajustes"/></svg><span>Ajustes</span>
+      </button>
+    </nav>
 
   <!-- ============================ MEUS GASTOS ============================ -->
   <section id="tela-gastos" role="tabpanel" aria-labelledby="aba-gastos" hidden>
@@ -399,6 +471,45 @@
       <h2 class="card-titulo">Este aparelho</h2>
       <div class="resumo-linha"><span>Planilha conectada</span><strong id="aparelho-planilha"></strong></div>
       <div class="resumo-linha" style="margin-top:8px"><span>Versão do app</span><strong id="aparelho-versao">—</strong></div>
+
+      <hr class="separador">
+      <div class="campo">
+        <label for="desconto-padrao">Desconto à vista padrão</label>
+        <div class="entrada com-sufixo">
+          <input id="desconto-padrao" class="num" type="text" inputmode="decimal" autocomplete="off">
+          <span class="sufixo">%</span>
+        </div>
+        <p class="erro"></p>
+        <p class="ajuda">Vale só para este aparelho. Cada orçamento novo começa com este número.</p>
+      </div>
+
+      <hr class="separador">
+      <div class="linha-pin">
+        <div>
+          <p class="rotulo" style="margin:0">Proteger configurações com PIN</p>
+          <p class="ajuda" id="pin-situacao" style="margin:2px 0 0">Desligado</p>
+        </div>
+        <button type="button" class="btn btn-fantasma btn-curto" id="btn-pin-ligar">Ligar</button>
+        <button type="button" class="btn btn-fantasma btn-curto" id="btn-pin-desligar" hidden>Desligar</button>
+      </div>
+      <div id="pin-novo" hidden>
+        <div class="campos-desconto">
+          <div class="campo">
+            <label for="pin-novo-1">PIN (4 números)</label>
+            <div class="entrada"><input id="pin-novo-1" class="num pin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></div>
+          </div>
+          <div class="campo">
+            <label for="pin-novo-2">Repita o PIN</label>
+            <div class="entrada"><input id="pin-novo-2" class="num pin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></div>
+          </div>
+        </div>
+        <p class="erro" id="pin-novo-erro"></p>
+        <button type="button" class="btn btn-primario" id="btn-pin-salvar">Salvar PIN</button>
+        <button type="button" class="btn btn-fantasma" id="btn-pin-cancelar-novo">Cancelar</button>
+      </div>
+      <p class="ajuda">Não é uma senha forte: serve só para evitar que alguém mexa nos gastos e ajustes sem querer. Vale só para este aparelho.</p>
+
+      <hr class="separador">
       <button type="button" class="btn btn-fantasma" id="btn-instalar" hidden style="margin-top:16px">Instalar app</button>
       <button type="button" class="link link-perigo" id="btn-desconectar" style="margin-top:8px">Desconectar este aparelho</button>
       <div class="confirma" id="confirma-desconectar" hidden>
@@ -408,6 +519,7 @@
       </div>
     </div>
   </section>
+  </section><!-- /tela-config -->
 </main>
 
 <div id="aviso" class="toast" role="status" aria-live="polite" hidden></div>
