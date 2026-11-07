@@ -34,7 +34,7 @@ App web gratuito para um mecânico que abriu uma oficina e tem pouca familiarida
 
 **Disciplina de trabalho:** só commits locais. Nunca rodar `git push`, `clasp login`, `clasp push` nem `clasp deploy`; isso cabe ao dono do projeto.
 
-## 3. Planilha (abas criadas automaticamente por `configurarPlanilha()`)
+## 3. Planilha (abas criadas automaticamente por `configurarPlanilha_()`)
 
 ### 3.0 Regra geral: leitura tolerante, gravação rígida, mesmos limites
 - **Tudo o que `obterDados()` devolve precisa passar em `validarDados_()` sem erro.** Assim, uma edição manual errada na planilha nunca deixa o app preso em "Erro ao salvar".
@@ -158,10 +158,12 @@ obterTaxasPadraoVisa() → [{ forma, parcelas, taxa }]   // Débito e Crédito 1
 ```
 
 ### Backend (`src/Codigo.gs`)
+**Só ficam públicas as funções que a página realmente chama:** `doGet`, `obterDados`, `salvarDados` e `obterTaxasPadraoVisa`. Todas as outras terminam em `_` e são internas.
+
 | Função | Papel |
 |---|---|
-| `doGet()` | Pega o `LockService` (`tryLock`, 10 s) e chama `configurarPlanilha()`. Sem lock, segue sem configurar (outro acesso está configurando). Devolve `Index` com título "Preço Certo", viewport e XFrameOptionsMode DEFAULT |
-| `configurarPlanilha()` | Idempotente: cria abas ausentes ou vazias com cabeçalho, formatos e dados padrão. Quem chama segura o lock (`doGet`, ou `salvarDados` chamando direto, sem lock aninhado) |
+| `doGet()` | Pega o `LockService` (`tryLock`, 10 s) e chama `configurarPlanilha_()`. Sem lock, segue sem configurar (outro acesso está configurando). Devolve `Index` com título "Preço Certo", viewport e XFrameOptionsMode DEFAULT |
+| `configurarPlanilha_()` | Idempotente: cria abas ausentes ou vazias com cabeçalho, formatos e dados padrão. Quem chama segura o lock (`doGet`, ou `salvarDados` chamando direto, sem lock aninhado) |
 | `obterDados()` | Lê as 3 abas, `atualizadoEm` e a URL da planilha |
 | `salvarDados(d)` | Valida, pega o `LockService` (até 10 s), regrava o corpo das 3 abas, grava e retorna `atualizadoEm` |
 | `obterTaxasPadraoVisa()` | Coluna Visa/Master padrão, para o botão "Voltar taxas da InfinitePay" |

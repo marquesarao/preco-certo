@@ -3,7 +3,8 @@
  * Backend Google Apps Script (projeto vinculado à planilha).
  *
  * Fonte da verdade das regras: docs/DESENHO.md
- * Funções terminadas em "_" são internas: o google.script.run não as enxerga.
+ * Públicas (as únicas que a página chama): doGet, obterDados, salvarDados, obterTaxasPadraoVisa.
+ * Todas as outras terminam em "_" e são internas: o google.script.run não as enxerga.
  *
  * Regra geral: tudo o que obterDados() devolve precisa passar em validarDados_() sem erro.
  * Por isso leitura e validação usam os MESMOS limites (LIMITES_PARAMETROS_, LIMITE_TAXA_, LIMITE_VALOR_GASTO_).
@@ -83,7 +84,7 @@ function doGet() {
   var lock = LockService.getScriptLock();
   if (lock.tryLock(ESPERA_LOCK_MS_)) {
     try {
-      configurarPlanilha();
+      configurarPlanilha_();
     } finally {
       lock.releaseLock();
     }
@@ -99,7 +100,7 @@ function doGet() {
  * formatos e dados padrão. Idempotente: não mexe em aba que já tem conteúdo.
  * Quem chama deve segurar o lock (doGet e salvarDados já fazem isso).
  */
-function configurarPlanilha() {
+function configurarPlanilha_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
 
   garantirAba_(ss, ABA_GASTOS_, CAB_GASTOS_, [], function (sh) {
@@ -147,7 +148,7 @@ function salvarDados(dados) {
     throw new Error('A planilha está ocupada. Tente de novo em alguns segundos.');
   }
   try {
-    configurarPlanilha(); // já dentro do lock: chamada direta, sem lock aninhado
+    configurarPlanilha_(); // já dentro do lock: chamada direta, sem lock aninhado
     var ss = SpreadsheetApp.getActiveSpreadsheet();
 
     var linhasGastos = limpo.gastos.map(function (g) {
