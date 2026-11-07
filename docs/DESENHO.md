@@ -36,6 +36,8 @@ App web gratuito para um mecânico que abriu uma oficina e tem pouca familiarida
 /docs/LEIAME-instalacao.md   instalação (colar no editor ou clasp) e atualização
 /docs/GUIA-DO-USUARIO.md     1 página para o mecânico
 /docs/testes-calculo.md      casos de teste e resultados
+/docs/DEPLOY.md              deploy automático: secrets, clasp login, segurança
+/.github/workflows/deploy.yml  GitHub Actions: clasp push + atualização da implantação
 .gitignore  .claspignore  .clasp.json.exemplo (rootDir "src", scriptId vazio)
 ```
 
@@ -320,7 +322,23 @@ Nome da oficina [        ]
 
 Se algum caso divergir, a fórmula **não** é ajustada para forçar o número: a divergência é reportada.
 
-## 8. Fatias
+## 8. Deploy
+
+- **Repositório:** privado, no GitHub do dono do projeto. Só ele faz `git push`; aqui só há commits locais.
+- **Automático:** a cada push na `main` que altere `src/**`, ou manualmente por `workflow_dispatch`, o workflow `.github/workflows/deploy.yml` roda.
+  - Ambiente: `ubuntu-latest`, Node LTS e `@google/clasp@3.4.1` fixado.
+  - Passos: `clasp push --force` e depois `clasp deploy --deploymentId $DEPLOYMENT_ID --description "<sha curto> – <título do commit até 60 caracteres>"`.
+  - O deploy cria uma versão nova e atualiza a implantação existente, mantendo a mesma URL `/exec`.
+  - `concurrency` impede dois deploys ao mesmo tempo.
+- **Secrets:** `CLASPRC_JSON`, `SCRIPT_ID` e `DEPLOYMENT_ID`.
+  - O `.clasp.json` é gerado na hora (`rootDir: "src"`).
+  - As credenciais são gravadas com `umask 077`, nunca aparecem no log e são apagadas no fim.
+- **Envio:** o `push` manda exatamente `src/Codigo.gs`, `src/Index.html` e `src/appsscript.json`, conferido com `clasp status` na versão 3.4.1. O primeiro push substitui o "Código.gs" colado à mão.
+- **Teste antes de publicar:** URL `/dev` (Implantar → Testar implantações) depois de um `clasp push`.
+- **Migração para a conta do mecânico:** novo `clasp login` com a conta dele e substituição dos 3 secrets.
+- Passo a passo completo: `docs/DEPLOY.md`.
+
+## 9. Fatias
 1. Desenho ✅ (este documento)
 2. Backend: `src/Codigo.gs` e `src/appsscript.json` ✅
 3. Frontend: `src/Index.html` ✅

@@ -1,0 +1,110 @@
+# Publica src/ no projeto Apps Script e atualiza a implantação existente (mesma URL /exec).
+# Passo a passo e secrets: docs/DEPLOY.md
+name: Deploy Apps Script
+
+on:
+  push:
+    branches: [main]
+    paths: ['src/**']
+  workflow_dispatch:
+
+# Nunca dois deploys ao mesmo tempo; um novo espera o anterior terminar.
+concurrency:
+  group: deploy-apps-script
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CLASP_VERSION: '3.4.1'   # major atual do @google/clasp (conferido no npm)
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v7
+
+      - name: Instalar Node LTS
+        uses: actions/setup-node@v7
+        with:
+          node-version: 'lts/*'
+
+      - name: Instalar clasp
+        run: npm install -g "@google/clasp@${CLASP_VERSION}"
+
+      - name: Conferir secrets
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
+          DEPLOYMENT_ID: ${{ secrets.DEPLOYMENT_ID }}
+        run: |
+          faltando=""
+          [ -n "$CLASPRC_JSON" ]  || faltando="$faltando CLASPRC_JSON"
+          [ -n "$SCRIPT_ID" ]     || faltando="$faltando SCRIPT_ID"
+          [ -n "$DEPLOYMENT_ID" ] || faltando="$faltando DEPLOYMENT_ID"
+          if [ -n "$faltando" ]; then
+            echo "::error::Secrets ausentes:$faltando. Crie em Settings → Secrets and variables → Actions (ver docs/DEPLOY.md)."
+            exit 1
+          fi
+
+      - name: Gravar credenciais e configuração do clasp
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
+        run: |
+          umask 077
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          if ! node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$HOME/.clasprc.json" 2>/dev/null; then
+            echo "::error::O secret CLASPRC_JSON não é um JSON válido. Refaça clasp login e cole de novo o conteúdo inteiro do .clasprc.json no secret."
+            exit 1
+          fi
+          node -e 'require("fs").writeFileSync(".clasp.json", JSON.stringify({ scriptId: process.env.SCRIPT_ID, rootDir: "src" }))'
+          echo "Credenciais e .clasp.json gravados (conteúdo não exibido)."
+
+      - name: Enviar código (clasp push --force)
+        run: |
+          if ! clasp push --force > push.log 2>&1; then
+            cat push.log
+            if grep -qiE 'invalid_grant|unauthorized|unauthenticated|not logged in|no credentials|invalid_client|401' push.log; then
+              echo "::error::Credencial inválida ou expirada. Refaça clasp login (com a conta dona da planilha) e atualize o secret CLASPRC_JSON."
+            elif grep -qiE 'has not (been )?(used|enabled)|enable the Apps Script API|usersettings' push.log; then
+              echo "::error::A Apps Script API está desativada. Ative em https://script.google.com/home/usersettings (logado na conta dona da planilha)."
+            elif grep -qiE 'not found|404|permission|403' push.log; then
+              echo "::error::Projeto não encontrado ou sem permissão. Confira o secret SCRIPT_ID e se a conta do clasp login é a dona do script."
+            else
+              echo "::error::clasp push falhou. Veja o log acima."
+            fi
+            exit 1
+          fi
+          cat push.log
+
+      - name: Atualizar a implantação (mesma URL)
+        env:
+          DEPLOYMENT_ID: ${{ secrets.DEPLOYMENT_ID }}
+        run: |
+          SHA_CURTO="$(git rev-parse --short HEAD)"
+          TITULO="$(git log -1 --format=%s)"
+          TITULO_60="$(node -e 'process.stdout.write([...process.argv[1]].slice(0, 60).join(""))' "$TITULO")"
+          DESCRICAO="${SHA_CURTO} – ${TITULO_60}"
+          echo "Descrição da versão: ${DESCRICAO}"
+          if ! clasp deploy --deploymentId "$DEPLOYMENT_ID" --description "$DESCRICAO" > deploy.log 2>&1; then
+            cat deploy.log
+            if grep -qiE 'invalid_grant|unauthorized|unauthenticated|not logged in|no credentials|401' deploy.log; then
+              echo "::error::Credencial inválida ou expirada. Refaça clasp login e atualize o secret CLASPRC_JSON."
+            elif grep -qiE 'not found|404|invalid_argument|deployment' deploy.log; then
+              echo "::error::Implantação não encontrada. Confira o secret DEPLOYMENT_ID (Implantar → Gerenciar implantações)."
+            else
+              echo "::error::clasp deploy falhou. Veja o log acima."
+            fi
+            exit 1
+          fi
+          cat deploy.log
+          echo "### Deploy concluído" >> "$GITHUB_STEP_SUMMARY"
+          echo "Versão: ${DESCRICAO}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Apagar credenciais do runner
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" .clasp.json
