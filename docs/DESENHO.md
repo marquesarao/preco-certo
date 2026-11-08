@@ -573,7 +573,8 @@ O clasp e o GitHub Actions foram **removidos** (`.github/workflows/deploy.yml`, 
 9. **Neste serviço: oficina, casa e sobra** (só frontend; `apps-script/` sem mudança; `sw.js` v4) ✅
 10. **Orçamentos salvos + situação + aba "Resultados"** (**muda o backend**; `sw.js` v5), desenho na seção 11 ✅
     - 10a **backend** (`Codigo.gs` + testes do backend/API + proteção "somente aviso") ✅ aprovada
-    - 10b **tela + docs** (`sw.js` v5): feita, aguardando aprovação do commit
+    - 10b **tela + docs** (`sw.js` v5) ✅ (commit 22e71a4)
+11. **Tela mais simples + mês atual automático** (só frontend; `apps-script/` sem mudança; `sw.js` v6), desenho na seção 12 (aprovado): feita, aguardando aprovação do commit
 
 Cada fatia termina com uma parada para revisão. O commit local só é feito depois da aprovação.
 
@@ -1077,3 +1078,124 @@ Se alguma conta divergir do esperado acima: **parar e reportar** (não ajustar o
 - **Migração do desconto:** um segundo aparelho com valor diferente perde o dele (com aviso).
 
 **Fatias:** 10a = backend (`Codigo.gs`) + testes do backend/API, com parada; 10b = tela, docs (DEPLOY, GUIA, testes-calculo), `sw.js` v5, todos os testes e prints, com parada antes do commit.
+
+## 12. Fase 11 — Tela mais simples (Orçamento e Resultados) e mês atual automático (desenho **aprovado** com o ajuste da decisão 5)
+
+**Só frontend.** `apps-script/` sem mudança (D10); `sw.js` v6. **Nenhuma conta existente muda** (os casos de cálculo continuam iguais); só uma conta nova ("quanto falta trabalhar"), com casos novos.
+
+### 12.1 Orçamento ABERTO (ou novo): coluna da direita
+- **Quanto cobrar:**
+  - card do cartão (preço cheio) como hoje; chips de cartão só com 2+ cartões;
+  - card à vista com o campo "Desconto à vista (%)";
+  - link **"O cliente pediu mais desconto?"** → aparecem o campo "Desconto extra" e a faixa "ainda pode dar"; com extra > 0, já abre aberto;
+  - a faixa vermelha **"abre mão da sua sobra extra"** continua visível sem o link (é aviso; aparece também quando o próprio desconto à vista passa do máximo);
+  - "Ver outras formas de pagamento" como hoje.
+- **Fica para você neste serviço:**
+  - número GRANDE = total que é seu (casa + sobra) no à vista com o desconto atual; sem gastos de casa, o número grande é a sobra;
+  - linha: "R$ X do seu salário + R$ Y de sobra"; sobra negativa → "R$ X do seu salário, menos R$ Y que faltou"; sem casa → só "R$ Y de sobra";
+  - linha discreta "No cartão em 5x fica: R$ Z" (5x = a parcela do card do cartão/âncora; Z = salário exibido + sobra no cartão arredondada, com `op.lucro` que já é calculado hoje; é a soma dos valores mostrados, como no R8: no print, 423,07 + 1.314,79 = 1.737,86, o mesmo total do fechamento em 5x). Hoje essa linha só aparece com imposto e na maior parcela;
+  - cores verde/âmbar/vermelho e frases como hoje.
+- **Ver detalhes:** fechado por padrão, mesmas linhas e os dois pisos. "Diferença pelo desconto à vista" → **"Ganho por ter desconto menor que a maquininha"**; quando negativa (desconto maior que a maquininha) → **"Perda por desconto maior que a maquininha"**.
+- **Pisos só como alerta** (preço = à vista oferecido):
+  - abaixo do piso da oficina → vermelho "Abaixo de R$ X a oficina não se paga";
+  - senão, até 10% acima do piso da casa (preço ≤ piso da casa × 1,10) → âmbar "Cuidado: abaixo de R$ X não sobra nada para a sua casa";
+  - sem casa: âmbar até 10% acima do piso da oficina, com a frase da oficina.
+
+### 12.2 Orçamento FECHADO e NÃO FECHOU
+- **Fechado:**
+  - card de resumo no topo da coluna: "Fechado em 05/11 · Cartão em 5x · Cliente paga R$ 6.648,27";
+  - somem chips, campos de desconto, o link do extra, "ainda pode dar" e "Ver outras formas";
+  - os cards do cartão e do à vista **também somem** (ajuste aprovado da decisão 5): a coluna fica só com o card de resumo, o "Fica para você" (com a forma do fechamento) e os botões;
+  - "Fica para você" usa o que foi **gravado no fechamento** (`vaiParaCasaC`, `sobraC`, `totalSeuC`, `estado`); nada é recalculado.
+- **Não fechou:**
+  - card "Não fechou · {data} · {motivo}" (sem afirmar que foi a data exata da decisão), sem bloco de cobrança e sem "Fica para você";
+  - ações "Voltar para Aberto" e "Duplicar";
+  - a data é a do "Atualizado em": a data do "não fechou" não é gravada à parte, e gravar exigiria mudar o backend. Se o cliente ou o telefone forem editados depois, essa data avança.
+
+### 12.3 Botões
+| Estado | Botões |
+|---|---|
+| Aberto/novo | **Copiar para WhatsApp** (grande) · em linha: **Salvar** e **O cliente fechou?** |
+| Fechado | **Copiar para WhatsApp** · em linha: **Mudar situação** e **Duplicar** |
+| Não fechou | em linha: **Voltar para Aberto** e **Duplicar** |
+
+- **O cliente fechou?** abre direto a tela de fechamento. Num orçamento novo ou alterado, salva antes, como hoje. Na tela de fechamento entram os links **"O cliente não fechou"** (motivo, como hoje) e, se ele já estiver em "Não fechou", **"Voltar para Aberto"**.
+- **Mudar situação** (Fechado): menu com "Voltar para Aberto" e "Excluir orçamento".
+- **Excluir um orçamento Aberto:** pela lista de Resultados (sai da tela do orçamento aberto).
+- **Compartilhar:** só com `navigator.share` **e** tela estreita (< 900 px, o mesmo corte das 2 colunas).
+- **"+ Novo orçamento":** link discreto no topo do card Serviço. Com alteração não salva (orçamento salvo mudado, ou rascunho novo com conteúdo), pergunta na página: "Começar um novo? O que você fez aqui não foi salvo." [Salvar e começar novo] [Começar sem salvar] [Cancelar].
+- "?" revistos: "Neste serviço" → "Fica para você neste serviço", desconto (com o link do extra) e situação.
+
+### 12.4 Resultados
+- **Card principal** (substitui "Resultado real do mês"):
+  - título: "Novembro até agora · dia 8 de 30" no mês corrente; "Resultado de outubro" nos passados;
+  - **barra "Oficina"** = livre ÷ gastos da oficina, com livre = F − P − T − I; 100% → verde "✓ paga", abaixo → âmbar com "R$ X de R$ Y";
+  - **barra "Sua casa"** = casa coberta ÷ gastos da casa ("R$ 780,96 de R$ 5.500,00"); sem gastos de casa: só a barra da oficina;
+  - **frase grande:**
+
+    | Situação | Mês corrente | Mês passado |
+    |---|---|---|
+    | Casa coberta | "Sobrou R$ X além da casa este mês" (verde) | "Sobrou R$ X além da casa" (verde) |
+    | Casa não coberta | "Faltam R$ X para cobrir a casa este mês" (âmbar) | "Faltaram R$ X para cobrir a casa" (vermelho discreto) |
+    | Oficina não coberta | "Faltam R$ X para pagar a oficina este mês" (âmbar) | "Faltaram R$ X para pagar a oficina" (vermelho discreto) |
+
+    Na linha "Oficina não coberta", X = gastos da oficina − livre; o que falta da casa aparece na barra da casa. O mês corrente **nunca** fica vermelho.
+  - **rodapé discreto:** "Gastos do mês: oficina R$ X · casa R$ Y · Z h" e a comparação com o mês anterior. O link "Usar meus gastos de hoje" sai (12.5).
+- **Quanto falta trabalhar** (só no mês corrente, só se a sobra do mês < 0, só com horas vendidas > 0 e livre > 0):
+  - falta = −sobraDoMes (oficina + casa);
+  - N = ⌈falta × horas vendidas ÷ livre⌉ (em centavos inteiros, sem arredondar o R$/h no meio);
+  - média = horas vendidas ÷ serviços fechados no mês; M = ⌈N ÷ média⌉;
+  - "Faltam cerca de N horas de serviço (uns M serviços como os deste mês)", com "Você ganha uns R$ 131,03 por hora de serviço, já tirando peças, maquininha e imposto." embaixo.
+- **Extrato do mês** (no lugar de "Dinheiro que entrou"), em centavos inteiros (fecha por construção, como no R8):
+
+  | Linha | Valor |
+  |---|---|
+  | Entrou | F |
+  | − Peças | P |
+  | − Maquininha | T |
+  | − Imposto | I |
+  | − Gastos da oficina | GO |
+  | **= Ficou para a casa** | ("Faltou para a oficina" se negativo) |
+  | − Gastos da casa | GC |
+  | **= Sobra extra** | (ou **"Faltou"**) |
+
+  O título "Dinheiro que entrou em {mês}" e o "?" da data do fechamento ficam.
+- **Lista:** nos itens Aberto, "Mudar situação" → **"Fechou? / Não fechou?"** (mesma ação, o menu); em Fechado e Não fechou continua "Mudar situação". Abrir · Duplicar · Excluir ficam.
+
+### 12.5 Mês atual acompanha os gastos (sem mudar o backend)
+Usa a ação que já existe, `usarGastosDeHojeNoMes(mes)`: ela grava ou troca a linha do mês com os gastos atuais da planilha e só recusa mês futuro.
+- **Depois de cada `salvarDados` com "Salvo ✓"**, se os totais mudaram (oficina, casa ou horas do mês, comparados antes e depois), o app chama a ação para o **mês corrente**, sem aviso.
+  - Se falhar, guarda "pendente: {mês}" no aparelho e tenta de novo no próximo salvamento ou ao abrir Resultados.
+  - Se o mês já virou, descarta a pendência (o mês novo é coberto pelo item abaixo).
+- **Ao abrir Resultados no mês corrente:** se a foto do mês ≠ `gastosHoje` (os dois vêm na mesma resposta do `listarOrcamentos`), ou se ainda não há foto, chama a ação e redesenha. Isso cobre o caso de outro aparelho ter mudado os gastos; entre aparelhos vale "a última gravação vence", sem aviso.
+- **Meses passados ficam congelados.** O link e o diálogo "Usar meus gastos de hoje neste mês" saem da aba Resultados.
+- **Ajustes → Outros ajustes → "Corrigir gastos de um mês passado"** (atrás do PIN, como toda a engrenagem): escolhe o mês (‹ ›, só passados), mostra os gastos gravados ("Sem gastos gravados" se não houver) e oferece [Substituir pelos gastos de hoje], com confirmação na página.
+- **"?" de Meus gastos** ganha: "Se um gasto só começa no mês que vem (ex.: aumento do aluguel), lance no dia 1º."
+- **Na aba Meses**, as linhas gravadas por esta atualização automática aparecem com a Origem "Usar meus gastos de hoje" (texto do backend da fase 10, que não muda). Ao abrir Resultados no mês atual sem linha do mês, a linha é criada na hora; o 1º fechamento do mês não duplica.
+- **Limitação conhecida (aprovada):** um mês sem nenhuma mudança de gastos, sem abrir Resultados e sem fechamento fica sem foto. Mas esse mês também não tem dinheiro, então o resultado não muda.
+
+### 12.6 Testes (depois do OK)
+- **Cálculo:** os 96 atuais iguais, mais os casos novos:
+  - **Q1** (o exemplo): F 9.126,93 · P 3.780,00 · T 503,27 · I 912,70 · 30 h · 3 fechados · GO 3.150,00 · GC 5.500,00 → livre 3.930,96 · R$ 131,03/h · casa coberta 780,96 (14%) · falta 4.719,04 · **N = 37** (36,01) · média 10 h · **M = 4**;
+  - **Q2:** sem horas, e livre ≤ 0 → não mostra;
+  - **Q3:** sobra ≥ 0 → não mostra;
+  - **Q4:** extrato fechando no centavo;
+  - **Q5:** frases dos 4 estados × mês corrente/passado;
+  - **Q6:** barras em 100%, parcial e sem casa.
+- **Tela:**
+  - aberto: extra escondido e aparecendo; extra > 0 já aberto; detalhes fechados; alerta de piso nos limites (abaixo, a 10%, acima de 10%);
+  - fechado em Pix e em 5x; não fechou; botões por estado;
+  - Compartilhar só no celular; "+ Novo orçamento" com confirmação;
+  - mês automático: mudar um gasto → foto atualizada; dezembro simulado não mexe em novembro; outro aparelho → atualiza ao abrir Resultados; falha → nova tentativa no próximo salvamento; "Corrigir mês passado" com confirmação.
+- **D10:** `apps-script/` sem mudança (hash). Os testes antigos só mudam onde este desenho muda a tela (textos, botões, link removido).
+- **Prints 390/1280:**
+  - Orçamento: aberto simples, aberto com "pediu mais desconto", fechado 5x, não fechou, alerta de piso;
+  - Resultados: o mês do exemplo, um mês positivo e "Corrigir gastos de um mês passado".
+
+### 12.7 Implementação (o que ficou registrado)
+- Funções puras novas em `js/calculo.js` (com casos): `painelDoMes`, `fraseDoMes`, `quantoFaltaTrabalhar`, `extratoDoMes`, `alertaDoPiso`. As contas antigas não mudaram.
+- **Exemplo do print** (casos PR1 e PR2, seção 7 do `testes-calculo.md`): o orçamento aberto mostra sobra no cartão 5x de 1.314,79 (casa absorve o centavo: 423,07); no fechamento em 5x, cada linha é arredondada sozinha: **423,08 + 1.314,78 = 1.737,86**. O total que é seu é idêntico. **Divergência aceita.**
+- "No cartão em 5x fica" soma os valores mostrados (salário exibido + sobra no cartão arredondada): 423,07 + 1.314,79 = 1.737,86, igual ao total do fechamento em 5x.
+- "Quanto falta trabalhar": N = ⌈falta × horas ÷ livre⌉, sem arredondar o R$/h no meio (exemplo: 36,01 → 37 h; média 10 h → 4 serviços).
+- Tela de fechamento: links "O cliente não fechou" (Aberto) e "Voltar para Aberto" (Não fechou); depois de confirmar, sai da tela.
+- "Compartilhar": `navigator.share` **e** `(max-width: 899px)`; acompanha a mudança de largura.

@@ -12,6 +12,15 @@ Mesmo modelo do app **Pendências**:
 
 ---
 
+## Fase 11 (tela mais simples + mês atual automático): só a tela muda
+
+- O `apps-script/Codigo.gs` **não mudou** desde a fase 10. Não precisa colar nada nem criar "Nova versão".
+- A tela nova usa as ações da fase 10 (`listarOrcamentos` e `usarGastosDeHojeNoMes`). **Se a fase 10 ainda não foi publicada**, faça primeiro o passo 1 da seção da fase 10 (abaixo) em cada planilha; só depois o `git push`.
+- Fase 10 já publicada: conferência de segredos e **`git push`**. A `VERSAO` do `sw.js` já está em `v6`. Em cada aparelho: **"Nova versão disponível · ATUALIZAR"**.
+- O que muda na planilha: a aba **Meses** passa a ter a linha do mês atual atualizada sozinha sempre que os gastos mudam (e ao abrir Resultados). Nessas linhas, a coluna "Origem" aparece como **"Usar meus gastos de hoje"** (texto do backend da fase 10).
+
+---
+
 ## ⚠️ Fase 10 (orçamentos salvos + Resultados): o backend MUDOU — ordem obrigatória
 
 Esta versão muda **as duas pontas**: o `apps-script/Codigo.gs` (ações novas de orçamento, abas `Orçamentos` e `Meses`, desconto padrão na aba `Parâmetros`) e a tela (`sw.js` v5).

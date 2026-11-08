@@ -65,10 +65,12 @@ Na tela do **Orçamento**:
    - **Cartão em 5x** (em cima): o preço cheio no cartão, já cobrindo a taxa da maquininha;
    - **À vista (Pix ou dinheiro):** o preço do cartão **com desconto** (veja abaixo);
    - **Cartão em 10x** e **"Ver outras formas"**: as outras opções no cartão;
-   - **Neste serviço:** sua hora já inclui os gastos da **oficina** e os da sua **casa**:
-     - **"Total que é seu (casa + sobra)"** é o que é seu de verdade: a parte da casa (o seu **salário**) mais a **sobra extra**;
-     - **"Sobra extra"** é o que ficou além disso. Em **verde**, tudo pago e ainda sobrou; em **amarelo**, a oficina se paga, mas não cobre toda a sua casa; em **vermelho**, com esse preço a oficina não se paga;
-     - em **Ver detalhes** aparece a conta inteira e os dois limites: "Abaixo de R$ X a oficina não se paga." e "Abaixo de R$ Y não sobra nada para a sua casa."
+   - **Fica para você neste serviço:** sua hora já inclui os gastos da **oficina** e os da sua **casa**:
+     - o **número grande** é o **total que é seu**: a parte da casa (o seu **salário**) mais a **sobra extra**. Embaixo, a conta em uma linha: "R$ 423,07 do seu salário + R$ 1.518,89 de sobra";
+     - **"No cartão em 5x fica: R$ …"**: quanto fica para você se o cliente pagar no cartão;
+     - em **verde**, tudo pago e ainda sobrou; em **amarelo**, a oficina se paga, mas não cobre toda a sua casa; em **vermelho**, com esse preço a oficina não se paga;
+     - perto do limite aparece um aviso: em amarelo **"Cuidado: abaixo de R$ X não sobra nada para a sua casa."**; em vermelho **"Abaixo de R$ X a oficina não se paga."**;
+     - **Ver detalhes** (fechado no começo) mostra a conta inteira e os dois limites.
 5. **Não sabe o cartão do cliente?** Deixe em **"Não sei"**: o preço cobre qualquer cartão.
 
 ### Desconto à vista
@@ -76,10 +78,10 @@ Na tela do **Orçamento**:
 O à vista é o preço do cartão **com um desconto**. Assim o cliente vê que pagar no Pix vale a pena.
 
 - **Desconto à vista:** já vem com o seu número de sempre (de fábrica, 5%). Mude só se quiser, naquele orçamento.
-- **Desconto extra que vou dar:** para quando o cliente pede mais. Ele **soma** com o desconto à vista (5% + 2% = 7%).
-- Embaixo aparece, **só para você**: **"Se o cliente pedir mais: ainda pode dar até X% (R$ Y) sem perder nada — é só a taxa da maquininha que você não vai pagar."** Até esse ponto, o desconto sai da taxa que você não vai pagar, e não do seu bolso.
-- Passou desse ponto? Aparece em **vermelho**: **"Com esse desconto você abre mão de R$ X da sua sobra extra."**. Você ainda pode dar, mas sabendo quanto perde.
-- Em **Ver detalhes** aparecem os limites: **"Abaixo de R$ X a oficina não se paga."** e **"Abaixo de R$ Y não sobra nada para a sua casa."**
+- **O cliente pediu mais desconto?** Toque nesse link: aparece o campo **"Desconto extra que vou dar"**. Ele **soma** com o desconto à vista (5% + 2% = 7%).
+- Junto aparece, **só para você**: **"Se o cliente pedir mais: ainda pode dar até X% (R$ Y) sem perder nada — é só a taxa da maquininha que você não vai pagar."** Até esse ponto, o desconto sai da taxa que você não vai pagar, e não do seu bolso.
+- Passou desse ponto? Aparece em **vermelho** (sempre, mesmo sem tocar no link): **"Com esse desconto você abre mão de R$ X da sua sobra extra."**. Você ainda pode dar, mas sabendo quanto perde.
+- Em **Ver detalhes**: **"Ganho por ter desconto menor que a maquininha"** (ou **"Perda por desconto maior que a maquininha"**) e os limites: **"Abaixo de R$ X a oficina não se paga."** e **"Abaixo de R$ Y não sobra nada para a sua casa."**
 - Quer mudar o seu número de sempre? **Engrenagem (⚙) → Ajustes → Outros ajustes → "Desconto à vista padrão"**. Vale para todos os aparelhos ligados à sua planilha.
 
 ---
@@ -89,11 +91,13 @@ O à vista é o preço do cartão **com um desconto**. Assim o cliente vê que p
 1. Toque em **Copiar para WhatsApp**.
 2. Abra a conversa do cliente no WhatsApp e **cole**.
 
+No celular aparece também **Compartilhar** (abre a lista de apps do celular).
+
 O texto mostra só o que o cliente precisa ver: as **peças inclusas** (só nome e quantidade, ex.: "2× Pastilha de freio", **sem preço**), depois o **cartão** (5x, 10x) e o **à vista** com o desconto (ex.: "— 5% de desconto"). **Nunca** mostra a sua sobra extra, seus custos, a taxa, o preço de cada peça nem quanto você ainda pode dar.
 
-Ao copiar, o app **guarda o orçamento sozinho** (aparece **"Copiado ✓ · Orçamento salvo ✓"**). Sem internet, o texto é copiado do mesmo jeito, mas aparece em vermelho **"Sem conexão: orçamento NÃO foi salvo."**: toque em **Salvar orçamento** quando a internet voltar.
+Ao copiar, o app **guarda o orçamento sozinho** (aparece **"Copiado ✓ · Orçamento salvo ✓"**). Sem internet, o texto é copiado do mesmo jeito, mas aparece em vermelho **"Sem conexão: orçamento NÃO foi salvo."**: toque em **Salvar** quando a internet voltar.
 
-Para começar outro, toque em **Novo orçamento**.
+Para começar outro, toque em **"+ Novo orçamento"**, no topo do card **Serviço**. Se o que está na tela não foi salvo, o app pergunta antes: **Salvar e começar novo**, **Começar sem salvar** ou **Cancelar**.
 
 ---
 
@@ -101,27 +105,31 @@ Para começar outro, toque em **Novo orçamento**.
 
 **Guardar**
 - No card **Serviço** você pode pôr o **Cliente** e o **Telefone** (os dois são opcionais e **nunca** vão para o WhatsApp).
-- Toque em **Salvar orçamento** (ou só em **Copiar para WhatsApp**, que já salva). Aparece **"Orçamento salvo ✓"** e, no topo do card, **"Salvo · Aberto · nome do cliente"**.
-- Mexeu no orçamento depois? Salve de novo: ele **atualiza o mesmo** orçamento, não cria outro. **Novo orçamento** começa um do zero.
-- O orçamento guarda os **valores daquele dia** (seus gastos, taxas e ajustes). Se você mudar os gastos depois, ele não muda sozinho: aparece **"Valores de 03/11/2026"** e o link **"Recalcular com os valores de hoje"**. Recalcular só muda na tela; para guardar, toque em **Salvar orçamento**.
+- Toque em **Salvar** (ou só em **Copiar para WhatsApp**, que já salva). Aparece **"Orçamento salvo ✓"** e, no topo do card, **"Salvo · Aberto · nome do cliente"**.
+- Mexeu no orçamento depois? Salve de novo: ele **atualiza o mesmo** orçamento, não cria outro. **"+ Novo orçamento"** começa um do zero.
+- O orçamento guarda os **valores daquele dia** (seus gastos, taxas e ajustes). Se você mudar os gastos depois, ele não muda sozinho: aparece **"Valores de 03/11/2026"** e o link **"Recalcular com os valores de hoje"**. Recalcular só muda na tela; para guardar, toque em **Salvar**.
 
 **O cliente fechou? Não fechou?**
-- Num orçamento salvo, toque em **Mudar situação**:
+- Toque em **O cliente fechou?** (se o orçamento ainda não foi salvo, o app salva antes):
   - **Fechou:** escolha **como o cliente vai pagar** (Pix/dinheiro, Débito ou Cartão em Nx), confira o **valor combinado** (dá para mudar, se você deu um desconto na hora) e a **data**. O app mostra a **sobra extra** daquele fechamento, já tirando a taxa da maquininha e o imposto. Toque em **Confirmar fechamento**.
-  - **Não fechou:** se quiser, escolha o motivo ("Achou caro", "Vai pensar"…).
-  - **Voltar para Aberto:** desfaz o fechamento.
+  - **Não fechou:** na mesma tela, toque em **"O cliente não fechou"** e, se quiser, escolha o motivo ("Achou caro", "Vai pensar"…).
+- **Orçamento fechado:** no lugar dos preços aparece o resumo **"Fechado em 08/11 · Cartão em 5x · Cliente paga R$ 6.648,27"** e o **"Fica para você"** com a forma e o valor do fechamento. Botões: **Copiar para WhatsApp**, **Mudar situação** (Voltar para Aberto ou Excluir) e **Duplicar**.
+- **Não fechou:** aparece **"Não fechou · 08/11 · Achou caro"** e os botões **Voltar para Aberto** e **Duplicar**.
 - Orçamento fechado (ou que não fechou) fica **só para ver**. Para mudar valores: **Voltar para Aberto** ou **Duplicar**.
-- **Excluir** some na hora e mostra **DESFAZER** por 6 segundos.
+- **Excluir** (em Mudar situação ou na lista de Resultados) some na hora e mostra **DESFAZER** por 6 segundos.
 
 **Aba Resultados**
 - Toque em **Resultados**, no topo. Use **‹ ›** para trocar de mês.
-- **Resultado real do mês:** cada orçamento supõe que você vendeu **todas** as horas do mês; aqui é o que aconteceu de verdade. O app responde:
-  - **A oficina se pagou?** (o que entrou nos fechamentos, menos peças, taxas, imposto e os gastos da oficina);
-  - **Sua casa foi coberta?** (o que sobrou, comparado com os gastos de casa);
-  - **Sobra extra do mês** e **Total que é seu no mês**.
+- **O card do mês** ("Novembro até agora · dia 8 de 30"; nos meses que passaram, "Resultado de outubro"): cada orçamento supõe que você vendeu **todas** as horas do mês; aqui é o que aconteceu de verdade.
+  - duas barras: **Oficina** (quanto dos gastos da oficina já foi pago; cheia = "✓ paga") e **Sua casa** ("R$ 780,96 de R$ 5.500,00");
+  - a frase grande: **"Sobrou R$ X além da casa este mês"** (verde) ou **"Faltam R$ X para cobrir a casa este mês"** (amarelo; no mês atual nunca fica vermelho, porque o mês ainda não acabou). Nos meses que passaram: **"Faltaram R$ X…"**;
+  - no mês atual, se faltar: **"Faltam cerca de 37 horas de serviço (uns 4 serviços como os deste mês)"**, com quanto você ganha por hora já tirando peças, maquininha e imposto.
+- **Dinheiro que entrou** é o caminho do dinheiro no mês, de cima para baixo: Entrou − Peças − Maquininha − Imposto − Gastos da oficina = **Ficou para a casa** − Gastos da casa = **Sobra extra** (ou **Faltou**).
 - **Orçamentos feitos** contam pelo mês em que você fez o orçamento; o **dinheiro que entrou** conta pela **data do fechamento**. Um orçamento feito em outubro e fechado em novembro conta como feito em outubro, mas o dinheiro entra em novembro.
-- Os **gastos de cada mês** ficam guardados no primeiro fechamento daquele mês. Mudou os gastos e quer usar os novos no mês? Toque em **"Usar meus gastos de hoje neste mês"**.
-- Embaixo, a **lista** do mês: busque por cliente, telefone ou serviço e filtre por situação. Toque num orçamento para **Abrir**, **Mudar situação**, **Duplicar** ou **Excluir**.
+- **O mês atual usa sempre os seus gastos de hoje.** Mudou um gasto em Meus gastos? O mês atual se ajusta sozinho, sem botão. Os meses que já passaram ficam com os gastos que estavam valendo.
+  - Um gasto que só começa no mês que vem (ex.: aumento do aluguel)? Lance no **dia 1º**.
+  - Um mês passado ficou com os gastos errados? **Engrenagem → Ajustes → Outros ajustes → "Corrigir gastos de um mês passado"**: escolha o mês e toque em **Substituir pelos gastos de hoje** (o app pede confirmação).
+- Embaixo, a **lista** do mês: busque por cliente, telefone ou serviço e filtre por situação. Toque num orçamento para **Abrir**, **Fechou? / Não fechou?** (nos que estão em aberto; nos outros, **Mudar situação**), **Duplicar** ou **Excluir**.
 - **Não edite as abas "Orçamentos" e "Meses" na planilha.** A planilha avisa se você tentar. Apagar uma linha lá = excluir o orçamento.
 - **Dois aparelhos** (você no celular, alguém no computador): se os dois mexerem no **mesmo** orçamento, quem salvar depois vê **"Esse orçamento foi alterado em outro aparelho."** e escolhe entre **"Ver a versão nova"** ou **"Salvar as minhas como um novo orçamento"**. Nada se perde sem aviso.
 

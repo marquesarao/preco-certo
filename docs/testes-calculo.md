@@ -12,9 +12,13 @@
 - A comparação dos valores é **exata, em centavos inteiros**, sem tolerância.
 - Os casos T8–T12, do modelo antigo de bandeiras fixas, foram **substituídos** por C1–C8 (cartões cadastráveis).
 
-## Resultados (07/11/2026)
+## Resultados (08/11/2026)
 
-**Fase 10 (orçamentos salvos + situação + Resultados): Frontend 96/96 · Backend (dados) 45/45 · API 26/26 · Backend de orçamentos 79/79 · Tela 109/109 (fluxos antigos) + 81/81 (fase 10, com o `Codigo.gs` real rodando na página), estáveis em 3 rodadas seguidas · 10 cenários antigos sem erro · PWA: v5 → v6.**
+**Fase 11 (tela mais simples + mês atual automático): Frontend 105/105 (os 96 de antes + 9 casos novos) · Backend (dados) 45/45 · API 26/26 · Backend de orçamentos 79/79 · Tela 111/111 (fluxos antigos) + 81/81 (fase 10) + 65/65 (fase 11), estáveis em 3 rodadas seguidas · 10 cenários antigos sem erro · PWA: v6 → v7.**
+
+> Fase 11: só frontend. `apps-script/` sem mudança (o teste D10 confere o sha256 da versão aprovada na 10a). `sw.js` v6. Nenhum caso de cálculo antigo mudou; os testes de tela antigos mudaram só onde a seção 12 do DESENHO mudou a tela (ex.: "+ Novo orçamento" pergunta antes, extra atrás do link, card "Fica para você", 18 "?", a linha do mês atual na aba Meses criada ao abrir Resultados).
+
+> Fase 10 (07/11/2026): Frontend 96/96 · Backend (dados) 45/45 · API 26/26 · Backend de orçamentos 79/79 · Tela 109/109 (fluxos antigos) + 81/81 (fase 10, com o `Codigo.gs` real rodando na página), estáveis em 3 rodadas seguidas · 10 cenários antigos sem erro · PWA: v5 → v6.**
 
 > Fase 10: o backend mudou de propósito na fatia 10a (aprovada). Na 10b o `Codigo.gs` não muda: o teste D10 confere o sha256 da versão aprovada. `sw.js` v5.
 
@@ -239,11 +243,41 @@ Cenário F: oficina R$ 4.000 e casa R$ 3.000; 130 h; hora R$ 150; imposto 6%; Vi
 | **Mês positivo** (casa 1.500) | "Sim, toda: R$ 1.500,00" · sobra R$ 511,98 verde ✅ |
 | **Desconto padrão** | planilha antiga + aparelho 8% → grava 8 e apaga a chave; planilha 5% + aparelho 7% → planilha vence, avisa e apaga; campo em Outros ajustes (some de "Este aparelho"); 150 → erro; 7,5 gravado; orçamento novo usa 7,5 ✅ |
 
+### Fase 11: orçamento do print (PR), card do mês (Q) e alerta do piso (A)
+Orçamento do print (dados reais): oficina 3.150 e casa 5.500; 5 dias × 6 h = 130 h (mínimo/h oficina 24,2308 · casa 42,3077); hora R$ 100; imposto 10%; serviço 10 h; peças 4 × 500 + 1 × 1.500 com 47%; desconto 5%; Visa/Master padrão e Elo; parcelas "5"; "Não sei".
+
+| # | Caso | Esperado | Resultado |
+|---|---|---|---|
+| PR1 | Aberto | 5x 6.648,27 (5× 1.329,65) · à vista 6.315,86 · ainda pode 2,57% / 170,86 · imposto 631,59 · oficina 242,31 · casa 423,07 · sobra 1.518,89 · total seu 1.941,96 · pisos 4.158,12 / 4.628,21 · sobra no cartão 1.314,79 · "No cartão em 5x fica" 1.737,86 | ✅ |
+| PR2 | Fechado em 5x por 6.648,27 | taxa 503,27 · imposto 664,83 · oficina 242,31 · **casa 423,08 + sobra 1.314,78 = 1.737,86** (divergência aceita, abaixo) | ✅ |
+| Q1 | Mês do exemplo: F 9.126,93 · P 3.780 · T 503,27 · I 912,70 · 30 h · 3 fechados · GO 3.150 · GC 5.500 | livre 3.930,96 · 131,03/h · oficina paga · casa 780,96 (14%) · falta 4.719,04 → **37 h** (36,01) · média 10 h → **4 serviços** | ✅ |
+| Q2 | Sem horas; livre ≤ 0; mês passado | "quanto falta trabalhar" não aparece | ✅ |
+| Q3 | Sobra do mês ≥ 0 (casa 500 → 280,96); sem gastos do mês | não aparece; sem card | ✅ |
+| Q4 | Extrato | Entrou − Peças − Maquininha − Imposto − Oficina = Ficou para a casa (780,96) − Casa = Faltou (−4.719,04), no centavo; sem casa e oficina não paga ("Faltou para a oficina" −1.069,04) | ✅ |
+| Q5 | Frases × mês corrente/passado | "Sobrou R$ 280,96 além da casa (este mês)" verde · "Faltam/Faltaram R$ 4.719,04 para cobrir a casa" âmbar/vermelho · "Faltam/Faltaram R$ 1.069,04 para pagar a oficina" · sem casa: "além da oficina" | ✅ |
+| Q6 | Barras | oficina 100% e casa 14%; oficina 79% (3.930,96 de 5.000) e casa 0%; sem casa: sem barra da casa | ✅ |
+| A1 | Alerta do piso (4.158,12 / 4.628,21) | 6.315,86 nada · até 5.091,03 âmbar (casa) · 5.091,04 nada · < 4.158,12 vermelho · sem casa: âmbar até 4.573,93 | ✅ |
+
+### Fase 11: tela (Chrome headless, `Codigo.gs` real na página) — 65 verificações
+
+| Área | O que foi conferido | Resultado |
+|---|---|---|
+| Aberto | valores do print; extra e "ainda pode" escondidos até o link; extra > 0 reabre aberto; "Ver detalhes" fechado; "Ganho/Perda por desconto…"; botões Copiar + Salvar e "O cliente fechou?" | ✅ |
+| Alerta do piso | 20% nada; 24% número verde + âmbar da casa; 40% vermelho da oficina | ✅ |
+| Compartilhar | só com `navigator.share` e tela estreita (some em 1280 e sem o recurso) | ✅ |
+| Fechado 5x / Pix | resumo; sem cards de cobrança; "Fica para você" 1.737,86 (423,08 + 1.314,78) e 1.941,96 no Pix; detalhes no centavo; botões Copiar · Mudar situação · Duplicar | ✅ |
+| Não fechou | pela tela de fechamento; "Não fechou · DD/MM · motivo"; só Voltar para Aberto e Duplicar; "Voltar para Aberto" na tela de fechamento | ✅ |
+| + Novo orçamento | sem alteração: direto; com alteração: Salvar e começar novo / Começar sem salvar / Cancelar | ✅ |
+| Resultados | título "… até agora · dia N de M"; barras; frase âmbar; 37 h / 4 serviços; extrato no centavo com subtotais em negrito; rodapé; sem o link antigo | ✅ |
+| Mês automático | mudar gasto → foto do mês atual (sem aviso); falha → pendente → refeito no próximo salvamento; outro aparelho → atualiza ao abrir Resultados; mês seguinte simulado não mexe no anterior | ✅ |
+| Corrigir mês passado | escondido em Outros ajustes; mostra gravados × hoje; confirmação; Cancelar não muda; "Sim, trocar" grava | ✅ |
+
 ## Divergências conhecidas
 
 | Caso | App InfinitePay | Nosso cálculo | Diferença | Decisão |
 |---|---|---|---|---|
 | 1x 3,15% sobre R$ 1.000 | 1.032,53 | 1.032,52 | R$ 0,01 | **Aceito** |
+| Fechamento em 5x do orçamento do print (fase 11) | aberto: sobra no cartão 5x 1.314,79 (casa 423,07) | fechamento: 423,08 + 1.314,78 | R$ 0,01 na divisão casa/sobra; total que é seu igual (1.737,86) | **Aceito** |
 
 1x 3,15% sobre R$ 1.000: o app InfinitePay mostra 1.032,53; nosso cálculo dá 1.032,52 (diferença de R$ 0,01, provavelmente porque a taxa real é exibida arredondada). Aceito.
 
@@ -251,3 +285,6 @@ Detalhes:
 - Total exato: 1.000 ÷ (1 − 0,0315) = 1.032,5245…, que com arredondamento comercial dá 1.032,52.
 - Para dar 1.032,53, a taxa real teria de estar entre 3,15004% e 3,15098%.
 - Nenhuma regra simples bate com os 4 casos conferidos: arredondar para cima acerta o 1x, mas erra o 2x (daria 1.056,98 em vez de 1.056,97). Por isso a fórmula **não** foi alterada.
+
+Orçamento aberto mostra sobra no cartão 5x de 1.314,79 (casa absorve o centavo: 423,07); no fechamento a divisão gravada é 423,08 + 1.314,78. O total que é seu (1.737,86) é idêntico. Aceito.
+- Motivo: a casa exata é 10 h × 42,3077 = 423,0769. Na tela aberta, "Vai para a sua casa" absorve o centavo para os detalhes fecharem com a sobra (R8); no fechamento, cada linha é arredondada sozinha (regra da fase 10) e a soma já fecha sem ajuste.

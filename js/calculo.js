@@ -824,6 +824,109 @@ function compararMeses(atual, anterior) {
   };
 }
 
+// ---------- Fase 11: card principal do mês, quanto falta trabalhar, extrato e alerta do piso ----------
+
+/**
+ * Card principal do mês (só apresentação; as contas são as do resumoDoMes):
+ * livre = F − P − T − I; barra da oficina = livre ÷ GO; barra da casa = casa coberta ÷ GC;
+ * frase: oficina não coberta → falta da oficina; casa não coberta → falta da casa; senão → sobrou.
+ * No mês corrente a falta é âmbar (nunca vermelho); num mês que já passou, vermelho.
+ * @return null sem gastos do mês
+ */
+function painelDoMes(resumo, corrente) {
+  var r = resumo.resultado;
+  if (!r) return null;
+  var livreC = r.depoisDaOficinaC + r.gastosOficinaC;
+  var p = {
+    livreC: livreC,
+    gastosOficinaC: r.gastosOficinaC,
+    gastosCasaC: r.gastosCasaC,
+    oficinaPaga: r.depoisDaOficinaC >= 0,
+    oficinaCobertaC: Math.min(Math.max(livreC, 0), r.gastosOficinaC),
+    pctOficina: r.gastosOficinaC > 0 ? Math.min(Math.max(livreC, 0) / r.gastosOficinaC, 1) : 1,
+    temCasa: r.gastosCasaC > 0,
+    casaCobertaC: r.casaCobertaC,
+    pctCasa: r.gastosCasaC > 0 ? r.casaCobertaC / r.gastosCasaC : null,
+    corrente: !!corrente
+  };
+  if (r.depoisDaOficinaC < 0) p.frase = { tipo: 'faltaOficina', valorC: -r.depoisDaOficinaC };
+  else if (r.sobraDoMesC < 0) p.frase = { tipo: 'faltaCasa', valorC: -r.sobraDoMesC };
+  else p.frase = { tipo: 'sobrou', valorC: r.sobraDoMesC };
+  p.frase.tom = p.frase.tipo === 'sobrou' ? 'verde' : corrente ? 'ambar' : 'vermelho';
+  return p;
+}
+
+/** A frase grande do card do mês (mês corrente: "este mês"; mês passado: no passado). */
+function fraseDoMes(p) {
+  var v = formatarCentavos(p.frase.valorC);
+  var este = p.corrente ? ' este mês' : '';
+  if (p.frase.tipo === 'sobrou') return 'Sobrou ' + v + ' além ' + (p.temCasa ? 'da casa' : 'da oficina') + este;
+  var verbo = p.corrente ? 'Faltam ' : 'Faltaram ';
+  return verbo + v + (p.frase.tipo === 'faltaOficina' ? ' para pagar a oficina' : ' para cobrir a casa') + este;
+}
+
+/**
+ * Quanto falta trabalhar (só no mês corrente, só se a sobra do mês for negativa, com horas vendidas e livre > 0):
+ * falta = −sobra do mês; ganho livre por hora = livre ÷ horas vendidas;
+ * N = ⌈falta ÷ ganho por hora⌉ (conta feita como falta × horas ÷ livre, sem arredondar o R$/h no meio);
+ * média = horas vendidas ÷ serviços fechados; M = ⌈N ÷ média⌉.
+ * @return null ou {faltaC, porHoraC, horas, servicos, mediaHoras}
+ */
+function quantoFaltaTrabalhar(resumo, corrente) {
+  var r = resumo.resultado;
+  if (!corrente || !r || r.sobraDoMesC >= 0 || !(resumo.horasVendidas > 0) || !(resumo.fechados > 0)) return null;
+  var livreC = r.depoisDaOficinaC + r.gastosOficinaC;
+  if (livreC <= 0) return null;
+  var faltaC = -r.sobraDoMesC;
+  var horas = Math.ceil(faltaC * resumo.horasVendidas / livreC - 1e-9);
+  var media = resumo.horasVendidas / resumo.fechados;
+  return {
+    faltaC: faltaC,
+    porHoraC: Math.round(livreC / resumo.horasVendidas),
+    horas: horas,
+    servicos: Math.ceil(horas / media - 1e-9),
+    mediaHoras: media
+  };
+}
+
+/**
+ * Extrato do mês, de cima para baixo, em centavos inteiros (fecha por construção):
+ * Entrou − Peças − Maquininha − Imposto − Gastos da oficina = Ficou para a casa − Gastos da casa = Sobra extra.
+ * @return [{rotulo, valorC, tipo: 'entrou'|'sai'|'subtotal'|'total'}] ou null sem gastos do mês
+ */
+function extratoDoMes(resumo) {
+  var r = resumo.resultado;
+  if (!r) return null;
+  var linhas = [
+    { rotulo: 'Entrou', valorC: resumo.faturamentoC, tipo: 'entrou' },
+    { rotulo: 'Peças', valorC: resumo.pecasC, tipo: 'sai' },
+    { rotulo: 'Maquininha', valorC: resumo.taxasC, tipo: 'sai' },
+    { rotulo: 'Imposto', valorC: resumo.impostoC, tipo: 'sai' },
+    { rotulo: 'Gastos da oficina', valorC: r.gastosOficinaC, tipo: 'sai' },
+    { rotulo: r.depoisDaOficinaC >= 0 ? 'Ficou para a casa' : 'Faltou para a oficina', valorC: r.depoisDaOficinaC, tipo: 'subtotal' }
+  ];
+  if (r.gastosCasaC > 0) {
+    linhas.push({ rotulo: 'Gastos da casa', valorC: r.gastosCasaC, tipo: 'sai' });
+    linhas.push({ rotulo: r.sobraDoMesC >= 0 ? 'Sobra extra' : 'Faltou', valorC: r.sobraDoMesC, tipo: 'total' });
+  } else {
+    linhas[linhas.length - 1].tipo = 'total';
+    if (r.depoisDaOficinaC >= 0) linhas[linhas.length - 1].rotulo = 'Sobra extra';
+  }
+  return linhas;
+}
+
+/**
+ * Alerta do piso (só quando perto ou abaixo): preço abaixo do piso da oficina → vermelho;
+ * senão, até 10% acima do piso da casa (sem casa: da oficina) → âmbar. Tudo em centavos.
+ * @return null ou {tom: 'vermelho'|'ambar', piso: 'oficina'|'casa', pisoC}
+ */
+function alertaDoPiso(precoC, pisoOficinaC, pisoCasaC, temCasa) {
+  if (precoC < pisoOficinaC) return { tom: 'vermelho', piso: 'oficina', pisoC: pisoOficinaC };
+  var piso = temCasa ? pisoCasaC : pisoOficinaC;
+  if (precoC * 100 <= piso * 110) return { tom: 'ambar', piso: temCasa ? 'casa' : 'oficina', pisoC: piso };
+  return null;
+}
+
 /** "63%" (sem casas). */
 function porcentoInteiro(x) { return Math.round(x * 100) + '%'; }
 
@@ -1259,8 +1362,116 @@ function casosDeTeste() {
         var o = { cliente: 'João da Silva', servico: 'Embreagem – Gol 2015', telefone: '(11) 98888-7777' };
         return { obtido: [combinaBusca(o, 'joao'), combinaBusca(o, 'GOL'), combinaBusca(o, '98888-77'), combinaBusca(o, '11 9888'), combinaBusca(o, 'maria'), combinaBusca(o, ''), validarTelefone('(11) 98888-7777'), validarTelefone('11 9888A') !== ''],
                  esperado: [true, true, true, true, false, true, '', true] };
+      } },
+    // ---- Fase 11: orçamento do print (dados reais) ----
+    { id: 'PR1', descricao: 'Orçamento do print (aberto): 5x 6.648,27 (5× 1.329,65) · à vista 5% 6.315,86 · ainda pode 2,57% / 170,86 · imposto 631,59 · oficina 242,31 · casa 423,07 · sobra 1.518,89 · total seu 1.941,96 · pisos 4.158,12 / 4.628,21 · no cartão 5x: sobra 1.314,79, fica 1.737,86',
+      executar: function () {
+        var c = cenarioPrint().calc;
+        var anc = c.preco.ancora;
+        return { obtido: [anc.totalCentavos, anc.parcelaCentavos, c.preco.precoCentavos, c.preco.aindaPodePct, c.preco.aindaPodeCentavos, c.det.imposto, c.det.pagaOficina,
+                          c.det.vaiParaCasa, c.det.sobra, c.det.totalSeu, centavos(c.ganho.pisoOficina), centavos(c.ganho.pisoCasa), centavos(anc.lucro), centavos(anc.lucro) + c.det.vaiParaCasa],
+                 esperado: [664827, 132965, 631586, 2.57, 17086, 63159, 24231, 42307, 151889, 194196, 415812, 462821, 131479, 173786] };
+      } },
+    { id: 'PR2', descricao: 'Orçamento do print fechado em 5x por 6.648,27: taxa 503,27 · imposto 664,83 · oficina 242,31 · casa 423,08 + sobra 1.314,78 = total seu 1.737,86 (divergência aceita: no aberto a casa absorve o centavo, 423,07 + 1.314,79)',
+      executar: function () {
+        var p = cenarioPrint();
+        var f = calcularFechamento(p.foto, p.resultado, 'credito', 5, NAO_SEI, 664827);
+        return { obtido: [f.taxaC, f.impostoC, f.pecasPagarC, f.pagaOficinaC, f.vaiParaCasaC, f.sobraC, f.totalSeuC, f.estado],
+                 esperado: [50327, 66483, 350000, 24231, 42308, 131478, 173786, 'verde'] };
+      } },
+    // ---- Fase 11: card do mês, quanto falta trabalhar, extrato e alerta do piso ----
+    { id: 'Q1', descricao: 'Exemplo do print (Resultados): (9.126,93 − 3.780 − 503,27 − 912,70) = livre 3.930,96 em 30 h = 131,03/h; oficina paga; casa 780,96 de 5.500 (14%); falta 4.719,04 → 37 h (36,01) · média 10 h → 4 serviços',
+      executar: function () {
+        var m = resumoDoMes(listaDoMesQ(), '2026-11', { oficinaC: 315000, casaC: 550000, horas: 130 });
+        var p = painelDoMes(m, true);
+        var q = quantoFaltaTrabalhar(m, true);
+        return { obtido: [p.livreC, p.oficinaPaga, p.casaCobertaC, porcentoInteiro(p.pctCasa), p.frase.tipo, p.frase.valorC, p.frase.tom, q.faltaC, q.porHoraC, q.horas, q.mediaHoras, q.servicos],
+                 esperado: [393096, true, 78096, '14%', 'faltaCasa', 471904, 'ambar', 471904, 13103, 37, 10, 4] };
+      } },
+    { id: 'Q2', descricao: 'Quanto falta trabalhar não aparece: sem horas vendidas; ganho livre ≤ 0 (peças maiores que o faturamento); mês que já passou',
+      executar: function () {
+        var semHoras = listaDoMesQ().map(function (o) { o.horas = 0; return o; });
+        var semLivre = listaDoMesQ().map(function (o) { o.pecasPagarC = o.valorCombinadoC; return o; });
+        var foto = { oficinaC: 315000, casaC: 550000, horas: 130 };
+        return { obtido: [quantoFaltaTrabalhar(resumoDoMes(semHoras, '2026-11', foto), true), quantoFaltaTrabalhar(resumoDoMes(semLivre, '2026-11', foto), true),
+                          quantoFaltaTrabalhar(resumoDoMes(listaDoMesQ(), '2026-11', foto), false)],
+                 esperado: [null, null, null] };
+      } },
+    { id: 'Q3', descricao: 'Quanto falta trabalhar não aparece com a sobra do mês ≥ 0 (casa 500 → sobra 280,96); sem gastos do mês → sem card',
+      executar: function () {
+        var m = resumoDoMes(listaDoMesQ(), '2026-11', { oficinaC: 315000, casaC: 50000, horas: 130 });
+        return { obtido: [m.resultado.sobraDoMesC, quantoFaltaTrabalhar(m, true), painelDoMes(resumoDoMes(listaDoMesQ(), '2026-11', null), true)], esperado: [28096, null, null] };
+      } },
+    { id: 'Q4', descricao: 'Extrato do mês fecha no centavo: Entrou − Peças − Maquininha − Imposto − Gastos da oficina = Ficou para a casa; − Gastos da casa = Faltou (−4.719,04); sem casa e oficina não paga',
+      executar: function () {
+        function confere(linhas) {
+          var sub = linhas[0].valorC - linhas[1].valorC - linhas[2].valorC - linhas[3].valorC - linhas[4].valorC;
+          var ok = sub === linhas[5].valorC;
+          if (linhas.length > 6) ok = ok && linhas[5].valorC - linhas[6].valorC === linhas[7].valorC;
+          return ok;
+        }
+        var a = extratoDoMes(resumoDoMes(listaDoMesQ(), '2026-11', { oficinaC: 315000, casaC: 550000, horas: 130 }));
+        var b = extratoDoMes(resumoDoMes(listaDoMesQ(), '2026-11', { oficinaC: 500000, casaC: 0, horas: 130 }));
+        var c = extratoDoMes(resumoDoMes(listaDoMesQ(), '2026-11', { oficinaC: 315000, casaC: 0, horas: 130 }));
+        return { obtido: [a.map(function (l) { return l.rotulo + ' ' + l.valorC; }), confere(a), b.map(function (l) { return l.rotulo + ' ' + l.valorC; }), confere(b), c[5].rotulo, c[5].tipo],
+                 esperado: [['Entrou 912693', 'Peças 378000', 'Maquininha 50327', 'Imposto 91270', 'Gastos da oficina 315000', 'Ficou para a casa 78096', 'Gastos da casa 550000', 'Faltou -471904'], true,
+                            ['Entrou 912693', 'Peças 378000', 'Maquininha 50327', 'Imposto 91270', 'Gastos da oficina 500000', 'Faltou para a oficina -106904'], true, 'Sobra extra', 'total'] };
+      } },
+    { id: 'Q5', descricao: 'Frases do card do mês nos estados × mês corrente/passado (falta: âmbar no corrente, vermelho no passado)',
+      executar: function () {
+        function frase(oficinaC, casaC, corrente) {
+          var p = painelDoMes(resumoDoMes(listaDoMesQ(), '2026-11', { oficinaC: oficinaC, casaC: casaC, horas: 130 }), corrente);
+          return fraseDoMes(p).replace(/ /g, ' ') + ' | ' + p.frase.tom;
+        }
+        return { obtido: [frase(315000, 50000, true), frase(315000, 50000, false), frase(315000, 550000, true), frase(315000, 550000, false),
+                          frase(500000, 550000, true), frase(500000, 550000, false), frase(315000, 0, true)],
+                 esperado: ['Sobrou R$ 280,96 além da casa este mês | verde', 'Sobrou R$ 280,96 além da casa | verde',
+                            'Faltam R$ 4.719,04 para cobrir a casa este mês | ambar', 'Faltaram R$ 4.719,04 para cobrir a casa | vermelho',
+                            'Faltam R$ 1.069,04 para pagar a oficina este mês | ambar', 'Faltaram R$ 1.069,04 para pagar a oficina | vermelho',
+                            'Sobrou R$ 780,96 além da oficina este mês | verde'] };
+      } },
+    { id: 'Q6', descricao: 'Barras: oficina 100% e casa 14%; oficina parcial 79% (3.930,96 de 5.000) e casa 0%; sem casa → sem barra da casa',
+      executar: function () {
+        function barras(oficinaC, casaC) {
+          var p = painelDoMes(resumoDoMes(listaDoMesQ(), '2026-11', { oficinaC: oficinaC, casaC: casaC, horas: 130 }), true);
+          return [porcentoInteiro(p.pctOficina), p.oficinaPaga, p.oficinaCobertaC, p.temCasa, p.pctCasa === null ? null : porcentoInteiro(p.pctCasa)];
+        }
+        return { obtido: [barras(315000, 550000), barras(500000, 550000), barras(315000, 0)],
+                 esperado: [['100%', true, 315000, true, '14%'], ['79%', false, 393096, true, '0%'], ['100%', true, 315000, false, null]] };
+      } },
+    { id: 'A1', descricao: 'Alerta do piso (pisos do print 4.158,12 / 4.628,21): 6.315,86 sem alerta; até 5.091,03 (10% acima do piso da casa) âmbar; 5.091,04 sem; abaixo de 4.158,12 vermelho; sem casa: âmbar até 4.573,93',
+      executar: function () {
+        function a(preco, temCasa) { var x = alertaDoPiso(preco, 415812, temCasa ? 462821 : 415812, temCasa); return x ? x.tom + ' ' + x.piso + ' ' + x.pisoC : null; }
+        return { obtido: [a(631586, true), a(509103, true), a(509104, true), a(462821, true), a(415812, true), a(415811, true), a(457393, false), a(457394, false)],
+                 esperado: [null, 'ambar casa 462821', null, 'ambar casa 462821', 'ambar casa 462821', 'vermelho oficina 415812', 'ambar oficina 415812', null] };
       } }
   ];
+}
+
+/**
+ * Orçamento do print (fase 11, dados reais): oficina 3.150 e casa 5.500; 5 dias × 6 h = 130 h; hora R$ 100; imposto 10%;
+ * serviço 10 h; peças 4 × 500 + 1 × 1.500, + 47%; desconto 5%; Visa/Master padrão e Elo (sem taxas); parcelas "5"; "Não sei".
+ */
+function cenarioPrint() {
+  var dados = { gastos: [{ tipo: 'Oficina', valor: 3150 }, { tipo: 'Casa', valor: 5500 }],
+    cartoes: [cartaoDeTeste('Visa/Master', VISA_TESTE), cartaoVazio('Elo')],
+    parametros: { diasPorSemana: 5, horasPorDia: 8, horasCobradasPorDia: 6, valorHoraCobrado: 100, impostoPercentual: 10,
+      acrescimoPecasPadrao: 47, descontoAVistaPadrao: 5, parcelasDestaque: '5', nomeOficina: '' } };
+  var foto = fotoDeHoje(dados, '2026-11-08 10:00');
+  var e = { descricao: 'Retífica', modo: 'horas', horasTexto: '10', valorTexto: '', horasFechadoTexto: '', pecasModo: 'acrescimo',
+    pecas: [{ descricao: 'Valvulas', qtdTexto: '4', valorTexto: '500' }, { descricao: 'Bloco', qtdTexto: '1', valorTexto: '1500' }],
+    pecasPagarTexto: '', pecasCobrarTexto: '', acrescimoTexto: null, descontoTexto: null, extraTexto: '', bandeira: NAO_SEI };
+  var calc = calcularComFoto(e, foto);
+  return { foto: foto, e: e, calc: calc, resultado: resultadoParaGravar(calc) };
+}
+
+/** Mês do exemplo da fase 11: 3 fechados de 10 h; faturamento 9.126,93 · peças 3.780 · maquininha 503,27 · imposto 912,70. */
+function listaDoMesQ() {
+  var v = [[304231, 126000, 16776, 30424], [304231, 126000, 16776, 30423], [304231, 126000, 16775, 30423]];
+  return v.map(function (x, i) {
+    return { criadoEm: '2026-11-0' + (i + 2) + ' 10:00:00', situacao: 'Fechado', dataFechamento: '2026-11-0' + (i + 3),
+      valorCombinadoC: x[0], pecasPagarC: x[1], taxaC: x[2], impostoC: x[3], horas: 10 };
+  });
 }
 
 /**

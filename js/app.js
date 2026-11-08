@@ -7,6 +7,7 @@
 var CHAVE_CACHE = 'precoCerto.dados.v1';
 var CHAVE_ORCAMENTO = 'precoCerto.orcamento.v1';
 var CHAVE_DESCONTO_PADRAO = 'precoCerto.descontoPadrao.v1'; // versão antiga (por aparelho): migrado para a aba Parâmetros e apagado
+var CHAVE_FOTO_PENDENTE = 'precoCerto.fotoMesPendente.v1'; // mês corrente cuja foto dos gastos ainda não foi atualizada
 var CHAVE_PIN = 'precoCerto.pin.v1';                        // só deste aparelho; "Desconectar" e novo link apagam
 var ESPERA_SALVAR_MS = 800;
 var BLOQUEIO_PIN_MS = 5 * 60 * 1000;  // PIN ligado: mais de 5 min em segundo plano → pede de novo
@@ -26,7 +27,7 @@ var desfazer = { tipo: null, item: null, indice: -1, timer: null }; // último g
 var remocoesNaoSalvas = 0;     // remoções que ainda não entraram em nenhum salvamento
 var usuarioEscolheuTela = false;
 var nav = { tela: 'orcamento', aba: 'gastos', abaPin: 'gastos', voltarFechar: 'orcamento' }; // tela: 'orcamento' | 'resultados' | 'fechar' | 'pin' | 'config'
-var ui = { cartao: 0, adicionandoCartao: false, outroAberto: false }; // tela "Seus cartões"
+var ui = { cartao: 0, adicionandoCartao: false, outroAberto: false, maisDesconto: false }; // tela "Seus cartões"; maisDesconto: "O cliente pediu mais desconto?" aberto
 var SUGESTOES_CARTAO = ['Elo', 'Amex', 'Hipercard', 'Visa', 'Mastercard', 'Cabal', 'Banescard', 'Sorocred'];
 var ultimoResultado = null;
 var ultimasPecas = [];        // peças lidas no último render [{descricao, qtd, valor}] (vão para o WhatsApp, sem valores)
@@ -35,9 +36,10 @@ var timerAviso = null;
 var ultimoCalc = null;         // calcularComFoto do último render (vai para a planilha ao salvar)
 var salvandoOrc = null;        // Promise do salvamento do orçamento em andamento
 var desbloqueio = { ok: false, escondidoEm: null }; // PIN: um desbloqueio vale para Resultados e Configurações
-var resul = { mes: null, dados: null, filtro: 'todos', busca: '', aberto: null, ocultos: {}, pedido: 0 }; // aba Resultados
+var resul = { mes: null, dados: null, filtro: 'todos', busca: '', aberto: null, ocultos: {}, pedido: 0, autoFeito: {} }; // aba Resultados
+var corrigir = { mes: null, dados: null, pedido: 0 }; // Ajustes → "Corrigir gastos de um mês passado"
 var fech = null;               // tela de fechamento
-var menuSit = { alvo: null };  // menu "Mudar situação"
+var menuSit = { alvo: null, deFechar: false };  // menu "Mudar situação" (deFechar: aberto pela tela de fechamento)
 var dialogo = { resolver: null, botoes: [] };
 
 // ------------------------------------------------------------------
@@ -197,9 +199,12 @@ function salvarAgora() {
   sync.erro = false;
   mostrarStatus('salvando');
 
-  PrecoCertoApi.chamar(conexao, 'salvarDados', montarEnvio()).then(function (r) {
+  var envio = montarEnvio();
+  var totais = totaisDoMes(envio);
+  PrecoCertoApi.chamar(conexao, 'salvarDados', envio).then(function (r) {
     sync.salvando = false;
     estado.atualizadoEm = r.atualizadoEm;
+    aposSalvarDados(totais);
     if (estado.migrandoDesconto) { apagarStorage(CHAVE_DESCONTO_PADRAO); estado.migrandoDesconto = false; }
     salvarCache();
     atualizarInfoSalvo();
@@ -228,6 +233,7 @@ function receberDadosDoServidor(r) {
   aplicarDados({ gastos: r.gastos, parametros: r.parametros, cartoes: r.cartoes }, r.urlPlanilha, r.atualizadoEm);
   var migrar = migrarDescontoPadrao(r);
   estado.carregadoDoServidor = true;
+  estado.totaisSalvos = totaisDoMes(estado.dados);
   sync.sujo = false;
   sync.erro = false;
   $('faixa-offline').hidden = true;
@@ -734,11 +740,16 @@ function renderOrcamento() {
     : '';
   $('bloco-desconto').hidden = !preco.temAncora;
   $('dica-sem-ancora').hidden = preco.temAncora || res.semCartoes;
+  // "O cliente pediu mais desconto?": o extra e a faixa "ainda pode dar" ficam escondidos até ele tocar (extra > 0 → aberto)
+  if (calc.lido.extra > 0 || calc.lido.erros['orc-extra']) ui.maisDesconto = true;
+  var maisAberto = preco.temAncora && ui.maisDesconto;
+  $('campo-extra').hidden = !maisAberto;
+  $('btn-mais-desconto').hidden = !preco.temAncora || ui.maisDesconto;
 
-  // Só para o mecânico: quanto ainda pode dar / quanto abre mão da sobra extra
+  // Só para o mecânico: quanto ainda pode dar (atrás do link) / quanto abre mão da sobra extra (aviso: sempre)
   var faixaAinda = $('faixa-ainda-pode');
   var faixaAbre = $('faixa-abre-mao');
-  faixaAinda.hidden = !preco.temAncora || preco.acimaDoMaximo;
+  faixaAinda.hidden = !maisAberto || preco.acimaDoMaximo;
   faixaAbre.hidden = !preco.temAncora || !preco.acimaDoMaximo;
   if (preco.temAncora && !preco.acimaDoMaximo) {
     faixaAinda.textContent = preco.aindaPodeCentavos > 0
@@ -780,46 +791,128 @@ function renderOrcamento() {
       }).join('')
     : '<li>Nenhuma taxa cadastrada para este cartão. Veja em Ajustes.</li>';
 
-  // Neste serviço: paga a oficina, vai para a casa (o "salário") e a sobra extra (sobre o à vista oferecido)
+  // Situação do orçamento salvo: Fechado e Não fechou trocam a cobrança por um resumo
+  var situacao = orc.vinculo ? orc.vinculo.situacao : 'Aberto';
+  var fechamento = situacao === 'Fechado' && orc.vinculo.fechamento ? orc.vinculo.fechamento : null;
+  renderResumoSituacao(situacao, fechamento);
+  renderBotoesOrcamento(situacao);
+  if (fechamento) renderFicaFechado(fechamento);
+  else renderFicaAberto(calc, res, preco);
+}
+
+/** "Fechado em 08/11 · Cartão em 5x · Cliente paga R$ 6.648,27" / "Não fechou · 08/11 · motivo". */
+function renderResumoSituacao(situacao, f) {
+  var aberto = situacao === 'Aberto';
+  $('bloco-cobranca').hidden = !aberto;
+  $('card-resumo-sit').hidden = aberto;
+  $('card-lucro').hidden = situacao === 'Não fechou';
+  if (aberto) return;
+  var v = orc.vinculo;
+  var partes = situacao === 'Fechado'
+    ? (f ? ['Fechado em ' + dataBR(f.data, true), descreverForma(f), 'Cliente paga ' + formatarCentavos(f.valorCombinadoC)] : ['Fechado'])
+    : ['Não fechou', dataBR(v.atualizadoEm, true)].concat(v.motivo ? [v.motivo] : []);
+  $('resumo-sit-texto').innerHTML = partes.filter(Boolean).map(function (s) { return '<span class="sem-quebra">' + esc(s) + '</span>'; }).join(' · ');
+  $('card-resumo-sit').className = 'card card-resumo-sit ' + classeSituacao(situacao);
+}
+
+/** Botões por situação: Aberto (Copiar · Salvar · O cliente fechou?), Fechado (Copiar · Mudar situação · Duplicar), Não fechou (Voltar para Aberto · Duplicar). */
+function renderBotoesOrcamento(situacao) {
+  $('btn-copiar').hidden = situacao === 'Não fechou';
+  $('botoes-aberto').hidden = situacao !== 'Aberto';
+  $('botoes-fechado').hidden = situacao !== 'Fechado';
+  $('botoes-nao-fechou').hidden = situacao !== 'Não fechou';
+  $('btn-compartilhar').hidden = !podeCompartilhar() || situacao === 'Não fechou';
+}
+
+var COR_ESTADO = { verde: 'positivo', ambar: 'ambar', vermelho: 'negativo' };
+
+/** O card "Fica para você": número grande, cor do estado e alerta. */
+function pintarFica(totalC, estadoConta, alertas) {
+  $('res-fica').innerHTML = dinheiroComSinalHtml(totalC);
+  $('res-fica').className = 'valor-grande ' + COR_ESTADO[estadoConta];
+  $('card-lucro').className = 'card' + (estadoConta === 'vermelho' ? ' card-negativo' : estadoConta === 'ambar' ? ' card-ambar' : '');
+  var alerta = $('res-lucro-alerta');
+  var textos = alertas.filter(function (a) { return a.texto; });
+  alerta.hidden = !textos.length;
+  var vermelho = textos.some(function (a) { return a.tom === 'vermelho'; });
+  alerta.className = 'alerta' + (vermelho ? '' : ' alerta-ambar');
+  alerta.textContent = textos.map(function (a) { return a.texto; }).join(' ');
+}
+
+/** "R$ 423,07 do seu salário + R$ 1.518,89 de sobra" (sobra negativa: "…, menos R$ Y que faltou"; sem casa: só a sobra). */
+function textoPartes(casaC, sobraC) {
+  if (casaC === null) return sobraC >= 0 ? formatarCentavos(sobraC) + ' de sobra' : '';
+  return formatarCentavos(casaC) + ' do seu salário' + (sobraC >= 0 ? ' + ' + formatarCentavos(sobraC) + ' de sobra' : ', menos ' + formatarCentavos(-sobraC) + ' que faltou');
+}
+
+/** Aberto: no à vista com o desconto atual; "No cartão em 5x fica"; pisos só como alerta. */
+function renderFicaAberto(calc, res, preco) {
   var ganho = calc.ganho;
   var det = calc.det;
-  var cor = { verde: 'positivo', ambar: 'ambar', vermelho: 'negativo' }[ganho.estado];
-  $('res-sobra').textContent = comSinal(det.sobra);
-  $('res-lucro').className = 'valor-grande ' + cor;
-  $('card-lucro').className = 'card' + (ganho.estado === 'vermelho' ? ' card-negativo' : ganho.estado === 'ambar' ? ' card-ambar' : '');
-  $('res-total-seu').hidden = det.totalSeu === null;
-  $('res-total-seu').innerHTML = det.totalSeu === null ? '' : 'Total que é seu (casa + sobra): <span class="sem-quebra">' + esc(comSinal(det.totalSeu)) + '</span>';
-  var alerta = $('res-lucro-alerta');
-  alerta.hidden = ganho.estado === 'verde';
-  alerta.className = 'alerta' + (ganho.estado === 'ambar' ? ' alerta-ambar' : '');
-  alerta.textContent = ganho.estado === 'ambar' ? 'Paga a oficina, mas não cobre toda a sua casa.'
-    : ganho.estado === 'vermelho' ? 'Com esse preço a oficina não se paga.' : '';
+  var total = det.totalSeu !== null ? det.totalSeu : det.sobra;
+  $('res-fica-partes').textContent = textoPartes(det.vaiParaCasa, det.sobra);
+  var piso = alertaDoPiso(preco.precoCentavos, centavos(ganho.pisoOficina), centavos(ganho.pisoCasa), ganho.temCasa);
+  pintarFica(total, ganho.estado, [
+    { tom: ganho.estado, texto: ganho.estado === 'ambar' ? 'Paga a oficina, mas não cobre toda a sua casa.' : ganho.estado === 'vermelho' ? 'Com esse preço a oficina não se paga.' : '' },
+    { tom: piso ? piso.tom : '', texto: !piso ? '' : piso.tom === 'vermelho'
+      ? 'Abaixo de ' + formatarCentavos(piso.pisoC) + ' a oficina não se paga.'
+      : 'Cuidado: abaixo de ' + formatarCentavos(piso.pisoC) + (piso.piso === 'casa' ? ' não sobra nada para a sua casa.' : ' a oficina não se paga.') }
+  ]);
 
-  // No cartão: a sobra na maior parcela em destaque (o imposto é sobre o total do cartão), como antes
-  var impostoPct = p.impostoPercentual;
-  var maiorDestaque = res.destaques.length ? res.destaques[res.destaques.length - 1] : null;
-  var elCartao = $('res-lucro-cartao');
-  if (impostoPct > 0 && maiorDestaque) {
-    elCartao.textContent = 'Sobra extra no cartão em ' + maiorDestaque.parcelas + 'x: ' + comSinal(centavos(maiorDestaque.lucro));
-    elCartao.hidden = false;
-  } else {
-    elCartao.hidden = true;
-  }
+  // No cartão (parcela do card do cartão): salário exibido + sobra no cartão arredondada (soma dos valores mostrados, como no R8;
+  // o imposto é sobre o total do cartão). Ex. do print: 423,07 + 1.314,79 = 1.737,86, igual ao fechamento em 5x.
+  var anc = preco.ancora;
+  var elCartao = $('res-fica-cartao');
+  elCartao.hidden = !anc || res.semCartoes;
+  elCartao.textContent = anc ? 'No cartão em ' + anc.parcelas + 'x fica: ' + comSinal(centavos(anc.lucro) + (det.vaiParaCasa || 0)) : '';
 
   // Ver detalhes (as linhas fecham no centavo com a sobra exibida: veja linhasDetalheServico)
   var linhas = [
     ['Mão de obra', formatarCentavos(det.maoDeObra)],
     ['Lucro nas peças', formatarCentavos(det.lucroPecas)]
   ];
-  if (det.diferenca !== null) linhas.push(['Diferença pelo desconto à vista', (det.diferenca < 0 ? '− ' : '+ ') + formatarCentavos(Math.abs(det.diferenca))]);
+  if (det.diferenca !== null) {
+    linhas.push(det.diferenca < 0
+      ? ['Perda por desconto maior que a maquininha', '− ' + formatarCentavos(-det.diferenca)]
+      : ['Ganho por ter desconto menor que a maquininha', '+ ' + formatarCentavos(det.diferenca)]);
+  }
   if (det.imposto !== null) linhas.push(['Imposto (à vista)', menos(det.imposto)]);
   linhas.push(['Paga os gastos da oficina', menos(det.pagaOficina)]);
   if (det.vaiParaCasa !== null) linhas.push(['Vai para a sua casa', menos(det.vaiParaCasa), 'é o seu salário']);
   linhas.push(['Sobra extra', comSinal(det.sobra), null, 'total']);
+  if (det.totalSeu !== null) linhas.push(['Total que é seu (casa + sobra)', comSinal(det.totalSeu)]);
   $('res-detalhes').innerHTML = htmlDetalhes(linhas);
+  $('res-piso-oficina').hidden = false;
   $('res-piso-oficina').textContent = 'Abaixo de ' + formatarBRL(ganho.pisoOficina) + ' a oficina não se paga.';
   $('res-piso').hidden = !ganho.temCasa; // sem gastos de casa: um só piso
   $('res-piso').textContent = ganho.temCasa ? 'Abaixo de ' + formatarBRL(ganho.pisoCasa) + ' não sobra nada para a sua casa.' : '';
+}
+
+/** Fechado: o que foi GRAVADO no fechamento (forma e valor combinado); nada é recalculado. */
+function renderFicaFechado(f) {
+  var total = f.totalSeuC !== null ? f.totalSeuC : f.sobraC;
+  $('res-fica-partes').textContent = textoPartes(f.vaiParaCasaC, f.sobraC);
+  pintarFica(total, f.estado, [{ tom: f.estado, texto: f.estado === 'ambar' ? 'Paga a oficina, mas não cobre toda a sua casa.' : f.estado === 'vermelho' ? 'Com esse valor a oficina não se paga.' : '' }]);
+  $('res-fica-cartao').hidden = true;
+  var linhas = [
+    ['Cliente paga (' + descreverForma(f) + ')', formatarCentavos(f.valorCombinadoC)],
+    ['Taxa da maquininha', menos(f.taxaC)],
+    ['Imposto', menos(f.impostoC)],
+    ['Peças (o que você pagou)', menos(f.pecasPagarC)],
+    ['Paga os gastos da oficina', menos(f.pagaOficinaC)]
+  ];
+  if (f.vaiParaCasaC !== null) linhas.push(['Vai para a sua casa', menos(f.vaiParaCasaC), 'é o seu salário']);
+  linhas.push(['Sobra extra', comSinal(f.sobraC), null, 'total']);
+  if (f.totalSeuC !== null) linhas.push(['Total que é seu (casa + sobra)', comSinal(f.totalSeuC)]);
+  $('res-detalhes').innerHTML = htmlDetalhes(linhas);
+  $('res-piso-oficina').hidden = true;
+  $('res-piso').hidden = true;
+}
+
+/** "Compartilhar" só no celular: o navegador tem o recurso E a tela é estreita (o mesmo corte das 2 colunas). */
+var TELA_ESTREITA = '(max-width: 899px)';
+function podeCompartilhar() {
+  return typeof navigator.share === 'function' && !!window.matchMedia && window.matchMedia(TELA_ESTREITA).matches;
 }
 
 /** Linhas [rótulo, valor, nota?, classe?] → <dt>/<dd>. */
@@ -859,11 +952,26 @@ function trocarModoPecas(modo) {
 function carregarRascunho(r, manterAssinatura) {
   if (desfazer.tipo === 'peca' && desfazer.item) finalizarRemocao(); // a peça removida não volta em outro orçamento
   orc = r;
+  ui.maisDesconto = false; // o extra volta escondido (abre sozinho se o orçamento tiver extra)
   if (orc.vinculo && !manterAssinatura) orc.vinculo.assinatura = assinaturaDe(true);
   gravarRascunho();
   preencherOrcamento();
   $('outras-formas').open = false;
   renderOrcamento();
+}
+
+/** "+ Novo orçamento": com alteração não salva, pergunta antes (na página). */
+function aoClicarNovo() {
+  if (!temMudancaNaoSalva()) { novoOrcamento(); return; }
+  perguntar('Começar um novo?', 'O que você fez aqui não foi salvo.', [
+    { chave: 'salvar', texto: 'Salvar e começar novo', classe: 'btn-primario' },
+    { chave: 'novo', texto: 'Começar sem salvar' }
+  ], 'Cancelar').then(function (k) {
+    if (k === 'novo') novoOrcamento();
+    if (k === 'salvar') salvarOrcamento({}).then(function (x) {
+      if (x.r === 'salvo' || x.r === 'semMudanca') novoOrcamento(); else avisarSalvamento(x, false);
+    });
+  });
 }
 
 function novoOrcamento() {
@@ -888,7 +996,6 @@ function chipSituacao(s) { return '<span class="chip-situacao ' + classeSituacao
 function renderVinculo() {
   var v = orc.vinculo;
   $('faixa-vinculo').hidden = !v;
-  $('btn-mudar-situacao').hidden = !v;
   $('vinculo-foto').hidden = true;
   $('faixa-travado').hidden = true;
   if (!v) return;
@@ -904,12 +1011,8 @@ function renderVinculo() {
     $('btn-recalcular').hidden = travado();
   }
   if (travado()) {
-    var f = v.fechamento;
     $('faixa-travado').hidden = false;
-    $('faixa-travado').textContent = (v.situacao === 'Fechado' && f
-      ? 'Fechado em ' + dataBR(f.data, true) + ' por ' + formatarCentavos(f.valorCombinadoC) + ' (' + descreverForma(f) + ').'
-      : 'Não fechou' + (v.motivo ? ' (' + v.motivo + ')' : '') + '.') +
-      ' Para mudar valores: Voltar para Aberto ou Duplicar.';
+    $('faixa-travado').textContent = 'Para mudar valores: Voltar para Aberto ou Duplicar.';
   }
 }
 
@@ -1175,7 +1278,45 @@ function alvoDoRascunho() {
     valorCombinadoC: v.fechamento ? v.fechamento.valorCombinadoC : null, origem: 'orcamento' };
 }
 
+/** "O cliente fechou?": salva antes (orçamento novo ou mudado) e abre a tela de fechamento. */
+function clienteFechou() {
+  var abrir = function () {
+    buscarOrcamento(orc.vinculo.id).then(function (o) { if (o) abrirFechamento(o, 'orcamento'); });
+  };
+  if (orc.vinculo && !temMudancaNaoSalva()) { abrir(); return; }
+  salvarOrcamento({}).then(function (x) {
+    if ((x.r === 'salvo' || x.r === 'semMudanca') && orc.vinculo) abrir(); else avisarSalvamento(x, false);
+  });
+}
+
+/** "Voltar para Aberto" do orçamento da tela (Não fechou) ou da tela de fechamento. */
+function voltarParaAberto(alvo) {
+  menuSit.alvo = alvo;
+  escolherNoMenuSituacao('aberto');
+}
+
+/** Só o pedido do motivo ("O cliente não fechou", na tela de fechamento). */
+function abrirNaoFechou(alvo) {
+  menuSit.alvo = alvo;
+  menuSit.deFechar = true;
+  $('menu-situacao-titulo').textContent = 'O cliente não fechou';
+  $('menu-situacao-quem').innerHTML = esc([alvo.cliente, alvo.servico].filter(function (s) { return String(s || '').trim(); }).join(' · ') || 'Orçamento sem nome');
+  $('menu-situacao-botoes').innerHTML = '';
+  $('bloco-motivo').hidden = false;
+  $('motivo-texto').value = '';
+  $('menu-situacao').hidden = false;
+  $('motivo-texto').focus();
+}
+
+function alvoDoFechamento() {
+  var o = fech.o;
+  return { id: o.id, atualizadoEm: o.atualizadoEm, situacao: o.situacao, cliente: o.cliente, servico: o.dados.entrada.descricao,
+    valorCombinadoC: null, origem: fech.voltarPara === 'resultados' ? 'lista' : 'orcamento' };
+}
+
 function abrirMenuSituacao(alvo) {
+  menuSit.deFechar = false;
+  $('menu-situacao-titulo').textContent = 'Mudar situação';
   menuSit.alvo = alvo;
   $('menu-situacao-quem').innerHTML = esc([alvo.cliente, alvo.servico].filter(function (s) { return String(s || '').trim(); }).join(' · ') || 'Orçamento sem nome') +
     ' · ' + chipSituacao(alvo.situacao);
@@ -1183,10 +1324,7 @@ function abrirMenuSituacao(alvo) {
   if (alvo.situacao !== 'Fechado') b.push(['fechou', 'Fechou', 'btn-primario']);
   if (alvo.situacao === 'Aberto') b.push(['nao', 'Não fechou', 'btn-fantasma']);
   if (alvo.situacao !== 'Aberto') b.push(['aberto', 'Voltar para Aberto', 'btn-fantasma']);
-  if (alvo.origem === 'orcamento') {
-    b.push(['duplicar', 'Duplicar', 'btn-fantasma']);
-    b.push(['excluir', 'Excluir orçamento', 'btn-fantasma btn-texto-perigo']);
-  }
+  if (alvo.origem === 'orcamento') b.push(['excluir', 'Excluir orçamento', 'btn-fantasma btn-texto-perigo']);
   $('menu-situacao-botoes').innerHTML = b.map(function (x) {
     return '<button type="button" class="btn ' + x[2] + '" data-sit="' + x[0] + '">' + esc(x[1]) + '</button>';
   }).join('');
@@ -1219,7 +1357,7 @@ function escolherNoMenuSituacao(acao) {
       ? 'O fechamento de ' + formatarCentavos(alvo.valorCombinadoC) + ' será desfeito.'
       : 'O orçamento volta a ficar em aberto.';
     perguntar('Voltar para Aberto?', texto, [{ chave: 'sim', texto: 'Sim, voltar para Aberto', classe: 'btn-primario' }]).then(function (k) {
-      if (k === 'sim') enviarSituacao(alvo, 'Aberto', {});
+      if (k === 'sim') enviarSituacao(alvo, 'Aberto', {}).then(function (ok) { if (ok && nav.tela === 'fechar') sairDoFechamento(); });
     });
     return;
   }
@@ -1229,8 +1367,11 @@ function escolherNoMenuSituacao(acao) {
 
 function confirmarNaoFechou() {
   var alvo = menuSit.alvo;
+  var deFechar = menuSit.deFechar;
   fecharMenuSituacao();
-  enviarSituacao(alvo, 'Não fechou', { motivo: $('motivo-texto').value.trim().slice(0, MAX_MOTIVO) });
+  enviarSituacao(alvo, 'Não fechou', { motivo: $('motivo-texto').value.trim().slice(0, MAX_MOTIVO) }).then(function (ok) {
+    if (ok && deFechar && nav.tela === 'fechar') sairDoFechamento();
+  });
 }
 
 /** mudarSituacao no servidor + o que muda na tela. @return Promise<boolean> */
@@ -1351,6 +1492,8 @@ function lerFechamento() {
 function renderFechamento() {
   if (!fech) return;
   var d = fech.o.dados;
+  $('btn-fechar-nao-fechou').hidden = fech.o.situacao !== 'Aberto';
+  $('btn-fechar-voltar-aberto').hidden = fech.o.situacao !== 'Não fechou';
   var foto = d.foto;
   var formas = formasDisponiveis(foto, fech.cartao);
   var opcoes = [['pix', 'Pix/dinheiro']];
@@ -1445,6 +1588,7 @@ function abrirResultados(peloUsuario, mes) {
 
 function mostrarResultados() {
   if (!resul.mes) resul.mes = mesAtualLocal();
+  resul.autoFeito = {}; // cada abertura confere de novo a foto do mês corrente (outro aparelho pode ter mudado os gastos)
   mostrarTela('resultados');
   window.scrollTo(0, 0);
   renderResultados();
@@ -1469,6 +1613,7 @@ function carregarMes() {
     resul.dados = r;
     status.textContent = '';
     renderResultados();
+    conferirFotoDoMes(r);
   }, function (e) {
     if (pedido !== resul.pedido || conexao !== usada) return;
     if (e && e.tipo === 'acesso') { perdeuAcesso(); status.textContent = 'Este aparelho perdeu o acesso à planilha.'; return; }
@@ -1514,44 +1659,58 @@ function renderResultados() {
   $('res-vazio').hidden = true;
   $('res-conteudo').hidden = false;
 
+  // Mês corrente: sempre os gastos de hoje (a foto da planilha é atualizada sozinha; veja atualizarFotoDoMesAtual).
+  // Meses que já passaram: a última foto gravada.
+  var corrente = mes === atual;
   var gravada = r.meses[mes] || null;
-  var usandoHoje = !gravada && mes === atual;
-  var fotoMes = gravada || (usandoHoje ? r.gastosHoje : null);
+  var fotoMes = corrente ? r.gastosHoje : gravada;
   var resumo = resumoDoMes(lista, mes, fotoMes);
   var anterior = resumoDoMes(lista, r.mesAnterior, r.meses[r.mesAnterior] || null);
   var curto = nomeDoMes(mes, true);
 
-  // Resultado real do mês
-  var rr = resumo.resultado;
-  $('mes-sem-foto').hidden = !!rr;
-  $('mes-com-foto').hidden = !rr;
-  if (rr) {
-    $('mes-oficina').innerHTML = rr.oficinaSePagou ? 'Sim. Sobraram ' + dinheiroHtml(rr.depoisDaOficinaC) : 'Não. Faltaram ' + dinheiroHtml(-rr.depoisDaOficinaC);
-    $('mes-oficina').className = rr.oficinaSePagou ? 'positivo' : 'negativo';
-    $('mes-casa').innerHTML = rr.gastosCasaC === 0 ? 'Sem gastos de casa.'
-      : rr.casa === 'toda' ? 'Sim, toda: ' + dinheiroHtml(rr.gastosCasaC)
-      : rr.casa === 'parte' ? 'Em parte: ' + dinheiroHtml(rr.casaCobertaC) + ' de ' + dinheiroHtml(rr.gastosCasaC) + ' (' + porcentoInteiro(rr.pctCasa) + ')'
-      : 'Não. Nada sobrou para a casa.';
-    $('mes-casa').className = rr.casa === 'toda' || rr.gastosCasaC === 0 ? 'positivo' : rr.casa === 'parte' ? 'ambar' : 'negativo';
-    var cor = { verde: 'positivo', ambar: 'ambar', vermelho: 'negativo' }[rr.estado];
-    $('mes-sobra').innerHTML = dinheiroComSinalHtml(rr.sobraDoMesC);
-    $('mes-sobra-linha').className = 'valor-grande ' + cor;
-    $('mes-total-seu').innerHTML = 'Total que é seu no mês: <span class="sem-quebra">' + esc(formatarCentavos(rr.totalSeuNoMesC)) + '</span>';
+  // Card principal: barras da oficina e da casa + a frase grande
+  var nomeMes = curto.charAt(0).toUpperCase() + curto.slice(1);
+  $('titulo-mes-real').textContent = corrente ? nomeMes + ' até agora' : 'Resultado de ' + curto;
+  var hoje = new Date();
+  $('mes-dia').hidden = !corrente;
+  $('mes-dia').textContent = corrente ? 'dia ' + hoje.getDate() + ' de ' + new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).getDate() : '';
+  var pm = painelDoMes(resumo, corrente);
+  $('mes-sem-foto').hidden = !!pm;
+  $('mes-com-foto').hidden = !pm;
+  if (pm) {
+    $('mes-oficina-txt').innerHTML = pm.oficinaPaga ? '<span class="positivo">✓ paga</span>'
+      : dinheiroHtml(pm.oficinaCobertaC) + ' de ' + dinheiroHtml(pm.gastosOficinaC);
+    $('mes-oficina-barra').style.width = Math.round(pm.pctOficina * 100) + '%';
+    $('mes-oficina-barra').className = 'barra-cheia ' + (pm.oficinaPaga ? 'verde' : 'ambar');
+    $('mes-bloco-casa').hidden = !pm.temCasa;
+    if (pm.temCasa) {
+      var casaToda = pm.pctCasa >= 1;
+      $('mes-casa-txt').innerHTML = casaToda ? '<span class="positivo">✓ coberta</span>'
+        : dinheiroHtml(pm.casaCobertaC) + ' de ' + dinheiroHtml(pm.gastosCasaC);
+      $('mes-casa-barra').style.width = Math.round(pm.pctCasa * 100) + '%';
+      $('mes-casa-barra').className = 'barra-cheia ' + (casaToda ? 'verde' : 'ambar');
+    }
+    $('mes-frase').textContent = fraseDoMes(pm);
+    $('mes-frase').className = 'frase-mes ' + { verde: 'positivo', ambar: 'ambar', vermelho: 'negativo-discreto' }[pm.frase.tom];
+    var q = quantoFaltaTrabalhar(resumo, corrente);
+    $('mes-falta-trabalhar').hidden = !q;
+    $('mes-falta-trabalhar').innerHTML = q
+      ? '<strong>Faltam cerca de ' + esc(plural(q.horas, 'hora', 'horas')) + ' de serviço (' + esc(q.servicos === 1 ? 'um serviço' : 'uns ' + q.servicos + ' serviços') + ' como os deste mês).</strong>' +
+        'Você ganha uns ' + dinheiroHtml(q.porHoraC) + ' por hora de serviço, já tirando peças, maquininha e imposto.'
+      : '';
     var cmp = compararMeses(resumo, anterior);
     $('mes-comparacao').hidden = !cmp;
     if (cmp) {
       var seta = function (c) { return c >= 0 ? '↑ ' : '↓ '; };
-      $('mes-comparacao').innerHTML = 'Comparado com ' + esc(nomeDoMes(r.mesAnterior, true)) + ': faturamento <span class="sem-quebra">' + seta(cmp.faturamentoDifC) +
+      $('mes-comparacao').innerHTML = 'Comparado com ' + esc(nomeDoMes(r.mesAnterior, true)) + ': entrou <span class="sem-quebra">' + seta(cmp.faturamentoDifC) +
         esc(formatarCentavos(Math.abs(cmp.faturamentoDifC))) + '</span>' + (cmp.faturamentoPct !== null ? ' (' + porcentoInteiro(Math.abs(cmp.faturamentoPct)) + ')' : '') +
         (cmp.sobraDifC !== null ? ' · sobra <span class="sem-quebra">' + seta(cmp.sobraDifC) + esc(formatarCentavos(Math.abs(cmp.sobraDifC))) + '</span>' : '');
     }
   }
-  $('card-mes').className = 'card' + (rr && rr.estado === 'vermelho' ? ' card-negativo' : rr && rr.estado === 'ambar' ? ' card-ambar' : '');
-  $('mes-gastos').innerHTML = gravada
-    ? 'Gastos do mês: oficina ' + dinheiroHtml(gravada.oficinaC) + ' · casa ' + dinheiroHtml(gravada.casaC) + ' · ' + horasTexto(gravada.horas) + ' h (gravados em ' + dataBR(gravada.gravadoEm, true) + ').'
-    : usandoHoje
-      ? 'Usando seus gastos de hoje (oficina ' + dinheiroHtml(r.gastosHoje.oficinaC) + ' · casa ' + dinheiroHtml(r.gastosHoje.casaC) + '). O mês fica gravado no primeiro fechamento.'
-      : '';
+  $('card-mes').className = 'card';
+  $('mes-gastos').innerHTML = fotoMes
+    ? 'Gastos do mês: oficina ' + dinheiroHtml(fotoMes.oficinaC) + ' · casa ' + dinheiroHtml(fotoMes.casaC) + ' · ' + horasTexto(fotoMes.horas) + ' h'
+    : '';
 
   // Orçamentos feitos no mês (pelo mês de criação)
   $('titulo-contagem').textContent = 'Orçamentos feitos em ' + curto;
@@ -1559,14 +1718,19 @@ function renderResultados() {
     plural(resumo.naoFecharam, 'não fechou', 'não fecharam') + ' · ' + resumo.emAberto + ' em aberto';
   $('mes-taxa-fechamento').textContent = resumo.taxaFechamento === null ? 'Nenhum orçamento feito neste mês.' : 'Fecharam: ' + porcentoInteiro(resumo.taxaFechamento);
 
-  // Dinheiro (pela data do fechamento)
+  // Extrato do mês (pela data do fechamento), de cima para baixo
   $('titulo-dinheiro').textContent = 'Dinheiro que entrou em ' + curto;
-  $('mes-dinheiro').innerHTML = htmlDetalhes([
-    ['Faturamento', formatarCentavos(resumo.faturamentoC), null, 'total'],
-    ['Peças (você pagou)', formatarCentavos(resumo.pecasC)],
-    ['Taxas da maquininha', formatarCentavos(resumo.taxasC)],
-    ['Imposto', formatarCentavos(resumo.impostoC)]
-  ]);
+  var extrato = extratoDoMes(resumo) || [
+    { rotulo: 'Entrou', valorC: resumo.faturamentoC, tipo: 'entrou' },
+    { rotulo: 'Peças', valorC: resumo.pecasC, tipo: 'sai' },
+    { rotulo: 'Maquininha', valorC: resumo.taxasC, tipo: 'sai' },
+    { rotulo: 'Imposto', valorC: resumo.impostoC, tipo: 'sai' }
+  ];
+  $('mes-dinheiro').innerHTML = htmlDetalhes(extrato.map(function (l) {
+    if (l.tipo === 'entrou') return [l.rotulo, formatarCentavos(l.valorC)];
+    if (l.tipo === 'sai') return ['− ' + l.rotulo, formatarCentavos(l.valorC)];
+    return ['= ' + l.rotulo, comSinal(l.valorC), null, l.tipo];
+  }));
 
   // Horas
   $('mes-horas').textContent = resumo.horasPossiveis
@@ -1597,7 +1761,7 @@ function renderListaResultados(doMes, mes) {
       '</button>' +
       (aberto ? '<div class="item-acoes">' +
         '<button type="button" class="btn btn-fantasma btn-curto" data-item-acao="abrir" data-id="' + esc(o.id) + '">Abrir</button>' +
-        '<button type="button" class="btn btn-fantasma btn-curto" data-item-acao="situacao" data-id="' + esc(o.id) + '">Mudar situação</button>' +
+        '<button type="button" class="btn btn-fantasma btn-curto" data-item-acao="situacao" data-id="' + esc(o.id) + '">' + (o.situacao === 'Aberto' ? 'Fechou? / Não fechou?' : 'Mudar situação') + '</button>' +
         '<button type="button" class="btn btn-fantasma btn-curto" data-item-acao="duplicar" data-id="' + esc(o.id) + '">Duplicar</button>' +
         '<button type="button" class="btn btn-fantasma btn-curto btn-texto-perigo" data-item-acao="excluir" data-id="' + esc(o.id) + '">Excluir</button>' +
       '</div>' : '') +
@@ -1620,18 +1784,127 @@ function acaoDoItem(acao, id) {
   else if (acao === 'excluir') excluirComDesfazer({ id: o.id, atualizadoEm: o.atualizadoEm, origem: 'lista' });
 }
 
-function usarGastosDeHojeNoMes() {
-  var r = resul.dados;
-  if (!r || !conexao) return;
-  var mes = resul.mes;
-  var g = r.gastosHoje;
-  perguntar('Usar seus gastos de hoje em ' + nomeDoMes(mes, true) + '?',
-    'Os gastos de ' + nomeDoMes(mes, true) + ' passam a ser oficina ' + formatarCentavos(g.oficinaC) + ' e casa ' + formatarCentavos(g.casaC) + '.',
-    [{ chave: 'sim', texto: 'Sim, usar', classe: 'btn-primario' }]).then(function (k) {
+// ---------------- Mês atual acompanha os gastos (DESENHO 12.5) ----------------
+/** Totais do mês como o backend calcula (gastosDeHoje_): centavos inteiros e horas com 4 casas. */
+function totaisDoMes(dados) {
+  var p = dados.parametros;
+  return {
+    oficinaC: Math.round(totalGastos(dados.gastos, 'Oficina') * 100),
+    casaC: Math.round(totalGastos(dados.gastos, 'Casa') * 100),
+    horas: Math.round(p.horasCobradasPorDia * p.diasPorSemana * 52 / 12 * 10000) / 10000
+  };
+}
+
+function mesmosTotais(a, b) { return !!a && !!b && a.oficinaC === b.oficinaC && a.casaC === b.casaC && a.horas === b.horas; }
+
+/** Depois do "Salvo ✓" dos gastos/ajustes: se os totais do mês mudaram (ou há pendência), atualiza o mês corrente, sem aviso. */
+function aposSalvarDados(enviados) {
+  var mudou = !mesmosTotais(enviados, estado.totaisSalvos);
+  estado.totaisSalvos = enviados;
+  if (mudou || lerTexto(CHAVE_FOTO_PENDENTE)) atualizarFotoDoMesAtual();
+}
+
+/**
+ * Grava os gastos de hoje no mês CORRENTE (ação usarGastosDeHojeNoMes, a mesma do antigo botão).
+ * Falhou → fica "pendente" no aparelho e tenta de novo no próximo salvamento ou ao abrir Resultados.
+ * Pendência de um mês que já virou é descartada (o mês novo se acerta ao abrir Resultados).
+ * @return Promise<boolean>
+ */
+function atualizarFotoDoMesAtual() {
+  var mes = mesAtualLocal();
+  var pendente = lerTexto(CHAVE_FOTO_PENDENTE);
+  if (pendente && pendente !== mes) apagarStorage(CHAVE_FOTO_PENDENTE);
+  if (!conexao) return Promise.resolve(false);
+  gravarTexto(CHAVE_FOTO_PENDENTE, mes);
+  var usada = conexao;
+  return PrecoCertoApi.pedir(conexao, 'usarGastosDeHojeNoMes', { mes: mes }).then(function () {
+    if (conexao !== usada) return false;
+    if (lerTexto(CHAVE_FOTO_PENDENTE) === mes) apagarStorage(CHAVE_FOTO_PENDENTE);
+    resul.autoFeito[mes] = true;
+    if (nav.tela === 'resultados' && resul.mes === mes) carregarMes();
+    return true;
+  }, function (e) {
+    if (e && e.tipo === 'acesso') perdeuAcesso();
+    return false;
+  });
+}
+
+/** Ao carregar o mês corrente em Resultados: foto diferente dos gastos de hoje (ou pendente) → atualiza (uma vez por abertura). */
+function conferirFotoDoMes(r) {
+  var mes = r.mes;
+  if (mes !== mesAtualLocal() || resul.autoFeito[mes]) return;
+  if (mesmosTotais(r.meses[mes], r.gastosHoje) && !lerTexto(CHAVE_FOTO_PENDENTE)) return;
+  resul.autoFeito[mes] = true;
+  atualizarFotoDoMesAtual();
+}
+
+// ---------------- Ajustes → "Corrigir gastos de um mês passado" ----------------
+function abrirCorrigirMes() {
+  corrigir.mes = mesAnterior(mesAtualLocal());
+  corrigir.dados = null;
+  carregarCorrigir();
+}
+
+function carregarCorrigir() {
+  var mes = corrigir.mes;
+  renderCorrigir();
+  if (!conexao || navigator.onLine === false) { $('cm-gravados').textContent = 'Sem conexão: isto precisa da internet.'; return; }
+  var pedido = ++corrigir.pedido;
+  $('cm-gravados').textContent = 'Carregando…';
+  PrecoCertoApi.pedir(conexao, 'listarOrcamentos', { mes: mes }).then(function (r) {
+    if (pedido !== corrigir.pedido) return;
+    corrigir.dados = r;
+    renderCorrigir();
+  }, function (e) {
+    if (pedido !== corrigir.pedido) return;
+    if (e && e.tipo === 'acesso') { perdeuAcesso(); return; }
+    $('cm-gravados').textContent = e && e.tipo === 'rede' ? 'Sem conexão: isto precisa da internet.' : 'Não carregou: ' + mensagemDoErro(e);
+  });
+}
+
+function textoTotais(t) {
+  return 'oficina ' + dinheiroHtml(t.oficinaC) + ' · casa ' + dinheiroHtml(t.casaC) + ' · ' + horasTexto(t.horas) + ' h';
+}
+
+function renderCorrigir() {
+  var mes = corrigir.mes;
+  if (!mes) return;
+  $('cm-mes').textContent = nomeDoMes(mes);
+  $('cm-seguinte').disabled = mes >= mesAnterior(mesAtualLocal());
+  var r = corrigir.dados && corrigir.dados.mes === mes ? corrigir.dados : null;
+  $('cm-anterior').disabled = !r || !r.primeiroMes || mes <= r.primeiroMes;
+  $('cm-substituir').hidden = true;
+  $('cm-hoje').innerHTML = '';
+  if (!r) return;
+  var g = r.meses[mes];
+  $('cm-gravados').innerHTML = g ? 'Gravados neste mês: ' + textoTotais(g) : 'Sem gastos gravados neste mês.';
+  if (mesmosTotais(g, r.gastosHoje)) { $('cm-hoje').textContent = 'Já são iguais aos seus gastos de hoje.'; return; }
+  $('cm-hoje').innerHTML = 'Seus gastos de hoje: ' + textoTotais(r.gastosHoje);
+  $('cm-substituir').hidden = false;
+}
+
+function trocarMesCorrigir(delta) {
+  var novo = deslocarMes(corrigir.mes, delta);
+  if (novo > mesAnterior(mesAtualLocal())) return;
+  corrigir.mes = novo;
+  carregarCorrigir();
+}
+
+function substituirGastosDoMes() {
+  var r = corrigir.dados;
+  var mes = corrigir.mes;
+  if (!r || r.mes !== mes || !conexao) return;
+  var g = r.meses[mes];
+  var h = r.gastosHoje;
+  var nome = nomeDoMes(mes, true);
+  perguntar('Trocar os gastos de ' + nome + '?',
+    (g ? 'Hoje estão gravados oficina ' + formatarCentavos(g.oficinaC) + ' e casa ' + formatarCentavos(g.casaC) + '. ' : '') +
+    'Passam a ser os seus gastos de hoje: oficina ' + formatarCentavos(h.oficinaC) + ' e casa ' + formatarCentavos(h.casaC) + '. O resultado de ' + nome + ' muda.',
+    [{ chave: 'sim', texto: 'Sim, trocar', classe: 'btn-primario' }], 'Cancelar').then(function (k) {
     if (k !== 'sim') return;
     PrecoCertoApi.pedir(conexao, 'usarGastosDeHojeNoMes', { mes: mes }).then(function () {
-      mostrarAviso('Gastos de ' + nomeDoMes(mes, true) + ' atualizados ✓');
-      carregarMes();
+      mostrarAviso('Gastos de ' + nome + ' corrigidos ✓');
+      carregarCorrigir();
     }, function (e) {
       if (e && e.tipo === 'acesso') perdeuAcesso();
       else mostrarAviso(e && e.tipo === 'rede' ? 'Sem conexão: nada foi mudado.' : 'Não mudou: ' + mensagemDoErro(e), 'alerta');
@@ -1644,14 +1917,14 @@ function usarGastosDeHojeNoMes() {
  * Mostra a pergunta e resolve com a chave do botão escolhido (ou null em "Agora não"/Esc).
  * botoes: [{chave, texto, classe?}]; sempre ganha um último "Agora não" (ou "Entendi", se não houver botões).
  */
-function perguntar(titulo, texto, botoes) {
+function perguntar(titulo, texto, botoes, textoCancelar) {
   return new Promise(function (resolver) {
     if (dialogo.resolver) dialogo.resolver(null);
     dialogo.resolver = resolver;
     $('dialogo-titulo').textContent = titulo;
     $('dialogo-texto').textContent = texto || '';
     $('dialogo-texto').hidden = !texto;
-    var todos = botoes.concat([{ chave: null, texto: botoes.length ? 'Agora não' : 'Entendi' }]);
+    var todos = botoes.concat([{ chave: null, texto: textoCancelar || (botoes.length ? 'Agora não' : 'Entendi') }]);
     $('dialogo-botoes').innerHTML = todos.map(function (b, i) {
       return '<button type="button" class="btn ' + (b.classe || 'btn-fantasma') + '" data-dialogo="' + i + '">' + esc(b.texto) + '</button>';
     }).join('');
@@ -1701,9 +1974,14 @@ function mostrarCaixaCopia(texto) {
   try { ta.setSelectionRange(0, texto.length); } catch (e) { /* ignora */ }
 }
 
-/** "Compartilhar" aparece sempre que o navegador tiver o recurso (celular, em geral). */
+/** "Compartilhar" só no celular (recurso do navegador + tela estreita); acompanha a largura da tela. */
 function testarCompartilhar() {
-  $('btn-compartilhar').hidden = typeof navigator.share !== 'function';
+  $('btn-compartilhar').hidden = !podeCompartilhar();
+  if (window.matchMedia) {
+    var mq = window.matchMedia(TELA_ESTREITA);
+    var aoMudar = function () { renderOrcamento(); };
+    if (mq.addEventListener) mq.addEventListener('change', aoMudar); else if (mq.addListener) mq.addListener(aoMudar);
+  }
 }
 
 function compartilhar() {
@@ -2253,8 +2531,8 @@ function desligarPin() {
 // Uma aberta por vez; fecham com novo toque, toque fora ou Esc.
 // ------------------------------------------------------------------
 var DICAS = {
-  servico: { alvo: '#titulo-servico', nome: 'Neste serviço',
-    texto: 'Sua hora já inclui os gastos da oficina e os da sua casa. "Vai para a sua casa" é o seu salário; a "Sobra extra" é o que ficou além disso. O que é seu de verdade é a soma das duas.' },
+  servico: { alvo: '#titulo-servico', nome: 'Fica para você neste serviço',
+    texto: 'Sua hora já inclui os gastos da oficina e os da sua casa. O número grande é o total que é seu: o seu salário (a parte da casa) mais a sobra extra. Embaixo, quanto fica se o cliente pagar no cartão. Orçamento fechado: a conta é com a forma e o valor do fechamento.' },
   acrescimo: { alvo: 'label[for="p-acrescimoPecasPadrao"]', nome: 'Acréscimo padrão nas peças',
     texto: 'Quanto você põe em cima do preço que paga pela peça. Ex.: paga R$ 100 com 47%, o cliente paga R$ 147. Cada orçamento novo começa com este número. Dá para mudar só naquele orçamento, no campo "Quanto você põe em cima da peça".' },
   imposto: { alvo: 'label[for="p-impostoPercentual"]', nome: 'Imposto',
@@ -2272,7 +2550,7 @@ var DICAS = {
       ? 'Neste orçamento, até ' + formatarPercentual(Math.round(ultimoPreco.maximo * 100) / 100) + ' você não perde nada'
       : 'Até a taxa do cartão em destaque você não perde nada';
     return 'Desconto para quem paga no Pix ou dinheiro, em cima do preço do cartão. ' + ate +
-      ', porque não paga a maquininha. Já vem com o seu número de sempre (Ajustes → Outros ajustes).';
+      ', porque não paga a maquininha. Já vem com o seu número de sempre (Ajustes → Outros ajustes). O cliente pediu mais? Toque em "O cliente pediu mais desconto?".';
   } },
   extra: { alvo: 'label[for="orc-extra"]', nome: 'Desconto extra',
     texto: 'Se o cliente pedir um pouco mais. Soma com o desconto à vista (5% + 2% = 7%). O app mostra até onde dá para ir sem perder nada e avisa em vermelho se passar disso.' },
@@ -2282,12 +2560,14 @@ var DICAS = {
     texto: 'O desconto que todo orçamento novo já traz para Pix ou dinheiro. Ex.: 5. Vale para todos os aparelhos ligados a esta planilha. Em cada orçamento dá para mudar só naquele.' },
   pin: { alvo: '#rotulo-pin', nome: 'Proteger com PIN',
     texto: 'Pede 4 números para abrir Resultados, Meus gastos e Ajustes neste aparelho. Depois de digitar, fica liberado enquanto o app estiver aberto; se ficar mais de 5 minutos fora do app, pede de novo. Serve para ninguém mexer sem querer: não é uma senha forte. Esqueceu? Na tela do PIN, toque em "Esqueci o PIN".' },
-  mesReal: { alvo: '#titulo-mes-real', nome: 'Resultado real do mês',
-    texto: 'Cada orçamento supõe que você vendeu todas as horas do mês. Aqui é o que aconteceu de verdade: o que entrou nos fechamentos menos peças, taxas, imposto e os gastos do mês.' },
+  mesReal: { alvo: '#titulo-mes-real', nome: 'Resultado do mês',
+    texto: 'Cada orçamento supõe que você vendeu todas as horas do mês. Aqui é o que aconteceu de verdade: o que entrou nos fechamentos, menos peças, maquininha e imposto, paga primeiro a oficina e depois a sua casa. O mês atual usa sempre os seus gastos de hoje; os meses que já passaram ficam como estavam.' },
   contagem: { alvo: '#titulo-contagem', nome: 'Orçamentos feitos',
     texto: 'Dos orçamentos feitos neste mês, quantos o cliente aceitou. Um orçamento feito em outubro e fechado em novembro conta como feito em outubro, mas o dinheiro entra em novembro.' },
   dinheiro: { alvo: '#titulo-dinheiro', nome: 'Dinheiro que entrou',
-    texto: 'Soma dos orçamentos fechados com data de fechamento neste mês. Um orçamento feito em outubro e fechado em novembro conta como feito em outubro, mas o dinheiro entra em novembro.' },
+    texto: 'O caminho do dinheiro no mês, de cima para baixo: o que entrou nos orçamentos fechados, menos peças, maquininha e imposto, menos os gastos da oficina, e o que ficou para a casa. Um orçamento feito em outubro e fechado em novembro conta como feito em outubro, mas o dinheiro entra em novembro.' },
+  gastos: { alvo: '#titulo-gastos-oficina', nome: 'Meus gastos',
+    texto: 'Os gastos que se repetem todo mês. O mês atual, em Resultados, usa sempre estes valores; os meses que já passaram ficam como estavam. Se um gasto só começa no mês que vem (ex.: aumento do aluguel), lance no dia 1º.' },
   horas: { alvo: '#titulo-horas', nome: 'Horas',
     texto: 'Horas dos serviços fechados neste mês, comparadas com as horas que você pode cobrar no mês (Meus gastos → Sua rotina).' },
   fechamento: { alvo: '#titulo-fechamento', nome: 'Neste fechamento',
@@ -2455,7 +2735,7 @@ function ligarEventos() {
   $('ir-horas').addEventListener('click', function () { trocarModo('horas'); });
   $('ir-pecas-valor').addEventListener('click', function () { trocarModoPecas('valor'); });
   $('ir-pecas-acrescimo').addEventListener('click', function () { trocarModoPecas('acrescimo'); });
-  $('btn-novo').addEventListener('click', novoOrcamento);
+  $('btn-novo').addEventListener('click', aoClicarNovo);
 
   // Copiar SEMPRE copia primeiro (não espera a rede); depois salva o orçamento (automático).
   $('btn-copiar').addEventListener('click', function () {
@@ -2467,6 +2747,21 @@ function ligarEventos() {
   });
   $('btn-salvar-orc').addEventListener('click', aoClicarSalvar);
   $('btn-mudar-situacao').addEventListener('click', function () { if (orc.vinculo) abrirMenuSituacao(alvoDoRascunho()); });
+  $('btn-fechou').addEventListener('click', clienteFechou);
+  $('btn-duplicar-fechado').addEventListener('click', duplicarRascunho);
+  $('btn-duplicar-nao-fechou').addEventListener('click', duplicarRascunho);
+  $('btn-voltar-aberto').addEventListener('click', function () { if (orc.vinculo) voltarParaAberto(alvoDoRascunho()); });
+  $('btn-mais-desconto').addEventListener('click', function () {
+    ui.maisDesconto = true;
+    renderOrcamento();
+    $('orc-extra').focus();
+  });
+  $('btn-fechar-nao-fechou').addEventListener('click', function () { if (fech) abrirNaoFechou(alvoDoFechamento()); });
+  $('btn-fechar-voltar-aberto').addEventListener('click', function () { if (fech) voltarParaAberto(alvoDoFechamento()); });
+  $('corrigir-mes').addEventListener('toggle', function () { if ($('corrigir-mes').open) abrirCorrigirMes(); });
+  $('cm-anterior').addEventListener('click', function () { trocarMesCorrigir(-1); });
+  $('cm-seguinte').addEventListener('click', function () { trocarMesCorrigir(1); });
+  $('cm-substituir').addEventListener('click', substituirGastosDoMes);
   $('btn-recalcular').addEventListener('click', recalcularComHoje);
   $('btn-ver-resultados').addEventListener('click', function () { if (orc.vinculo) abrirResultados(true, mesDe(orc.vinculo.criadoEm)); });
   $('aba-orcamento').addEventListener('click', irParaOrcamento);
@@ -2474,7 +2769,6 @@ function ligarEventos() {
   $('mes-anterior').addEventListener('click', function () { trocarMes(-1); });
   $('mes-seguinte').addEventListener('click', function () { trocarMes(1); });
   $('res-busca').addEventListener('input', function (e) { resul.busca = e.target.value; resul.aberto = null; renderResultados(); });
-  $('btn-usar-gastos-hoje').addEventListener('click', usarGastosDeHojeNoMes);
   $('btn-fechar-menu-situacao').addEventListener('click', fecharMenuSituacao);
   $('btn-confirmar-nao-fechou').addEventListener('click', confirmarNaoFechou);
   $('btn-voltar-fechar').addEventListener('click', sairDoFechamento);
