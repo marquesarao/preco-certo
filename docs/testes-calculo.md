@@ -14,6 +14,32 @@
 
 ## Resultados (08/11/2026)
 
+**Pacote 16 (% por peça, terceiros, entrada + cartão, imposto separado; o backend mudou e o D10 confere o hash novo; `sw.js` v11):**
+- **Cálculo:** 83 casos (68 + PC1–PC3, TS1–TS4, EN1–EN4, IM1–IM4). Os antigos estão iguais com a planilha "antiga" (um imposto só).
+  - PC: A 2×50 @47% = 147 + B 1×300 @20% = 360 → 507; geral 30% → A 130, B 360; "↺" → B segue o geral.
+  - EN: âncora 5.000; 5% → V 4.750; E 1.000 → R5 3.947,37; 5× 789,47; total 4.947,37.
+  - IM: 1.000 + 500 (4% / 6%) → efetiva 80/1.500 = 5,3333%, imposto 80,00; com terceiros 100 @30% → base 1.630, 87,80. Planilha antiga com 10% → os dois 10% e todos os resultados iguais.
+- **Backend novo (`check-16.js`) 13/13:**
+  - planilha nova já com as duas linhas = 0;
+  - planilha nova + tela antiga não mexe nelas;
+  - planilha antiga: os novos vêm do antigo, e um salvar da tela antiga é a fonte deles enquanto não há linha;
+  - tela nova grava os novos e o legado = serviço;
+  - aba já com os novos + tela antiga → não mudam;
+  - esquema 2 acrescenta W–Y uma vez;
+  - registro antigo sem W–Y abre com terceiros 0;
+  - fechamento no formato antigo aceito;
+  - orçamento com terceiros + entrada salvo e fechado em "Entrada + cartão" (paridade tela × servidor), com as recusas.
+- **Suítes antigas:** BACKEND 45/45 · API 26/26 · ORÇAMENTOS 79/79 · DESEMPENHO 31/31. Só mudou o que o desenho mudou: parâmetros novos, 25 colunas, esquema 2, leitura W–Y.
+- **Tela nova (`teste-16.js`) 46/46:**
+  - % por peça, com layout de 390/700/1280 px sem rolagem lateral;
+  - terceiros: adicionar, % padrão, DESFAZER, WhatsApp sem valores, coluna W e extrato;
+  - imposto "peças R$ 20,00 · serviço R$ 60,00/67,80";
+  - entrada: resumo, WhatsApp de uma linha, débito, 10x, erro E ≥ à vista;
+  - fechamento "Entrada + cartão": taxa 312,52 / 298,82 / 308,93, total editado, colunas X/Y;
+  - Ajustes com os dois impostos.
+- **Telas antigas:** 111 · 81 · 65 · 29 · 19 · 12, estáveis em 3 rodadas.
+- **Outros:** 10 cenários sem erro; PWA v11 → v12; appId /preco-certo/.
+
 **Preço por forma de pagamento (seção 15, `sw.js` v10):** 68 casos de cálculo (64 + RP1–RP4); FC1 (débito = Pix: 1.747,27 · taxa 23,94 · imposto 104,84 · casa 184,61 · sobra 787,73 · total 972,34) e D9 (WhatsApp "À vista (Pix, dinheiro ou débito)") atualizados pela regra; M1/M2 iguais.
 
 | # | Caso | Esperado | Resultado |

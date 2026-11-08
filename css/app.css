@@ -308,30 +308,66 @@ input.pin { letter-spacing: 0.4em; }
 #pin-novo { margin-top: 12px; }
 
 /* ---------- Peças discriminadas (orçamento) ---------- */
-/* Celular: descrição + lixeira em cima; "Qtd × Valor unitário" embaixo. Tela larga: tudo numa linha. */
+/* Celular e coluna estreita (2 colunas, ≥ 900 px): descrição + lixeira em cima; "Qtd × Valor · %" embaixo.
+   560–899 px: tudo numa linha, com cabeçalho. Seção 16: "% em cima" por peça (próprio = borda laranja + "↺"). */
 .peca-linha {
   display: grid; gap: 8px; align-items: center; margin-bottom: 12px;
-  grid-template-columns: 76px 14px minmax(0, 1fr) 44px;
-  grid-template-areas: "desc desc desc rem" "qtd vezes valor ." "erro erro erro erro" "cli cli cli cli";
+  grid-template-columns: 56px 12px minmax(0, 1fr) 84px;
+  grid-template-areas: "desc desc desc rem" "qtd vezes valor acr" "erro erro erro erro" "cli cli cli cli";
 }
 .peca-linha .peca-desc { grid-area: desc; }
 .peca-linha .peca-qtd { grid-area: qtd; }
 .peca-linha .peca-vezes { grid-area: vezes; text-align: center; color: var(--texto-3); }
 .peca-linha .peca-valor { grid-area: valor; }
-.peca-linha .btn-remover { grid-area: rem; }
-.peca-linha .erro { grid-area: erro; margin: 0; }
-.peca-linha .erro:empty { display: none; }
-.peca-linha .peca-cliente { grid-area: cli; margin: 0; font-size: 13px; color: var(--texto-3); }
-.peca-linha .peca-cliente:empty { display: none; }
-.pecas-cabecalho { display: none; }
-@media (min-width: 560px) {
+.peca-linha .peca-acr { grid-area: acr; }
+.peca-linha .btn-remover { grid-area: rem; justify-self: end; }
+.peca-linha .erro, .terceiro-linha .erro { grid-area: erro; margin: 0; }
+.peca-linha .erro:empty, .terceiro-linha .erro:empty { display: none; }
+.peca-linha .peca-cliente, .terceiro-linha .peca-cliente {
+  grid-area: cli; display: flex; flex-wrap: wrap; align-items: center; gap: 0 10px; margin: 0; font-size: 13px; color: var(--texto-3);
+}
+.peca-linha .peca-cliente[hidden], .terceiro-linha .peca-cliente:empty { display: none; }
+.peca-acr.acr-proprio input { border-color: var(--laranja); box-shadow: inset 0 0 0 1px var(--laranja); }
+.peca-acr.acr-proprio input:disabled { border-color: var(--borda); box-shadow: none; }
+.peca-acr input, .terc-acr input { padding-left: 10px; padding-right: 28px; }
+.peca-acr .sufixo, .terc-acr .sufixo { right: 10px; }
+.link-mini { min-height: 32px; font-size: 13px; }
+.pecas-cabecalho, .terceiros-cabecalho { display: none; }
+
+/* Serviços de terceiros: descrição + lixeira em cima; "Valor pago · %" embaixo (560–899 px: uma linha) */
+.terceiro-linha {
+  display: grid; gap: 8px; align-items: center; margin-bottom: 12px;
+  grid-template-columns: minmax(0, 1fr) 84px;
+  grid-template-areas: "desc rem" "valor acr" "erro erro" "cli cli";
+}
+.terceiro-linha .terc-desc { grid-area: desc; }
+.terceiro-linha .terc-valor { grid-area: valor; }
+.terceiro-linha .terc-acr { grid-area: acr; }
+.terceiro-linha .btn-remover { grid-area: rem; justify-self: end; }
+
+@media (min-width: 560px) and (max-width: 899px) {
   .peca-linha, .pecas-cabecalho {
-    grid-template-columns: minmax(0, 1fr) 64px 12px 132px 44px;
-    grid-template-areas: "desc qtd vezes valor rem" "erro erro erro erro erro" "cli cli cli cli cli";
+    grid-template-columns: minmax(0, 1fr) 64px 12px 132px 84px 44px;
+    grid-template-areas: "desc qtd vezes valor acr rem" "erro erro erro erro erro erro" "cli cli cli cli cli cli";
   }
-  .pecas-cabecalho { display: grid; gap: 8px; margin-bottom: 6px; font-size: 13px; font-weight: 500; color: var(--texto-3); }
+  .terceiro-linha, .terceiros-cabecalho {
+    grid-template-columns: minmax(0, 1fr) 150px 84px 44px;
+    grid-template-areas: "desc valor acr rem" "erro erro erro erro" "cli cli cli cli";
+  }
+  .pecas-cabecalho, .terceiros-cabecalho { display: grid; gap: 8px; margin-bottom: 6px; font-size: 13px; font-weight: 500; color: var(--texto-3); }
+  .pecas-cabecalho[hidden], .terceiros-cabecalho[hidden] { display: none; }
   .peca-linha { padding-bottom: 0; }
 }
+
+/* Seção 16: entrada + resto no cartão (fechado: só o link, sem card) */
+.card-entrada:has(#bloco-entrada[hidden]) { background: none; box-shadow: none; padding: 0 4px; }
+#bloco-entrada .rotulo { margin-top: 4px; }
+#bloco-entrada .chips + .rotulo { margin-top: 14px; }
+.entrada-resumo { margin: 14px 0 0; padding: 10px 12px; border-radius: 10px; background: #f6f7f9; font-size: 15px; line-height: 1.5; color: var(--texto); }
+.entrada-resumo strong { font-weight: 600; }
+#fechar-bloco-entrada .rotulo { margin-top: 4px; }
+.campos-impostos { margin-bottom: 6px; }
+.ajuda-impostos { margin: 0 0 16px; }
 .pecas-totais { margin-top: 12px; flex-wrap: wrap; gap: 4px 16px; }
 .pecas-totais span { white-space: nowrap; }
 .pecas-totais strong { color: var(--texto); }

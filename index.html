@@ -173,7 +173,7 @@
           <!-- Modo padrão: lista de peças (descrição, quantidade, valor unitário que você paga) + acréscimo único -->
           <div id="bloco-acrescimo">
             <div class="pecas-cabecalho" id="pecas-cabecalho" aria-hidden="true">
-              <span>Peça</span><span>Qtd</span><span></span><span>Valor unit. (você paga)</span><span></span>
+              <span>Peça</span><span>Qtd</span><span></span><span>Valor unit. (você paga)</span><span>% em cima</span><span></span>
             </div>
             <div id="lista-pecas"></div>
             <p class="ajuda" id="pecas-vazia">Sem peças? Deixe vazio: o orçamento fica só com a mão de obra.</p>
@@ -188,7 +188,7 @@
                 <span class="sufixo">%</span>
               </div>
               <p class="erro"></p>
-              <p class="ajuda">Vale para todas as peças deste orçamento.</p>
+              <p class="ajuda">Vale para as peças em que você não mudou o %.</p>
             </div>
             <div class="total-linha pecas-totais" id="pecas-totais" hidden></div>
             <button type="button" class="link" id="ir-pecas-valor">Prefiro digitar o valor das peças</button>
@@ -215,6 +215,20 @@
             </div>
             <button type="button" class="link" id="ir-pecas-acrescimo">Prefiro usar o acréscimo (%)</button>
           </div>
+        </div>
+
+        <!-- Seção 16: serviços de terceiros (eletricista, retífica…): o que você paga + % em cima; sem quantidade -->
+        <div class="card" id="card-terceiros">
+          <h2 class="card-titulo">Serviços de terceiros</h2>
+          <div class="terceiros-cabecalho" id="terceiros-cabecalho" aria-hidden="true">
+            <span>Serviço</span><span>Valor pago</span><span>% em cima</span><span></span>
+          </div>
+          <div id="lista-terceiros"></div>
+          <p class="ajuda" id="terceiros-vazia">Eletricista, retífica, torno… Serviço que outra pessoa faz, você paga e repassa ao cliente.</p>
+          <button type="button" class="btn-adicionar" id="btn-adicionar-terceiro">
+            <svg class="ic" aria-hidden="true"><use href="#i-mais"/></svg>Adicionar serviço
+          </button>
+          <div class="total-linha pecas-totais" id="terceiros-totais" hidden></div>
         </div>
       </div>
 
@@ -279,6 +293,30 @@
               <summary>Ver outras formas de pagamento<svg class="ic" aria-hidden="true"><use href="#i-seta"/></svg></summary>
               <ul class="lista-formas" id="lista-outras"></ul>
             </details>
+          </div>
+          <!-- Seção 16: entrada (Pix/dinheiro ou débito) + resto no cartão -->
+          <div class="card card-entrada" id="card-entrada" hidden>
+            <button type="button" class="link" id="btn-entrada">O cliente vai dar uma entrada?</button>
+            <div id="bloco-entrada" hidden>
+              <h2 class="card-titulo">Entrada + resto no cartão</h2>
+              <div class="campo">
+                <label for="orc-entrada">Entrada</label>
+                <div class="entrada com-prefixo">
+                  <span class="prefixo">R$</span>
+                  <input id="orc-entrada" class="num" type="text" inputmode="decimal" data-orc="entradaTexto" data-formato="dinheiro" autocomplete="off" placeholder="0,00">
+                </div>
+                <p class="erro"></p>
+              </div>
+              <p class="rotulo">Forma da entrada</p>
+              <div class="chips" id="chips-forma-entrada" role="radiogroup" aria-label="Forma da entrada">
+                <button type="button" class="chip" role="radio" data-forma-entrada="pix" aria-checked="true">Pix/dinheiro</button>
+                <button type="button" class="chip" role="radio" data-forma-entrada="debito" aria-checked="false">Débito</button>
+              </div>
+              <p class="rotulo">Parcelas do resto</p>
+              <div class="chips" id="chips-parcelas-entrada" role="radiogroup" aria-label="Parcelas do resto no cartão"></div>
+              <p class="entrada-resumo" id="entrada-resumo" hidden></p>
+              <button type="button" class="link" id="btn-tirar-entrada">Tirar a entrada</button>
+            </div>
           </div>
           <p class="dica-discreta" id="dica-sem-cartoes" hidden>
             Cadastre seus cartões em <button type="button" class="link link-inline" data-ir="ajustes">Ajustes</button> para ver as parcelas.
@@ -418,8 +456,20 @@
             <p class="rotulo">Cartão</p>
             <div class="chips" id="fechar-cartoes" role="radiogroup" aria-label="Cartão"></div>
           </div>
+          <div id="fechar-bloco-entrada" hidden>
+            <div class="campo" style="margin-top:16px">
+              <label for="fechar-entrada">Entrada</label>
+              <div class="entrada com-prefixo">
+                <span class="prefixo">R$</span>
+                <input id="fechar-entrada" class="num" type="text" inputmode="decimal" data-formato="dinheiro" autocomplete="off" placeholder="0,00">
+              </div>
+              <p class="erro"></p>
+            </div>
+            <p class="rotulo">Forma da entrada</p>
+            <div class="chips" id="fechar-formas-entrada" role="radiogroup" aria-label="Forma da entrada"></div>
+          </div>
           <div class="campo" style="margin-top:16px">
-            <label for="fechar-valor">Valor combinado</label>
+            <label for="fechar-valor" id="fechar-valor-rotulo">Valor combinado</label>
             <div class="entrada com-prefixo">
               <span class="prefixo">R$</span>
               <input id="fechar-valor" class="num" type="text" inputmode="decimal" data-formato="dinheiro" autocomplete="off">
@@ -633,6 +683,15 @@
               <p class="ajuda">Cada orçamento novo começa com este número.</p>
             </div>
             <div class="campo">
+              <label for="p-acrescimoTerceirosPadrao">Acréscimo padrão em serviços de terceiros</label>
+              <div class="entrada com-sufixo">
+                <input id="p-acrescimoTerceirosPadrao" class="num" type="text" inputmode="decimal" data-param="acrescimoTerceirosPadrao" autocomplete="off">
+                <span class="sufixo">%</span>
+              </div>
+              <p class="erro"></p>
+              <p class="ajuda">Quanto você põe em cima do que paga ao eletricista, à retífica… 0 = repassa pelo mesmo valor.</p>
+            </div>
+            <div class="campo">
               <label for="p-descontoAVistaPadrao">Desconto à vista padrão</label>
               <div class="entrada com-sufixo">
                 <input id="p-descontoAVistaPadrao" class="num" type="text" inputmode="decimal" data-param="descontoAVistaPadrao" autocomplete="off">
@@ -641,15 +700,26 @@
               <p class="erro"></p>
               <p class="ajuda">Vale para todos os aparelhos ligados a esta planilha. Cada orçamento novo começa com este número.</p>
             </div>
-            <div class="campo">
-              <label for="p-impostoPercentual">Imposto</label>
-              <div class="entrada com-sufixo">
-                <input id="p-impostoPercentual" class="num" type="text" inputmode="decimal" data-param="impostoPercentual" autocomplete="off">
-                <span class="sufixo">%</span>
+            <p class="rotulo" id="rotulo-impostos">Imposto</p>
+            <div class="campos-lado campos-impostos">
+              <div class="campo">
+                <label for="p-impostoPecasPercentual">Nas peças</label>
+                <div class="entrada com-sufixo">
+                  <input id="p-impostoPecasPercentual" class="num" type="text" inputmode="decimal" data-param="impostoPecasPercentual" autocomplete="off">
+                  <span class="sufixo">%</span>
+                </div>
+                <p class="erro"></p>
               </div>
-              <p class="erro"></p>
-              <p class="ajuda">Se for MEI, deixe 0 e coloque o DAS em Meus gastos.</p>
+              <div class="campo">
+                <label for="p-impostoServicoPercentual">No serviço</label>
+                <div class="entrada com-sufixo">
+                  <input id="p-impostoServicoPercentual" class="num" type="text" inputmode="decimal" data-param="impostoServicoPercentual" autocomplete="off">
+                  <span class="sufixo">%</span>
+                </div>
+                <p class="erro"></p>
+              </div>
             </div>
+            <p class="ajuda ajuda-impostos">"No serviço" vale para a mão de obra e para os serviços de terceiros.</p>
             <div class="campo">
               <label for="p-parcelasDestaque">Parcelas que aparecem no orçamento</label>
               <div class="entrada"><input id="p-parcelasDestaque" type="text" inputmode="decimal" data-param="parcelasDestaque" autocomplete="off" placeholder="Ex.: 5,10"></div>

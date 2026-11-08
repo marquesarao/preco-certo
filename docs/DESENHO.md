@@ -584,7 +584,8 @@ O clasp e o GitHub Actions foram **removidos** (`.github/workflows/deploy.yml`, 
     - 10b **tela + docs** (`sw.js` v5) ✅ (commit 22e71a4)
 11. **Tela mais simples + mês atual automático** (só frontend; `apps-script/` sem mudança; `sw.js` v6), desenho na seção 12 ✅ (commit 43c8e82); identidade do PWA ✅ (950b599); ajustes da seção 13 ✅ (895f51f)
 12. **Desempenho** (**muda o backend**; `sw.js` v9), desenho na seção 14 ✅ (commit f306a5d)
-13. **Preço por forma de pagamento** (só frontend; `apps-script/` sem mudança; `sw.js` v10), seção 15: feita, aguardando aprovação do commit
+13. **Preço por forma de pagamento** (só frontend; `apps-script/` sem mudança; `sw.js` v10), seção 15 ✅ (commit d33c005, publicado)
+14. **% por peça, terceiros, entrada + cartão, imposto separado** (**muda o backend**; `sw.js` v11), seção 16: pronto (commit local; publicado junto com o adendo 16.9)
 
 Cada fatia termina com uma parada para revisão. O commit local só é feito depois da aprovação.
 
@@ -1400,3 +1401,245 @@ Fluxos: abrir ~4,0 s · Resultados ~4,0 s · salvar ~3,4 s · fechar ~6,8 s.
 **Casos (exemplo do usuário; base 1.500 = mão de obra 1.000 + peças cobradas 500 (pagas 388,79), 8 h, oficina 4.000 e casa 3.000 em 130 h, imposto 0, Visa, desconto 5% → sobra Pix 722,15):** RP1–RP4 em `testes-calculo.md`.
 - O FC1 (cenário F) mudou na linha do débito: valor sugerido 1.723,61 → **1.747,27** (= Pix): taxa 23,94 · imposto 104,84 · oficina 246,15 · casa 184,61 (absorve o centavo) · sobra **787,73** · total que é seu 972,34.
 - O exemplo do mês da 11.6 (M1/M2 e a tela de Resultados) **não muda**: o débito daquele mês fica com o valor combinado 1.723,61 (o valor combinado é livre; o exemplo é de antes desta regra).
+
+## 16. Pacote: % por peça, serviços de terceiros, entrada (sinal) + cartão e imposto separado (desenho **aprovado** com 2 ajustes: imposto legado e WhatsApp da entrada)
+
+**Muda o backend** (campos novos no orçamento, no fechamento e na aba Orçamentos; 3 parâmetros novos) e a tela (`sw.js` v11).
+Construído **em cima da seção 15** (débito = Pix; crédito até a referência = preço cheio).
+**Compatibilidade obrigatória:** orçamentos e fechamentos já salvos (sem os campos novos) abrem e somam no mês **exatamente como hoje**.
+
+### 16.1 % de acréscimo por peça
+- Cada peça ganha "% em cima" (0 a 1000, o mesmo limite do acréscimo geral). Guardado como `pecas[i].acrescimoTexto`: `null` = segue o geral; texto = alterado à mão.
+- O % geral continua: ao mudá-lo, as peças com `null` acompanham; as alteradas à mão ficam.
+  - Marca discreta na alterada: borda laranja e um "↺" ao lado; tocar no "↺" volta a peça para o geral (`null`).
+- **Cliente paga, por peça** = qtd × unitário × (1 + %peça/100). Os totais do card somam as peças (sem arredondar no meio).
+- O modo "valor direto" das peças continua como hoje.
+- **Compatibilidade:** orçamento antigo não tem `acrescimoTexto` → todas seguem o geral, e a conta é a mesma de hoje (Σ qtd×valor × (1 + geral) = (Σ qtd×valor) × (1 + geral)).
+- **Exemplo (caso PC1):**
+  - A 2 × 50 a 47% = 147; B 1 × 300 a 20% (à mão) = 360; cliente paga **507**;
+  - geral → 30%: A = **130** (acompanha), B = **360** (fica); total 490;
+  - "↺" em B → 30%: B = 390; total 520.
+
+### 16.2 Serviços de terceiros
+- Card novo **"Serviços de terceiros"**, abaixo de Peças. Lista: Descrição | Valor que você paga (R$) | % em cima | 🗑. Botão "+ Adicionar serviço", remover com DESFAZER, sem quantidade. Guardado em `entrada.terceiros = [{descricao, valorTexto, acrescimoTexto|null}]` (até 20).
+- **Parâmetro novo** "Acréscimo padrão em serviços de terceiros (%)" (`acrescimoTerceirosPadrao`, padrão 0, de 0 a 1000), em Ajustes → Outros ajustes, na aba Parâmetros.
+  - O backend aceita a tela antiga sem a chave (mesmo mecanismo do desconto padrão).
+  - Cada serviço novo começa com ele, e dá para mudar por linha (com o mesmo "↺").
+- **Cálculo** (os terceiros entram como as peças):
+  - custo = valor pago; cliente paga = valor × (1 + %/100); ganho = cliente − pago;
+  - **base** = mão de obra + peças (cliente) + terceiros (cliente);
+  - **sobra** = preço − taxa − imposto − peças pagas − **terceiros pagos** − oficina − casa ("Paga a oficina" e "Vai para a casa" continuam só sobre as horas dele);
+  - **pisos:** somam o custo dos terceiros, como o das peças.
+- **Detalhes:** linha nova "Ganho nos serviços de terceiros" (= cliente − pago). A soma continua fechando no centavo (regra R8).
+- **WhatsApp:** seção "Serviços inclusos:" só com as descrições, **sem valores**. Serviço sem descrição não aparece.
+- **Fechamento e Resultados:**
+  - grava `terceirosPagarC` no fechamento;
+  - o extrato do mês ganha a linha "− Serviços de terceiros" (entre Peças e Maquininha);
+  - registros antigos = 0.
+- **Exemplo (caso TS1–TS3):** eletricista 100 a 0% → cliente 100, ganho 0; a 30% → cliente 130, ganho 30; a base, o imposto, a sobra e os pisos conferidos no caso.
+
+### 16.3 Entrada (sinal) + resto no cartão
+- **Regra:** o desconto à vista vale **só** sobre a parte paga à vista.
+  - V = preço à vista oferecido (com desconto e extra); E = entrada, com 0 < E < V.
+  - P_n = preço do cartão em n vezes pela regra da seção 15 (1x até a referência = preço cheio; acima, base ÷ (1 − taxa_n)).
+  - f = E ÷ V; resto no cartão R_n = P_n × (1 − f); parcela = arredondar(R_n exato ÷ n) (regra B); total do cliente = E + R_n (R_n arredondado).
+- **Taxa e imposto:**
+  - taxa da maquininha = R_n × taxa_n (+ E × taxa do débito, se a entrada for no débito);
+  - imposto "por dentro" sobre E + R_n (com a taxa efetiva de 16.4).
+- **Exemplo (caso EN1):** âncora 5x = 5.000,00; desconto 5% → V = 4.750,00; E = 1.000 (Pix).
+  - f = 0,2105263…; R₅ = 5.000 × 0,7894737 = 3.947,3684 → **3.947,37**; **5× 789,47**; total **4.947,37**.
+  - No mesmo exemplo, com 10x (taxa 11,06%) acima da referência: P₁₀ = 4.621,50 ÷ 0,8894 = 5.196,20; R₁₀ = 4.102,26; 10× 410,23; total 5.102,26.
+- **Tela do orçamento:** link **"O cliente vai dar uma entrada?"** perto dos cards do cartão.
+  - Abre os campos "Entrada (R$)" e "Forma da entrada" (Pix/dinheiro | Débito) e mostra, para cada parcela em destaque: "Entrada R$ 1.000,00 + 5× de R$ 789,47 no cartão (total R$ 4.947,37)".
+  - Guardado em `entrada.entradaTexto` e `entrada.formaEntrada`.
+  - Validação: entrada > 0 e menor que o à vista ("A entrada precisa ser menor que o preço à vista (R$ X).").
+- **Parcelas da entrada:** campo "Parcelas" no bloco da entrada (padrão = a parcela de referência; só as parcelas com taxa).
+- **WhatsApp** (só com entrada válida): **uma linha só**, com as parcelas escolhidas no bloco, por exemplo "💳 Entrada de R$ 1.000,00 no Pix + 5x de R$ 789,47 no cartão (total R$ 4.947,37)". As linhas normais do cartão e do à vista continuam (ajuste aprovado: uma linha por parcela deixava a mensagem longa e confusa).
+- **Fechamento:**
+  - forma nova **"Entrada + cartão"**: entrada (valor e forma), parcelas e cartão;
+  - **valor combinado** = E + R_n calculado (editável: se ele mudar o total, R = total − E, e a entrada fica);
+  - grava: forma `entrada`, `entradaC`, `formaEntrada`, parcelas, cartão, `taxaPct` (do crédito), `taxaEntradaPct` (débito ou 0), valor combinado, `taxaC` (o total da maquininha), imposto, terceiros e sobra;
+  - Resultados e extrato somam normalmente (faturamento = valor combinado; maquininha = `taxaC`);
+  - validação (tela e servidor): 0 < E < à vista oferecido gravado; o servidor confere taxa ≈ (V − E)×taxa_n + E×taxa_deb (±1 centavo por parcela da conta) e a soma no centavo.
+
+### 16.4 Imposto separado: peças × serviço
+- **Parâmetros:** "Imposto sobre peças (%)" (`impostoPecasPercentual`) e "Imposto sobre serviço (%)" (`impostoServicoPercentual`), de 0 a 99, na aba Parâmetros. Os serviços de terceiros usam a taxa de **serviço**.
+- **Migração e compatibilidade:**
+  - planilha que **já existia** (só o imposto antigo, sem as linhas novas) → os dois novos valem o imposto antigo (nada muda nos números até ele editar). As linhas novas só são gravadas quando a tela nova salvar;
+  - **planilha nova** (decisão do 3º retorno): já nasce com as linhas `impostoPecasPercentual` e `impostoServicoPercentual` = 0, visíveis na aba Parâmetros. A linha `impostoPercentual` também é criada (legado: a tela antiga manda e lê essa chave). Ela não é usada quando as linhas novas existem;
+  - o backend aceita a tela antiga (só com a chave antiga) e mantém os novos;
+  - a chave antiga `impostoPercentual` continua na aba como "legado", para os aparelhos que ainda não tocaram em ATUALIZAR. A tela nova passa a gravá-la = imposto sobre serviço;
+  - **ajuste aprovado:** se a aba **já tem** as chaves novas, um `salvarDados` da tela antiga (só com a chave antiga) **não** mexe nelas: a chave antiga é ignorada para os impostos novos. A antiga só serve para **criar** as novas quando elas ainda não existem;
+  - orçamentos e fechamentos antigos continuam com o imposto da foto deles, sem recálculo.
+- **Taxa efetiva** = (peças_cliente × tPeças + (mão de obra + terceiros_cliente) × tServiço) ÷ base.
+  - O imposto de cada forma continua "por dentro": preço cobrado × taxa efetiva.
+  - Vale para à vista, cartão, entrada + cartão, fechamento, pisos e "Fica para você".
+  - Sem base (0): efetiva = imposto sobre serviço.
+- **Foto:** guarda as duas taxas (nos parâmetros) e a **efetiva** usada (`resultado.impostoEfetivoPct`).
+  - O fechamento usa a efetiva gravada; o servidor confere o imposto com ela (registro antigo, sem ela: o imposto antigo da foto, como hoje).
+- **Detalhes:** a linha "Imposto" ganha, em texto pequeno, "peças R$ X · serviço R$ Y" (proporcional: a parte das peças = imposto × peças_cliente×tPeças ÷ (Σ)). O resto vai para o serviço, então a soma fecha.
+- **"?" do imposto:** "Peças e serviço costumam ter impostos diferentes. Confirme os percentuais com o seu contador. MEI: deixe 0 nos dois e coloque o DAS em Meus gastos."
+- **Exemplo (caso IM1–IM3):**
+  - MO 1.000 + peças cliente 500 = base 1.500; 4% e 6% → efetiva = 80 ÷ 1.500 = **5,3333%**; à vista 1.500 sem desconto → imposto **80,00** (peças 20,00 · serviço 60,00);
+  - com terceiros 100 a 30% (cliente 130): base 1.630; efetiva = (20 + 67,80) ÷ 1.630 = 87,80 ÷ 1.630 = **5,3865%**;
+  - planilha antiga com 10% → os dois = 10% e **todos os casos atuais de cálculo dão igual**.
+
+### 16.5 Layout (texto)
+**Celular (390 px):**
+```
+┌ Peças ─────────────────────────────┐
+│ [Pastilha de freio              ] 🗑│
+│ [2] × [R$ 50,00] · [47 %]           │  ← % alterado à mão: borda laranja + ↺
+│ Cliente paga: R$ 147,00             │
+│ + Adicionar peça                    │
+│ Quanto você põe em cima (geral) [47]%│
+│ Você paga R$ 400,00 · Cliente paga…  │
+└────────────────────────────────────┘
+┌ Serviços de terceiros ─────────────┐
+│ [Eletricista – chicote          ] 🗑│
+│ [R$ 100,00] · [30 %] ↺              │
+│ Cliente paga: R$ 130,00             │
+│ + Adicionar serviço                 │
+│ Você paga R$ 100,00 · Cliente paga R$ 130,00 │
+└────────────────────────────────────┘
+Cartão em 5x … (card de sempre)
+O cliente vai dar uma entrada?            ← link
+  Entrada [R$ 1.000,00]  Forma (Pix/dinheiro | Débito)
+  Entrada R$ 1.000,00 + 5× de R$ 789,47 no cartão (total R$ 4.947,37)
+```
+**Notebook (1280 px):** Peças e Terceiros numa linha por item: Descrição | Qtd × Valor | % | Cliente paga | 🗑. A coluna da direita é igual à do celular.
+
+**Fechamento, forma "Entrada + cartão":**
+```
+Como o cliente vai pagar?  (Pix/dinheiro) (Débito) (Cartão) (Entrada + cartão)
+Entrada [R$ 1.000,00]   Forma da entrada (Pix/dinheiro) (Débito)
+Parcelas (1x … 12x)     Cartão (se 2+)
+Valor combinado [R$ 4.947,37]  "Entrada R$ 1.000,00 + 5× de R$ 789,47"
+Neste fechamento: Sobra extra … (linhas: Entrada · No cartão · Taxa da maquininha · Imposto · Peças · Terceiros · Oficina · Casa)
+```
+
+### 16.6 Backend (`Codigo.gs`)
+- **Aba Orçamentos:** colunas novas **depois** da coluna V (o JSON), para não mudar a posição de nenhuma coluna existente:
+  - **W "Terceiros pagos"**, **X "Entrada"**, **Y "Forma da entrada"**;
+  - registros antigos: vazio = 0 / "";
+  - o `ESQUEMA_VERSAO_` vai para '2': a configuração acrescenta os 3 cabeçalhos na aba que já existe, uma vez.
+- **Custo na lista:** o `listarOrcamentos` lê A–U (como hoje) e mais W–Y numa leitura estreita (~0,3 s a mais; aprovado, porque Resultados abre com o cache do aparelho).
+  - Conferido: `getRangeList` não economiza a ida (cada intervalo continua sendo uma leitura), e a leitura em lote da API do Sheets (`Values.batchGet`) exige o serviço avançado e o escopo `spreadsheets` (fora do "só esta planilha"). Por isso, a leitura a mais fica.
+- **Validação nova:**
+  - `entrada.pecas[i].acrescimoTexto`, `entrada.terceiros` (até 20; descrição até 80, valor até 40 letras), `entradaTexto` e `formaEntrada`;
+  - `resultado.terceirosPagarC`, `terceirosCobrarC` e `impostoEfetivoPct` (opcionais: antigos sem eles);
+  - fechamento: `terceirosPagarC` (obrigatório na tela nova; ausente = 0), forma `entrada` com `entradaC`, `formaEntrada` e `taxaEntradaPct`;
+  - a soma no centavo passa a incluir os terceiros;
+  - o `conferirFechamento_` usa a efetiva gravada (ou o imposto antigo da foto).
+- **Parâmetros novos:** `acrescimoTerceirosPadrao`, `impostoPecasPercentual` e `impostoServicoPercentual`, todos em `PARAMETROS_OPCIONAIS_`. Ausentes na aba → os de imposto vêm do `impostoPercentual`, e o acréscimo, de 0.
+- **Cache (seção 14):** os parâmetros novos entram no cache normalmente. A troca de versão do esquema limpa o cache.
+
+### 16.7 Testes (depois do OK)
+- **Casos de cálculo:** todos os atuais iguais (com planilha "antiga": um imposto só, sem % por peça, sem terceiros, sem entrada), mais os casos novos:
+  - PC1–PC3 (% por peça);
+  - TS1–TS4 (terceiros: base, imposto, sobra, pisos, R8, extrato);
+  - EN1–EN4 (entrada: o exemplo, 10x, débito na entrada, validação, fechamento editado);
+  - IM1–IM4 (imposto separado: o exemplo, com terceiros, planilha antiga igual, linha "peças · serviço").
+- **Backend:** registros antigos (sem os campos) abrem e somam igual; colunas W–Y criadas uma vez; tela antiga salvando sem as chaves novas; validação da entrada e dos terceiros; `testarApi` ampliado.
+- **Tela:**
+  - % por peça (alterar, "↺", geral);
+  - terceiros (adicionar, remover com DESFAZER, WhatsApp);
+  - entrada (link, campos, WhatsApp, fechamento editável);
+  - imposto (dois campos e migração);
+  - sem rolagem lateral em 390 px;
+  - prints 390 e 1280.
+
+### 16.8 DEPLOY (duas planilhas: a de teste e a do André)
+1. Em **cada** planilha: copiar a `URL_DA_API` → colar o `Codigo.gs` → recolocar a URL → salvar → **Gerenciar implantações → Nova versão** → `testarApi`.
+   - No primeiro pedido, o esquema 2 cria as colunas W–Y e os parâmetros novos.
+2. Só então: conferência de segredos e `git push`.
+3. Aparelhos: ATUALIZAR. Até atualizar, o aparelho antigo funciona com um imposto só (o legado = imposto sobre serviço) e sem terceiros ou entrada; se ele salvar gastos ou ajustes, os impostos novos que o André já configurou **não** mudam.
+
+### 16.8b Implementação (pacote 16 sem o adendo)
+- **Tela:**
+  - linha da peça com "% em cima"; o % próprio fica com a borda laranja e "↺ usar o geral (N%)". O campo geral passou a dizer "Vale para as peças em que você não mudou o %";
+  - em 390 px: Descrição + lixeira em cima e "Qtd × Valor · %" embaixo. De 560 a 899 px fica numa linha só, com cabeçalho. A partir de 900 px (duas colunas) volta às duas linhas;
+  - card "Serviços de terceiros" (Serviço | Valor pago | % em cima | lixeira), com "Cliente paga" em cada linha e os totais;
+  - bloco da entrada como card logo depois das parcelas. Fechado, é só o link, sem card. Aberto: Entrada, chips Pix/dinheiro | Débito, chips das parcelas (padrão = a de referência), o resumo "Entrada R$ … no Pix + 5x de R$ … no cartão · total R$ …" e o link "Tirar a entrada";
+  - Ajustes: "Imposto" com "?" e os dois campos lado a lado ("Nas peças" | "No serviço"), além de "Acréscimo padrão em serviços de terceiros". O campo do imposto único saiu da tela.
+- **Fechamento:**
+  - chip "Entrada + cartão": parcelas, cartão, Entrada e forma da entrada;
+  - o rótulo do valor fica "Valor combinado (total: entrada + cartão)";
+  - texto de ajuda: "Resto no cartão: 5x de R$ …". Mudar o total mantém a entrada;
+  - orçamento salvo com entrada → o fechamento já abre nessa forma.
+- **Dados:**
+  - campos novos no rascunho (`pecas[].acrescimoTexto`, `terceiros`, `entradaTexto`, `formaEntrada`, `parcelasEntrada`);
+  - o servidor normaliza (ausente → null/[]/''/'pix'/null), então o JSON de um orçamento novo sempre traz os campos;
+  - `fotosIguais` trata a foto antiga (sem os impostos novos) como igual, para não mostrar "Valores de…" só por isso.
+- **Backend (decisão 3):**
+  - planilha nova = linhas novas com 0, visíveis;
+  - `parametrosAusentes` não lista os impostos novos (eles vêm do antigo, não é pendência).
+- **Testes:**
+  - os cenários `orc*` da tela representam uma planilha de antes da seção 16: o mock tira as linhas novas, como na migração real;
+  - backend `check-16.js` 13/13;
+  - tela `teste-16.js` 46/46.
+
+### 16.9 Adendo: desconto à vista diferente para serviço e peças (desenho **aprovado** no 3º retorno; implementação em commit separado)
+Pedido do André: às vezes ele quer dar desconto só na mão de obra, porque a margem da peça é apertada.
+
+**Tela (simplicidade primeiro)**
+- Por padrão continua UM campo, "Desconto à vista (%)", valendo para tudo.
+- O link discreto "Desconto diferente nas peças?" abre dois campos:
+  - "Desconto no serviço (%)": mão de obra + terceiros;
+  - "Desconto nas peças (%)".
+  - Ao abrir, os dois começam com o valor do campo único.
+- Fechar ("Mesmo desconto para tudo") volta ao campo único, com o valor do serviço. Se os dois eram diferentes, a página pede confirmação antes.
+- "Desconto extra que vou dar" continua um só e soma ao desconto do **serviço**.
+- Se os dois padrões dos Ajustes forem diferentes, o orçamento novo já abre com os dois campos.
+
+**Cálculo (as demais regras não mudam)**
+- A = preço cheio na parcela de referência (âncora); base = serviço_cliente + peças_cliente, com serviço_cliente = mão de obra + terceiros_cliente.
+- A_serv = A × serviço_cliente ÷ base e A_peças = A × peças_cliente ÷ base, sem arredondar no meio.
+- V (à vista oferecido) = A_serv × (1 − (dServ + extra)/100) + A_peças × (1 − dPeças/100), arredondado no centavo.
+- Desconto equivalente = 1 − V ÷ A. É ele que entra em:
+  - "ainda pode dar";
+  - o aviso vermelho;
+  - o texto "· 5% de desconto" quando os dois descontos são iguais;
+  - o `descontoTotal` gravado.
+- Débito = V (seção 15); entrada + cartão usa V (16.3).
+- O imposto usa a taxa efetiva da base (16.4), como hoje.
+- Os pisos, a sobra e "Ganho/Perda por desconto…" usam V, como hoje.
+- O fechamento grava dServ, dPeças e o equivalente (no resultado; opcionais no backend).
+- **Desconto em reais** (WhatsApp e tela, quando os descontos são diferentes) = A arredondado − V arredondado. A diferença exata (54,0950 no exemplo) pode virar 54,09 por arredondamento binário; a diferença dos valores exibidos dá 54,10 e confere com o que o cliente vê.
+
+**Ajustes → Outros ajustes**
+- Campo novo "Desconto padrão nas peças (%)", chave `descontoPecasPadrao` (0–99) na aba Parâmetros.
+- Mesma regra do imposto legado (16.4):
+  - sem a linha na aba, vale o `descontoAVistaPadrao`;
+  - planilha nova nasce sem a linha;
+  - a tela nova grava a linha;
+  - um salvar da tela antiga (sem a chave) **não** mexe na linha que já existe.
+
+**WhatsApp**
+- Descontos iguais: como hoje ("— 5% de desconto").
+- Descontos diferentes: "💵 À vista (Pix, dinheiro ou débito): *R$ 1.568,75* (R$ 54,10 de desconto)".
+
+**Conferência dos números do pedido (em Node, antes de implementar) — todos batem**
+- Base 1.500 (serviço 1.000, peças 500), Visa 5x 7,57%: A = 1.622,8497, A_serv = 1.081,8998, A_peças = 540,9499.
+- dServ 5%, dPeças 0%: V = 1.027,8048 + 540,9499 = 1.568,7547 → **1.568,75**.
+  - Desconto R$ **54,10**; equivalente **3,3333%**.
+  - Ainda pode: 7,57 − 3,3333 = **4,2367%** (R$ 68,75 = 1.568,75 − 1.500).
+- dServ = dPeças = 5%: **1.541,71**, igual à regra atual.
+- Extra 2% com os campos separados (5% + 2% no serviço, 0% nas peças): V = 1.547,12.
+
+**Dúvidas (preciso de resposta antes de implementar)**
+1. **Extra no modo de campo único.** Hoje 5% + 2% vale para tudo (V = 1.509,25 no exemplo). Se o extra somar só ao serviço também no campo único, um orçamento antigo com extra muda de valor, o que contradiz "orçamento antigo abre igual".
+   - Proposta: no campo único, o extra vale para tudo, como hoje; com os dois campos, o extra soma só ao serviço.
+2. **Texto da tela com os descontos diferentes.** Proposta: "R$ 1.568,75 · R$ 54,10 de desconto", a mesma forma do WhatsApp.
+3. **Dica "?" do extra.** Hoje o texto diz "5% + 2% = 7%". Proposta: acrescentar "Com desconto diferente nas peças, o extra vale só para o serviço."
+- **Por quê:** o desenho mantém o orçamento antigo e o de campo único idênticos ao de hoje, e os testes atuais continuam iguais.
+
+**Testes (depois do OK)**
+- Os números acima.
+- Extra com os dois campos.
+- Orçamento antigo (sem dPeças) igual ao de hoje.
+- Ajustes: legado do desconto das peças nos dois cenários (como B1/B2).
+- Fechamento grava dServ, dPeças e o equivalente.
+- Link abrir/fechar com a confirmação.
+- WhatsApp nos dois casos.
+- Prints 390/1280.

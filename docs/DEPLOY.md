@@ -12,6 +12,26 @@ Mesmo modelo do app **Pendências**:
 
 ---
 
+## ⚠️ Pacote 16 + adendo dos descontos: o backend MUDOU — UM deploy só, ordem obrigatória
+
+Dois commits locais: o pacote 16 (% por peça, serviços de terceiros, entrada + cartão, imposto separado) e logo depois o adendo dos descontos (serviço × peças). **Os dois são publicados juntos**, com **um único** deploy do `Codigo.gs` (o do commit do adendo, o final) nas duas planilhas. Não publique o pacote 16 sozinho.
+
+1. **Em cada planilha** (a de teste e a do André): Extensões → Apps Script → **copie a sua `URL_DA_API`** → cole o `apps-script/Codigo.gs` FINAL → recoloque a `URL_DA_API` → salve → **Implantar → Gerenciar implantações → lápis → Versão: Nova versão → Implantar** → rode **`testarApi`** (deve terminar com "Todos os testes da API passaram").
+   - **Se aparecer pedido de autorização novo:** **pare** e me avise (não era para aparecer; o `appsscript.json` não mudou).
+   - O primeiro pedido depois de colar o código atualiza o esquema (versão 2):
+     - acrescenta as colunas **W–Y** na aba Orçamentos ("Terceiros pagos | Entrada | Forma da entrada"), sem mudar nenhuma coluna de lugar;
+     - os parâmetros novos **não** são criados nas planilhas que já existem: os dois impostos e o desconto das peças valem os antigos até a tela nova salvar os Ajustes;
+     - numa planilha **nova**, as linhas `impostoPecasPercentual` e `impostoServicoPercentual` já nascem com 0.
+   - A linha `impostoPercentual` continua na aba como **legado**: a tela antiga ainda usa essa chave e a tela nova grava nela o imposto do serviço. Ela não vale quando as linhas novas existem.
+2. **Só depois:** conferência de segredos e **`git push`** (os dois commits juntos; `sw.js` v11 ou o número do adendo).
+3. Em cada aparelho: "Nova versão disponível · ATUALIZAR". **Depois de atualizar, confira em Ajustes os dois impostos** (vêm iguais ao imposto antigo) e ajuste com o contador.
+   - Até atualizar, o aparelho antigo continua funcionando com um imposto só e sem terceiros nem entrada.
+   - Se o aparelho antigo salvar gastos ou ajustes, os impostos novos já salvos **não** mudam.
+
+**Versões do Apps Script:** este deploy usa **uma** "Nova versão" em cada planilha (limite de 200 por script).
+
+---
+
 ## ⚠️ Desempenho (`sw.js` v9): o backend MUDOU — ordem obrigatória
 
 Esta versão muda **as duas pontas**: o `apps-script/Codigo.gs` (cache dos gastos e ajustes, configuração das abas só quando precisa, lock só nas gravações, `onEdit`) e a tela (`sw.js` v9). Mesma ordem de sempre:

@@ -63,10 +63,12 @@ Na tela do **Orçamento**:
    - toque em **"+ Adicionar peça"** para cada peça: o **nome** (ex.: "Pastilha de freio"), a **quantidade** (ex.: 2, ou 4,5 litros de óleo) e **quanto você paga por unidade**;
    - embaixo de cada peça aparece **quanto o cliente paga** por ela;
    - errou? Toque na **lixeira**. Dá para **DESFAZER** logo depois;
-   - em **"Quanto você põe em cima da peça"**, já vem o seu número de sempre (ex.: 47%). Ele vale para **todas** as peças. Mude só se quiser, naquele orçamento;
+   - em **"Quanto você põe em cima da peça"**, já vem o seu número de sempre (ex.: 47%). Ele vale para todas as peças em que você não mudou o %;
+   - quer um % diferente numa peça só (ex.: a margem dela é apertada)? Mude o **"% em cima"** daquela linha. A caixa fica com a **borda laranja** e aparece **"↺ usar o geral"** para voltar ao número de todas;
    - sem peças? Deixe a lista vazia: o orçamento fica só com a mão de obra;
    - prefere um valor só? Toque em **"Prefiro digitar o valor das peças"**;
    - o app mostra **quanto o cliente paga pelas peças**.
+   - **Serviços de terceiros** (eletricista, retífica, torno…): toque em **"+ Adicionar serviço"**, escreva o serviço, **quanto você paga** e o **% em cima** (já vem o seu número de Ajustes; de fábrica, 0 = repassa pelo mesmo valor). Entra no preço como as peças. No WhatsApp aparece só o nome do serviço, sem valor.
 4. Veja o resultado:
    - **Cartão em 5x** (em cima): o preço cheio no cartão, já cobrindo a taxa da maquininha;
    - **À vista (Pix, dinheiro ou débito):** o preço do cartão **com desconto** (veja abaixo);
@@ -79,6 +81,12 @@ Na tela do **Orçamento**:
      - perto do limite aparece um aviso: em amarelo **"Cuidado: abaixo de R$ X não sobra nada para a sua casa."**; em vermelho **"Abaixo de R$ X a oficina não se paga."**;
      - **Ver detalhes** (fechado no começo) mostra a conta inteira e os dois limites.
 5. **Não sabe o cartão do cliente?** Deixe em **"Não sei"**: o preço cobre qualquer cartão.
+6. **O cliente vai dar uma entrada?** Toque nesse link e preencha:
+   - **quanto** ele dá de entrada;
+   - **como** ele paga a entrada: Pix/dinheiro ou débito;
+   - **em quantas vezes** fica o resto no cartão (já vem a parcela de sempre, ex.: 5x).
+   - O app mostra, por exemplo, "Entrada R$ 1.000,00 no Pix + 5x de R$ 789,47 no cartão · total R$ 4.947,37". O desconto à vista vale só sobre a parte que ele paga à vista.
+   - Essa linha também vai para o WhatsApp. Para tirar, toque em **"Tirar a entrada"**.
 
 ### Desconto à vista
 
@@ -92,6 +100,12 @@ O à vista é o preço do cartão **com um desconto**. Assim o cliente vê que p
 - Quer mudar o seu número de sempre? **Engrenagem (⚙) → Ajustes → Outros ajustes → "Desconto à vista padrão"**. Vale para todos os aparelhos ligados à sua planilha.
 
 ---
+
+### Imposto nas peças e no serviço
+
+Em **Ajustes → Outros ajustes → Imposto** há dois números: **nas peças** e **no serviço**. O do serviço vale para a mão de obra e para os serviços de terceiros. Peças e serviço costumam ter impostos diferentes: **confirme com o seu contador**. É MEI? Deixe 0 nos dois e coloque o DAS em Meus gastos. Na primeira vez, os dois vêm iguais ao imposto que você já usava. Em **Ver detalhes**, o imposto mostra quanto é das peças e quanto é do serviço.
+
+**Fechar com entrada:** em "O cliente fechou?", escolha **"Entrada + cartão"**. Se o orçamento já tinha entrada, ela já vem preenchida. O valor combinado é o **total** (entrada + cartão). Se mudar o total, a entrada continua a mesma e o app recalcula o resto no cartão.
 
 ## 4. Mandar para o cliente
 

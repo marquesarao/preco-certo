@@ -23,7 +23,11 @@ var LIMITES_PARAMETROS = {
   valorHoraCobrado:     { min: 0, max: MAX_VALOR },
   impostoPercentual:    { min: 0, max: MAX_TAXA },
   acrescimoPecasPadrao: { min: 0, max: MAX_ACRESCIMO },
-  descontoAVistaPadrao: { min: 0, max: 99 }
+  descontoAVistaPadrao: { min: 0, max: 99 },
+  // Seção 16 (opcionais: planilha antiga não tem; os impostos novos nascem do impostoPercentual)
+  impostoPecasPercentual:   { min: 0, max: MAX_TAXA },
+  impostoServicoPercentual: { min: 0, max: MAX_TAXA },
+  acrescimoTerceirosPadrao: { min: 0, max: MAX_ACRESCIMO }
 };
 var LIMITE_TAXA = { min: 0, max: MAX_TAXA };
 var LIMITE_VALOR_GASTO = { min: 0, max: MAX_VALOR };
@@ -39,7 +43,10 @@ var MENSAGENS_PARAMETROS = {
   valorHoraCobrado: 'Digite um valor igual ou maior que zero.',
   impostoPercentual: 'Use um número de 0 a 99.',
   acrescimoPecasPadrao: 'Use um número de 0 a 1000.',
-  descontoAVistaPadrao: 'Use um número de 0 a 99.'
+  descontoAVistaPadrao: 'Use um número de 0 a 99.',
+  impostoPecasPercentual: 'Use um número de 0 a 99.',
+  impostoServicoPercentual: 'Use um número de 0 a 99.',
+  acrescimoTerceirosPadrao: 'Use um número de 0 a 1000.'
 };
 var MENSAGEM_NAO_NUMERO = 'Digite só números. Ex.: 150,50';
 
@@ -194,6 +201,8 @@ function calcularMaoDeObra(entrada, valorHoraCobrado) {
  */
 function calcularPecasCobrar(entrada) {
   var pagar = typeof entrada.pecasPagar === 'number' ? entrada.pecasPagar : 0;
+  // Seção 16: com a lista de peças, cada uma tem o seu % (já somado por grupo de % em lerEntradaOrcamento).
+  if (entrada.pecasModo === 'acrescimo' && typeof entrada.pecasCobrarItens === 'number') return entrada.pecasCobrarItens;
   if (entrada.pecasModo === 'acrescimo') {
     var acrescimo = typeof entrada.pecasAcrescimo === 'number' ? entrada.pecasAcrescimo : 0;
     return pagar * (1 + acrescimo / 100);
@@ -203,6 +212,7 @@ function calcularPecasCobrar(entrada) {
 
 // ---------------- Peças discriminadas ----------------
 var MAX_PECAS = 30;
+var MAX_TERCEIROS = 20; // seção 16: espelho de MAX_TERCEIROS_ do Codigo.gs
 var LIMITE_QTD_PECA = { min: 0, max: 9999 }; // e maior que zero
 var MENSAGEM_QTD_PECA = 'Quantidade maior que zero. Ex.: 2 ou 4,5';
 
@@ -331,15 +341,20 @@ function calcularOrcamento(entrada, parametros, cartoes, cartaoEscolhido, precoM
   var pecasPagar = typeof entrada.pecasPagar === 'number' ? entrada.pecasPagar : 0;
   var pecasCobrar = calcularPecasCobrar(entrada);
   var lucroPecas = pecasCobrar - pecasPagar;
-  var aVista = mo.maoDeObra + pecasCobrar;
+  // Seção 16: serviços de terceiros entram como as peças (custo = pago; cliente = pago × (1 + %)).
+  var terceirosPagar = typeof entrada.terceirosPagar === 'number' ? entrada.terceirosPagar : 0;
+  var terceirosCobrar = typeof entrada.terceirosCobrar === 'number' ? entrada.terceirosCobrar : terceirosPagar;
+  var lucroTerceiros = terceirosCobrar - terceirosPagar;
+  var aVista = mo.maoDeObra + pecasCobrar + terceirosCobrar;
   var gastoHoras = mo.horas * precoMinimoHora;
-  var impostoPct = typeof parametros.impostoPercentual === 'number' ? parametros.impostoPercentual : 0;
+  var impostos = impostosDosParametros(parametros);
+  var impostoPct = taxaImpostoEfetiva(impostos, mo.maoDeObra, pecasCobrar, terceirosCobrar);
 
   function montar(forma, parcelas, taxa) {
     var op = calcularOpcao(aVista, taxa, parcelas);
     op.forma = forma;
     op.imposto = (op.totalCentavos / 100) * impostoPct / 100;
-    op.lucro = mo.maoDeObra - gastoHoras + lucroPecas - op.imposto;
+    op.lucro = mo.maoDeObra - gastoHoras + lucroPecas + lucroTerceiros - op.imposto;
     return op;
   }
 
@@ -365,6 +380,12 @@ function calcularOrcamento(entrada, parametros, cartoes, cartaoEscolhido, precoM
     pecasPagar: pecasPagar,
     pecasCobrar: pecasCobrar,
     lucroPecas: lucroPecas,
+    terceirosPagar: terceirosPagar,
+    terceirosCobrar: terceirosCobrar,
+    lucroTerceiros: lucroTerceiros,
+    impostoPct: impostoPct,           // taxa efetiva (seção 16)
+    impostoPecasPct: impostos.pecas,
+    impostoServicoPct: impostos.servico,
     gastoHoras: gastoHoras,
     precoMinimoHora: precoMinimoHora,
     aVista: montar('Pix', 1, 0), // Pix: sempre 0%, fixo no código
@@ -404,7 +425,8 @@ function descontoPadraoDoAparelho(texto) {
  * @param desconto % oferecido (0 a 99)   @param extra % extra (0 a 99)
  */
 function calcularPrecoComDesconto(res, parametros, desconto, extra) {
-  var impostoPct = typeof parametros.impostoPercentual === 'number' ? parametros.impostoPercentual : 0;
+  var impostoPct = typeof res.impostoPct === 'number' ? res.impostoPct : (typeof parametros.impostoPercentual === 'number' ? parametros.impostoPercentual : 0);
+  var terceirosPagar = res.terceirosPagar || 0;
   var base = res.aVista.totalExato;
   var baseCentavos = res.aVista.totalCentavos;
   var ancora = res.destaques.length ? res.destaques[0] : null;
@@ -416,7 +438,7 @@ function calcularPrecoComDesconto(res, parametros, desconto, extra) {
   var precoCentavos = ancora ? centavos(precoExato) : baseCentavos;
   var maximo = ancora ? (1 - base / ancora.totalExato) * 100 : 0;
   var imposto = (precoCentavos / 100) * impostoPct / 100;
-  var lucro = precoCentavos / 100 - res.gastoHoras - res.pecasPagar - imposto;
+  var lucro = precoCentavos / 100 - res.gastoHoras - res.pecasPagar - terceirosPagar - imposto;
   var difCentavos = precoCentavos - baseCentavos; // > 0: ainda pode dar; < 0: abre mão do lucro
 
   return {
@@ -432,7 +454,7 @@ function calcularPrecoComDesconto(res, parametros, desconto, extra) {
     abreMaoCentavos: Math.max(0, -difCentavos),
     imposto: imposto,
     lucro: lucro,
-    piso: (res.gastoHoras + res.pecasPagar) / (1 - impostoPct / 100)
+    piso: (res.gastoHoras + res.pecasPagar + terceirosPagar) / (1 - impostoPct / 100)
   };
 }
 
@@ -454,15 +476,16 @@ function minimoHoraDoTipo(gastos, p, tipo) {
  * @param res calcularOrcamento   @param preco calcularPrecoComDesconto (preço oferecido e imposto sobre ele)
  */
 function separarGanho(res, preco, parametros, minimoOficina, minimoCasa) {
-  var impostoPct = typeof parametros.impostoPercentual === 'number' ? parametros.impostoPercentual : 0;
+  var impostoPct = typeof res.impostoPct === 'number' ? res.impostoPct : (typeof parametros.impostoPercentual === 'number' ? parametros.impostoPercentual : 0);
+  var terceiros = res.terceirosPagar || 0; // custo dos serviços de terceiros (não consome as horas dele)
   var horas = typeof res.horas === 'number' && res.horas > 0 ? res.horas : 0;
   var valor = preco.precoCentavos / 100;
   var pagaOficina = horas * minimoOficina;
   var vaiParaCasa = horas * minimoCasa;
-  var sobra = valor - pagaOficina - vaiParaCasa - res.pecasPagar - preco.imposto;
+  var sobra = valor - pagaOficina - vaiParaCasa - res.pecasPagar - terceiros - preco.imposto;
   var fator = 1 - impostoPct / 100;
-  var pisoOficina = (pagaOficina + res.pecasPagar) / fator;
-  var pisoCasa = (pagaOficina + vaiParaCasa + res.pecasPagar) / fator;
+  var pisoOficina = (pagaOficina + res.pecasPagar + terceiros) / fator;
+  var pisoCasa = (pagaOficina + vaiParaCasa + res.pecasPagar + terceiros) / fator;
   return {
     pagaOficina: pagaOficina,
     vaiParaCasa: vaiParaCasa,
@@ -486,8 +509,11 @@ function linhasDetalheServico(res, preco, ganho) {
   var c = {
     maoDeObra: centavos(res.maoDeObra),
     lucroPecas: centavos(res.lucroPecas),
+    lucroTerceiros: res.terceirosPagar > 0 || res.terceirosCobrar > 0 ? centavos(res.lucroTerceiros) : null,
     diferenca: null,
     imposto: null,
+    impostoPecas: null,
+    impostoServico: null,
     pagaOficina: centavos(ganho.pagaOficina),
     vaiParaCasa: ganho.temCasa ? centavos(ganho.vaiParaCasa) : null,
     sobra: centavos(ganho.sobra),
@@ -495,13 +521,76 @@ function linhasDetalheServico(res, preco, ganho) {
   };
   var dif = preco.precoCentavos / 100 - res.aVista.totalExato;
   if (preco.temAncora && centavos(dif) !== 0) c.diferenca = centavos(dif);
-  if (preco.imposto > 0) c.imposto = centavos(preco.imposto);
-  var soma = c.maoDeObra + c.lucroPecas + (c.diferenca || 0) - (c.imposto || 0) - c.pagaOficina - (c.vaiParaCasa || 0);
+  if (preco.imposto > 0) {
+    c.imposto = centavos(preco.imposto);
+    // "peças R$ X · serviço R$ Y" (proporcional às partes da taxa efetiva; o serviço absorve o centavo)
+    var parteP = res.pecasCobrar * (res.impostoPecasPct || 0);
+    var parteS = (res.maoDeObra + (res.terceirosCobrar || 0)) * (res.impostoServicoPct || 0);
+    c.impostoPecas = parteP + parteS > 0 ? centavos(c.imposto / 100 * parteP / (parteP + parteS)) : 0;
+    c.impostoServico = c.imposto - c.impostoPecas;
+  }
+  var soma = c.maoDeObra + c.lucroPecas + (c.lucroTerceiros || 0) + (c.diferenca || 0) - (c.imposto || 0) - c.pagaOficina - (c.vaiParaCasa || 0);
   var falta = soma - c.sobra; // > 0: as linhas dão mais que a sobra
   var absorve = ganho.temCasa && ganho.vaiParaCasa > 0 ? 'vaiParaCasa' : (ganho.pagaOficina > 0 ? 'pagaOficina' : 'lucroPecas');
   if (absorve === 'lucroPecas') c.lucroPecas -= falta; else c[absorve] += falta;
   if (ganho.temCasa) c.totalSeu = c.vaiParaCasa + c.sobra;
   return c;
+}
+
+// ---------------- Seção 16: imposto separado (peças × serviço) e entrada + cartão ----------------
+
+/**
+ * Os dois impostos dos parâmetros. Sem as chaves novas (planilha/foto antiga), os dois são o imposto antigo:
+ * assim os números de antes não mudam.
+ */
+function impostosDosParametros(p) {
+  var legado = typeof p.impostoPercentual === 'number' ? p.impostoPercentual : 0;
+  return {
+    pecas: typeof p.impostoPecasPercentual === 'number' ? p.impostoPecasPercentual : legado,
+    servico: typeof p.impostoServicoPercentual === 'number' ? p.impostoServicoPercentual : legado
+  };
+}
+
+/**
+ * Taxa efetiva = (peças_cliente × tPeças + (mão de obra + terceiros_cliente) × tServiço) ÷ base.
+ * Taxas iguais → a própria taxa (exatamente, sem conta: orçamentos antigos dão o mesmo número). Sem base → tServiço.
+ */
+function taxaImpostoEfetiva(impostos, maoDeObra, pecasCobrar, terceirosCobrar) {
+  if (impostos.pecas === impostos.servico) return impostos.servico;
+  var base = maoDeObra + pecasCobrar + terceirosCobrar;
+  if (!(base > 0)) return impostos.servico;
+  return (pecasCobrar * impostos.pecas + (maoDeObra + terceirosCobrar) * impostos.servico) / base;
+}
+
+/**
+ * Entrada (sinal) + resto no cartão em n vezes. O desconto à vista vale só sobre a parte paga à vista:
+ * V = à vista oferecido; f = E ÷ V; P_n = preço do cartão em n vezes (seção 15: até a referência = preço cheio);
+ * R_n = P_n × (1 − f); parcela = arredondar(R_n ÷ n); total = E + R_n (arredondado).
+ * @return null (sem entrada) | {erro} | {entradaC, parcelas, restoC, parcelaC, totalC, taxaCredito}
+ */
+function calcularEntradaCartao(res, preco, entrada, parcelas) {
+  if (typeof entrada !== 'number' || !(entrada > 0)) return null;
+  var V = preco.precoCentavos / 100;
+  var entradaC = centavos(entrada);
+  if (!(entradaC < preco.precoCentavos)) return { erro: 'A entrada precisa ser menor que o preço à vista (' + formatarCentavos(preco.precoCentavos) + ').' };
+  var op = res.opcoes.filter(function (o) { return o.forma === 'Crédito' && o.parcelas === parcelas; })[0];
+  if (!op) return null;
+  var Pn = preco.temAncora && parcelas <= preco.ancora.parcelas ? preco.ancora.totalExato : op.totalExato;
+  var R = Pn * (1 - entrada / V);
+  var restoC = centavos(R);
+  return { entradaC: entradaC, parcelas: parcelas, restoC: restoC, parcelaC: centavos(R / parcelas), totalC: entradaC + restoC, taxaCredito: op.taxa };
+}
+
+/** Parcelas que podem ir com a entrada (crédito com taxa), e a padrão = a parcela de referência (a âncora). */
+function parcelasParaEntrada(res, preco) {
+  var lista = res.opcoes.filter(function (o) { return o.forma === 'Crédito'; }).map(function (o) { return o.parcelas; });
+  var padrao = preco.temAncora ? preco.ancora.parcelas : (lista.length ? lista[lista.length - 1] : null);
+  return { lista: lista, padrao: padrao };
+}
+
+/** "Serviços inclusos" do WhatsApp, SEM valores: só as descrições (sem descrição não aparece). */
+function linhasTerceirosWhatsApp(itens) {
+  return (itens || []).filter(function (it) { return String(it.descricao || '').trim() !== ''; }).map(function (it) { return String(it.descricao).trim(); });
 }
 
 // ---------------- Orçamentos salvos (fase 10): foto, refazer a conta, fechamento e resumo do mês ----------------
@@ -578,9 +667,30 @@ function fotoDeHoje(dados, em) {
   };
 }
 
-/** Duas fotos com os mesmos valores (ignora a data "em"). */
+/**
+ * Duas fotos com os mesmos valores (ignora a data "em").
+ * Seção 16: foto de antes (sem os impostos novos nem o acréscimo dos terceiros) vale como os impostos = o antigo
+ * e acréscimo 0, e a ordem das chaves não importa: um orçamento antigo não mostra "Valores de…" só por isso.
+ */
 function fotosIguais(a, b) {
-  function sem(f) { var c = JSON.parse(JSON.stringify(f)); delete c.em; return JSON.stringify(c); }
+  function ordenado(v) {
+    if (Array.isArray(v)) return v.map(ordenado);
+    if (!v || typeof v !== 'object') return v;
+    var o = {};
+    Object.keys(v).sort().forEach(function (k) { o[k] = ordenado(v[k]); });
+    return o;
+  }
+  function sem(f) {
+    var c = JSON.parse(JSON.stringify(f));
+    delete c.em;
+    if (c.parametros && typeof c.parametros === 'object') {
+      var imp = impostosDosParametros(c.parametros);
+      c.parametros.impostoPecasPercentual = imp.pecas;
+      c.parametros.impostoServicoPercentual = imp.servico;
+      if (typeof c.parametros.acrescimoTerceirosPadrao !== 'number') c.parametros.acrescimoTerceirosPadrao = 0;
+    }
+    return JSON.stringify(ordenado(c));
+  }
   return !!a && !!b && sem(a) === sem(b);
 }
 
@@ -615,12 +725,41 @@ function lerEntradaOrcamento(e, parametros) {
     ? e.acrescimoTexto : numeroParaCampo(parametros.acrescimoPecasPadrao, false);
   var descontoTexto = e.descontoTexto !== null && e.descontoTexto !== undefined
     ? e.descontoTexto : numeroParaCampo(descontoPadraoDosParametros(parametros), false);
+  // % geral das peças (o do campo; inválido = 0, como antes)
+  var rGeral = validarNumeroCampo(acrescimoTexto, LIMITE_ACRESCIMO, { vazioPermitido: true, mensagem: MENSAGENS_PARAMETROS.acrescimoPecasPadrao });
+  var geralPecas = typeof rGeral.valor === 'number' ? rGeral.valor : 0;
   var pecas = porAcrescimo ? (e.pecas || []).map(function (p) {
     var q = validarQtdPeca(p.qtdTexto);
     var v = validarNumeroCampo(p.valorTexto, LIMITE_VALOR_ORCAMENTO, { vazioPermitido: true, mensagem: MSG_VALOR_ORCAMENTO });
-    if (q.erro || v.erro) erros.pecas = true;
-    return { descricao: p.descricao, qtd: q.valor, valor: v.valor, erroQtd: q.erro, erroValor: v.erro };
+    // Seção 16: % da peça (null = segue o geral)
+    var proprio = p.acrescimoTexto !== null && p.acrescimoTexto !== undefined;
+    var a = proprio ? validarNumeroCampo(p.acrescimoTexto, LIMITE_ACRESCIMO, { vazioPermitido: true, mensagem: MENSAGENS_PARAMETROS.acrescimoPecasPadrao }) : { valor: geralPecas, erro: '' };
+    if (q.erro || v.erro || a.erro) erros.pecas = true;
+    var acr = typeof a.valor === 'number' ? a.valor : 0;
+    return { descricao: p.descricao, qtd: q.valor, valor: v.valor, erroQtd: q.erro, erroValor: v.erro, erroAcrescimo: a.erro || '',
+      acrescimo: acr, acrescimoProprio: proprio };
   }) : [];
+  // Seção 16: serviços de terceiros (sem quantidade); % de cada um (null = o padrão dos ajustes)
+  var geralTerceiros = typeof parametros.acrescimoTerceirosPadrao === 'number' ? parametros.acrescimoTerceirosPadrao : 0;
+  var terceiros = (e.terceiros || []).map(function (s) {
+    var v = validarNumeroCampo(s.valorTexto, LIMITE_VALOR_ORCAMENTO, { vazioPermitido: true, mensagem: MSG_VALOR_ORCAMENTO });
+    var proprio = s.acrescimoTexto !== null && s.acrescimoTexto !== undefined;
+    var a = proprio ? validarNumeroCampo(s.acrescimoTexto, LIMITE_ACRESCIMO, { vazioPermitido: true, mensagem: MENSAGENS_PARAMETROS.acrescimoTerceirosPadrao }) : { valor: geralTerceiros, erro: '' };
+    if (v.erro || a.erro) erros.terceiros = true;
+    return { descricao: s.descricao, valor: v.valor, erroValor: v.erro, erroAcrescimo: a.erro || '', acrescimo: typeof a.valor === 'number' ? a.valor : 0, acrescimoProprio: proprio };
+  });
+  /** Σ por grupo de %: (Σ pago do grupo) × (1 + %/100). Um grupo só = a conta de antes, sem diferença de arredondamento. */
+  function somaPorGrupo(itens, pago) {
+    var grupos = [], porAcr = {};
+    itens.forEach(function (it) {
+      var k = String(it.acrescimo);
+      if (!(k in porAcr)) { porAcr[k] = grupos.length; grupos.push({ acr: it.acrescimo, pago: 0 }); }
+      grupos[porAcr[k]].pago += pago(it);
+    });
+    return grupos.reduce(function (s, g) { return s + g.pago * (1 + g.acr / 100); }, 0);
+  }
+  var pagoPeca = function (it) { return totalPecasItens([it]); };
+  var pagoTerceiro = function (it) { return typeof it.valor === 'number' && it.valor > 0 ? it.valor : 0; };
   var entrada = {
     modo: fechado ? 'fechado' : 'horas',
     horas: fechado
@@ -632,11 +771,20 @@ function lerEntradaOrcamento(e, parametros) {
       : campo('orc-pecas-pagar', e.pecasPagarTexto, LIMITE_VALOR_ORCAMENTO, MSG_VALOR_ORCAMENTO),
     pecasModo: porAcrescimo ? 'acrescimo' : 'valor',
     pecasAcrescimo: porAcrescimo ? campo('orc-acrescimo', acrescimoTexto, LIMITE_ACRESCIMO, MENSAGENS_PARAMETROS.acrescimoPecasPadrao) : null,
-    pecasCobrar: porAcrescimo ? null : campo('orc-pecas-cobrar', e.pecasCobrarTexto, LIMITE_VALOR_ORCAMENTO, MSG_VALOR_ORCAMENTO)
+    pecasCobrar: porAcrescimo ? null : campo('orc-pecas-cobrar', e.pecasCobrarTexto, LIMITE_VALOR_ORCAMENTO, MSG_VALOR_ORCAMENTO),
+    pecasCobrarItens: porAcrescimo ? somaPorGrupo(pecas, pagoPeca) : null,
+    terceirosPagar: terceiros.reduce(function (s, it) { return s + pagoTerceiro(it); }, 0),
+    terceirosCobrar: somaPorGrupo(terceiros, pagoTerceiro)
   };
+  // Seção 16: entrada (sinal) — valor, forma (pix | debito) e parcelas do resto no cartão (null = a de referência)
+  var entradaSinal = campo('orc-entrada', e.entradaTexto, LIMITE_VALOR_ORCAMENTO, MSG_VALOR_ORCAMENTO);
   return {
     entrada: entrada,
     pecas: pecas,
+    terceiros: terceiros,
+    entradaSinal: entradaSinal,
+    formaEntrada: e.formaEntrada === 'debito' ? 'debito' : 'pix',
+    parcelasEntrada: typeof e.parcelasEntrada === 'number' ? e.parcelasEntrada : null,
     desconto: campo('orc-desconto', descontoTexto, LIMITE_DESCONTO, MSG_DESCONTO),
     extra: campo('orc-extra', e.extraTexto, LIMITE_DESCONTO, MSG_DESCONTO),
     erros: erros,
@@ -656,8 +804,12 @@ function calcularComFoto(e, foto) {
   var res = calcularOrcamento(lido.entrada, ctx.parametros, ctx.cartoes, bandeira, ctx.precoMinimoHora);
   var preco = calcularPrecoComDesconto(res, ctx.parametros, lido.desconto, lido.extra);
   var ganho = separarGanho(res, preco, ctx.parametros, ctx.minimoOficina, ctx.minimoCasa);
+  var pe = parcelasParaEntrada(res, preco);
+  var nEntrada = lido.parcelasEntrada !== null && pe.lista.indexOf(lido.parcelasEntrada) >= 0 ? lido.parcelasEntrada : pe.padrao;
   return { ctx: ctx, lido: lido, bandeira: bandeira, res: res, preco: preco, ganho: ganho, det: linhasDetalheServico(res, preco, ganho),
-    outras: res.outras.map(function (op) { return precoNaForma(preco, op); }) };
+    outras: res.outras.map(function (op) { return precoNaForma(preco, op); }),
+    parcelasEntrada: { lista: pe.lista, escolhida: nEntrada },
+    entradaCartao: nEntrada ? calcularEntradaCartao(res, preco, lido.entradaSinal, nEntrada) : null };
 }
 
 /** O que vai para a planilha como "resultado" (centavos inteiros, os valores EXIBIDOS). */
@@ -668,6 +820,9 @@ function resultadoParaGravar(c) {
     horas: horas,
     pecasPagarC: centavos(c.res.pecasPagar),
     pecasCobrarC: centavos(c.res.pecasCobrar),
+    terceirosPagarC: centavos(c.res.terceirosPagar || 0),
+    terceirosCobrarC: centavos(c.res.terceirosCobrar || 0),
+    impostoEfetivoPct: c.res.impostoPct,
     aVistaBaseC: c.res.aVista.totalCentavos,
     ancora: c.preco.ancora ? op(c.preco.ancora) : null,
     descontoTotal: c.preco.descontoTotal,
@@ -750,30 +905,48 @@ function abaixoDoPrecoNoDebito(resultado, f) {
  * sem horas: a própria sobra), para V − taxa − imposto − peças − oficina − casa = sobra no centavo.
  * @return objeto pronto para mudarSituacao (falta só a data) ou null se a forma não tem taxa
  */
-function calcularFechamento(foto, resultado, forma, parcelas, cartao, valorCombinadoC) {
-  var impPct = typeof foto.parametros.impostoPercentual === 'number' ? foto.parametros.impostoPercentual : 0;
+function calcularFechamento(foto, resultado, forma, parcelas, cartao, valorCombinadoC, entrada) {
+  // Seção 16: imposto = a taxa efetiva gravada no orçamento (registro antigo: o imposto da foto, como antes);
+  // terceiros pagos entram como as peças; forma 'entrada' = entrada (Pix ou débito) + resto no cartão em n vezes.
+  var impPct = typeof resultado.impostoEfetivoPct === 'number' ? resultado.impostoEfetivoPct
+    : (typeof foto.parametros.impostoPercentual === 'number' ? foto.parametros.impostoPercentual : 0);
+  var comEntrada = forma === 'entrada';
   var ef = forma === 'pix' ? NAO_SEI : cartaoEfetivo(foto.cartoes, cartao);
-  var taxaPct = forma === 'pix' ? 0 : taxaDaForma(foto.cartoes, campoDaFormaFechamento(forma, parcelas), ef);
+  var campo = comEntrada ? 'p' + parcelas : campoDaFormaFechamento(forma, parcelas);
+  var taxaPct = forma === 'pix' ? 0 : taxaDaForma(foto.cartoes, campo, ef);
   if (taxaPct === null || (forma !== 'pix' && !foto.cartoes.length)) return null;
+  var entradaC = 0, formaEntrada = '', taxaEntradaPct = 0;
+  if (comEntrada) {
+    entradaC = entrada && typeof entrada.entradaC === 'number' ? entrada.entradaC : 0;
+    formaEntrada = entrada && entrada.formaEntrada === 'debito' ? 'debito' : 'pix';
+    if (!(entradaC > 0) || !(entradaC < valorCombinadoC)) return null;
+    if (formaEntrada === 'debito') {
+      taxaEntradaPct = taxaDaForma(foto.cartoes, 'debito', ef);
+      if (taxaEntradaPct === null) return null;
+    }
+  }
   var V = valorCombinadoC / 100;
-  var taxa = V * taxaPct / 100;
+  var E = entradaC / 100;
+  var taxa = comEntrada ? (V - E) * taxaPct / 100 + E * taxaEntradaPct / 100 : V * taxaPct / 100;
   var imposto = V * impPct / 100;
   var horas = resultado.horas > 0 ? resultado.horas : 0;
   var oficina = horas * foto.minimoHoraOficina;
   var casa = horas * foto.minimoHoraCasa;
   var temCasa = foto.minimoHoraCasa > 0;
   var pecas = resultado.pecasPagarC / 100;
-  var sobra = V - taxa - imposto - pecas - oficina - casa;
+  var terceirosC = resultado.terceirosPagarC || 0;
+  var terceiros = terceirosC / 100;
+  var sobra = V - taxa - imposto - pecas - terceiros - oficina - casa;
   var c = { taxaC: centavos(taxa), impostoC: centavos(imposto), pagaOficinaC: centavos(oficina),
     vaiParaCasaC: temCasa ? centavos(casa) : null, sobraC: centavos(sobra) };
-  var falta = valorCombinadoC - c.taxaC - c.impostoC - resultado.pecasPagarC - c.pagaOficinaC - (c.vaiParaCasaC || 0) - c.sobraC;
+  var falta = valorCombinadoC - c.taxaC - c.impostoC - resultado.pecasPagarC - terceirosC - c.pagaOficinaC - (c.vaiParaCasaC || 0) - c.sobraC;
   if (falta !== 0) {
     if (temCasa && casa > 0 && c.vaiParaCasaC + falta >= 0) c.vaiParaCasaC += falta;
     else if (oficina > 0 && c.pagaOficinaC + falta >= 0) c.pagaOficinaC += falta;
     else c.sobraC += falta;
   }
-  var depoisDaOficina = V - taxa - imposto - pecas - oficina;
-  return {
+  var depoisDaOficina = V - taxa - imposto - pecas - terceiros - oficina;
+  var f = {
     forma: forma,
     parcelas: forma === 'pix' ? null : forma === 'debito' ? 1 : parcelas,
     cartao: forma === 'pix' ? '' : ef,
@@ -782,12 +955,28 @@ function calcularFechamento(foto, resultado, forma, parcelas, cartao, valorCombi
     taxaC: c.taxaC,
     impostoC: c.impostoC,
     pecasPagarC: resultado.pecasPagarC,
+    terceirosPagarC: terceirosC,
     pagaOficinaC: c.pagaOficinaC,
     vaiParaCasaC: c.vaiParaCasaC,
     sobraC: c.sobraC,
     totalSeuC: temCasa ? c.vaiParaCasaC + c.sobraC : null,
     estado: c.sobraC >= 0 ? 'verde' : (depoisDaOficina >= 0 ? 'ambar' : 'vermelho')
   };
+  if (comEntrada) { f.entradaC = entradaC; f.formaEntrada = formaEntrada; f.taxaEntradaPct = taxaEntradaPct; }
+  return f;
+}
+
+/**
+ * Valor combinado sugerido na forma "Entrada + cartão": entrada + resto no cartão (seção 16), com os valores GRAVADOS
+ * do orçamento (o à vista oferecido e o preço do cartão em n vezes pela regra da seção 15).
+ * @return centavos ou null (entrada fora de 0 < E < à vista, ou parcela sem taxa)
+ */
+function valorSugeridoEntrada(entrada, foto, resultado, parcelas, cartao, entradaC) {
+  if (!(entradaC > 0) || !(entradaC < resultado.oferecidoC)) return null;
+  var PnC = valorSugeridoFechamento(entrada, foto, resultado, 'credito', parcelas, cartao);
+  if (PnC === null) return null;
+  var R = PnC / 100 * (1 - entradaC / resultado.oferecidoC);
+  return entradaC + centavos(R);
 }
 
 // ---------- Meses ----------
@@ -846,6 +1035,7 @@ function resumoDoMes(lista, mes, fotoMes) {
     fechados: fechados.length,
     faturamentoC: soma('valorCombinadoC'),
     pecasC: soma('pecasPagarC'),
+    terceirosC: soma('terceirosPagarC'),  // seção 16 (registros antigos: 0)
     taxasC: soma('taxaC'),
     impostoC: soma('impostoC'),
     horasVendidas: Math.round(soma('horas') * 10000) / 10000,
@@ -854,7 +1044,7 @@ function resumoDoMes(lista, mes, fotoMes) {
   };
   r.pctHoras = fotoMes && fotoMes.horas > 0 ? r.horasVendidas / fotoMes.horas : null;
   if (fotoMes) {
-    var depois = r.faturamentoC - r.pecasC - r.taxasC - r.impostoC - fotoMes.oficinaC;
+    var depois = r.faturamentoC - r.pecasC - r.terceirosC - r.taxasC - r.impostoC - fotoMes.oficinaC;
     var casaCoberta = Math.min(Math.max(depois, 0), fotoMes.casaC);
     var sobra = depois - fotoMes.casaC;
     r.resultado = {
@@ -959,12 +1149,13 @@ function extratoDoMes(resumo) {
   if (!r) return null;
   var linhas = [
     { rotulo: 'Entrou', valorC: resumo.faturamentoC, tipo: 'entrou' },
-    { rotulo: 'Peças', valorC: resumo.pecasC, tipo: 'sai' },
+    { rotulo: 'Peças', valorC: resumo.pecasC, tipo: 'sai' }
+  ].concat(resumo.terceirosC > 0 ? [{ rotulo: 'Serviços de terceiros', valorC: resumo.terceirosC, tipo: 'sai' }] : []).concat([
     { rotulo: 'Maquininha', valorC: resumo.taxasC, tipo: 'sai' },
     { rotulo: 'Imposto', valorC: resumo.impostoC, tipo: 'sai' },
     { rotulo: 'Gastos da oficina', valorC: r.gastosOficinaC, tipo: 'sai' },
     { rotulo: r.depoisDaOficinaC >= 0 ? 'Ficou para a casa' : 'Faltou para a oficina', valorC: r.depoisDaOficinaC, tipo: 'subtotal' }
-  ];
+  ]);
   if (r.gastosCasaC > 0) {
     linhas.push({ rotulo: 'Gastos da casa', valorC: r.gastosCasaC, tipo: 'sai' });
     linhas.push({ rotulo: r.sobraDoMesC >= 0 ? 'Sobra extra' : 'Faltou', valorC: r.sobraDoMesC, tipo: 'total' });
@@ -1012,7 +1203,15 @@ function formatarPercentual(p) {
  * @param preco resultado de calcularPrecoComDesconto (opcional: sem ele, à vista = base)
  * @param pecas itens [{descricao, qtd}] (opcional): seção "Peças inclusas:" sem valores
  */
-function textoWhatsApp(res, parametros, descricao, preco, pecas) {
+/** Forma do fechamento em palavras: "Pix/dinheiro", "Débito", "Cartão em 5x", "Entrada + cartão em 5x". */
+function descreverFormaFechamento(f) {
+  if (f.forma === 'credito') return 'Cartão em ' + f.parcelas + 'x';
+  if (f.forma === 'entrada') return 'Entrada + cartão em ' + f.parcelas + 'x';
+  return f.forma === 'debito' ? 'Débito' : 'Pix/dinheiro';
+}
+
+function textoWhatsApp(res, parametros, descricao, preco, pecas, extras) {
+  extras = extras || {};
   var linhas = [];
   var nome = String(parametros.nomeOficina || '').trim();
   linhas.push(nome ? '*Orçamento – ' + nome + '*' : '*Orçamento*');
@@ -1026,6 +1225,12 @@ function textoWhatsApp(res, parametros, descricao, preco, pecas) {
     listaPecas.forEach(function (l) { linhas.push(l); });
     linhas.push('');
   }
+  var listaTerceiros = linhasTerceirosWhatsApp(extras.terceiros);
+  if (listaTerceiros.length) {
+    linhas.push('Serviços inclusos:');
+    listaTerceiros.forEach(function (l) { linhas.push(l); });
+    linhas.push('');
+  }
 
   var cartao = '💳 Cartão' + (res.cartaoNoTexto ? ' ' + res.cartaoNoTexto : '');
   res.destaques.forEach(function (op) {
@@ -1037,6 +1242,12 @@ function textoWhatsApp(res, parametros, descricao, preco, pecas) {
     }
   });
 
+  // Seção 16: entrada + resto no cartão (uma linha só, com as parcelas escolhidas no bloco da entrada)
+  var en = extras.entrada;
+  if (en && !en.erro && en.entradaC > 0) {
+    linhas.push('💳 Entrada de ' + formatarCentavos(en.entradaC) + (extras.formaEntrada === 'debito' ? ' no débito' : ' no Pix') + ' + ' + en.parcelas + 'x de ' +
+      formatarCentavos(en.parcelaC) + ' no cartão (total ' + formatarCentavos(en.totalC) + ')');
+  }
   var aVistaCentavos = preco ? preco.precoCentavos : res.aVista.totalCentavos;
   var comDesconto = preco && preco.temAncora && preco.descontoTotal > 0;
   // Com âncora, o débito paga o mesmo preço do Pix (DESENHO 15).
@@ -1436,6 +1647,116 @@ function casosDeTeste() {
                             '(11) 9888-8', '(11) 98888-7777', '(1', '(11', '(11) 9', '(11) 9888-8', '', '(55) 98888-7777',
                             true, true, true, true, ''] };
       } },
+    // ---- Seção 16: % por peça (PC), serviços de terceiros (TS), entrada + cartão (EN), imposto separado (IM) ----
+    { id: 'PC1', descricao: '% por peça: A 2 × 50 a 47% (geral) = 147 + B 1 × 300 a 20% (à mão) = 360 → 507; geral 30% → A 130, B 360 (490); "↺" em B → 390 (520)',
+      executar: function () {
+        var p = { acrescimoPecasPadrao: 47, descontoAVistaPadrao: 5 };
+        var e = function (geral, acrB) { return { modo: 'horas', horasTexto: '', pecasModo: 'acrescimo', acrescimoTexto: geral, descontoTexto: null, extraTexto: '',
+          pecas: [{ descricao: 'A', qtdTexto: '2', valorTexto: '50', acrescimoTexto: null }, { descricao: 'B', qtdTexto: '1', valorTexto: '300', acrescimoTexto: acrB }] }; };
+        var cobrar = function (x) { var l = lerEntradaOrcamento(x, p); return [centavos(calcularPecasCobrar(l.entrada)), l.pecas.map(function (it) { return centavos(totalPecasItens([it]) * (1 + it.acrescimo / 100)); }), l.pecas.map(function (it) { return it.acrescimoProprio; })]; };
+        return { obtido: [cobrar(e(null, '20')), cobrar(e('30', '20')), cobrar(e('30', null))],
+                 esperado: [[50700, [14700, 36000], [false, true]], [49000, [13000, 36000], [false, true]], [52000, [13000, 39000], [false, false]]] };
+      } },
+    { id: 'PC2', descricao: 'Orçamento antigo (peças sem % próprio) = a conta de antes, centavo por centavo (vários valores e % com casas decimais)',
+      executar: function () {
+        var p = { acrescimoPecasPadrao: 47, descontoAVistaPadrao: 5 };
+        var ok = [['47', [['3', '33,33'], ['1', '0,07'], ['4,5', '30']]], ['12,5', [['7', '19,99'], ['2', '100,01']]], ['0', [['1', '1']]], ['33,3333', [['3', '10,10'], ['1', '9,99']]]].every(function (c) {
+          var l = lerEntradaOrcamento({ modo: 'horas', pecasModo: 'acrescimo', acrescimoTexto: c[0], pecas: c[1].map(function (x) { return { descricao: 'x', qtdTexto: x[0], valorTexto: x[1] }; }) }, p);
+          var antes = l.entrada.pecasPagar * (1 + l.entrada.pecasAcrescimo / 100); // a fórmula de antes da seção 16
+          return calcularPecasCobrar(l.entrada) === antes;
+        });
+        return { obtido: ok, esperado: true };
+      } },
+    { id: 'PC3', descricao: '% da peça inválido (1001 ou letras) → erro na peça; vazio → 0%',
+      executar: function () {
+        var p = { acrescimoPecasPadrao: 47 };
+        var l = function (acr) { return lerEntradaOrcamento({ modo: 'horas', pecasModo: 'acrescimo', acrescimoTexto: null, pecas: [{ descricao: 'x', qtdTexto: '1', valorTexto: '100', acrescimoTexto: acr }] }, p); };
+        return { obtido: [!!l('1001').erros.pecas, !!l('abc').erros.pecas, centavos(calcularPecasCobrar(l('').entrada)), !!l('').erros.pecas], esperado: [true, true, 10000, false] };
+      } },
+    { id: 'TS1', descricao: 'Terceiros: eletricista 100 a 0% → cliente 100, ganho 0 (base 1.100); a 30% → cliente 130, ganho 30 (base 1.130)',
+      executar: function () {
+        var c0 = cenarioTerceiros('0').calc, c30 = cenarioTerceiros('30').calc;
+        return { obtido: [[centavos(c0.res.terceirosCobrar), centavos(c0.res.lucroTerceiros), c0.res.aVista.totalCentavos], [centavos(c30.res.terceirosCobrar), centavos(c30.res.lucroTerceiros), c30.res.aVista.totalCentavos]],
+                 esperado: [[10000, 0, 110000], [13000, 3000, 113000]] };
+      } },
+    { id: 'TS2', descricao: 'Terceiros a 30%: sobra = 1.130 − 246,15 − 184,62 − 100 = 599,23; pisos com o custo dos terceiros (oficina 346,15 · casa 530,77); detalhes com "Ganho nos serviços de terceiros" fecham no centavo (R8)',
+      executar: function () {
+        var c = cenarioTerceiros('30').calc, d = c.det;
+        var soma = d.maoDeObra + d.lucroPecas + (d.lucroTerceiros || 0) + (d.diferenca || 0) - (d.imposto || 0) - d.pagaOficina - (d.vaiParaCasa || 0);
+        return { obtido: [d.sobra, d.lucroTerceiros, centavos(c.ganho.pisoOficina), centavos(c.ganho.pisoCasa), soma === d.sobra, d.totalSeu],
+                 esperado: [59923, 3000, 34615, 53077, true, 78385] };
+      } },
+    { id: 'TS3', descricao: 'Fechamento no Pix com terceiros: 1.130 − 100 (terceiros) − 246,15 − 184,62 = 599,23; terceiros pagos gravados (10.000); soma no centavo',
+      executar: function () {
+        var s = cenarioTerceiros('30');
+        var f = calcularFechamento(s.foto, s.resultado, 'pix', null, NAO_SEI, s.resultado.oferecidoC);
+        return { obtido: [s.resultado.terceirosPagarC, s.resultado.terceirosCobrarC, f.terceirosPagarC, f.sobraC, f.valorCombinadoC - f.taxaC - f.impostoC - f.pecasPagarC - f.terceirosPagarC - f.pagaOficinaC - (f.vaiParaCasaC || 0) === f.sobraC],
+                 esperado: [10000, 13000, 10000, 59923, true] };
+      } },
+    { id: 'TS4', descricao: 'Extrato do mês com terceiros: "− Serviços de terceiros" entre Peças e Maquininha; fecha no centavo; mês sem terceiros = extrato de antes',
+      executar: function () {
+        var lista = listaDoMesQ().map(function (o, i) { var x = JSON.parse(JSON.stringify(o)); if (i === 0) x.terceirosPagarC = 20000; return x; });
+        var foto = { oficinaC: 315000, casaC: 550000, horas: 130 };
+        var m = resumoDoMes(lista, '2026-11', foto), e = extratoDoMes(m);
+        var semTerc = extratoDoMes(resumoDoMes(listaDoMesQ(), '2026-11', foto)).map(function (l) { return l.rotulo; });
+        var v = e.map(function (l) { return l.valorC; });
+        return { obtido: [e.map(function (l) { return l.rotulo; }), v[0] - v[1] - v[2] - v[3] - v[4] - v[5] === v[6], v[6] - v[7] === v[8], m.resultado.depoisDaOficinaC, semTerc.indexOf('Serviços de terceiros')],
+                 esperado: [['Entrou', 'Peças', 'Serviços de terceiros', 'Maquininha', 'Imposto', 'Gastos da oficina', 'Ficou para a casa', 'Gastos da casa', 'Faltou'], true, true, 58096, -1] };
+      } },
+    { id: 'EN1', descricao: 'Entrada: âncora 5x 5.000,00; desconto 5% → à vista 4.750,00; entrada 1.000 no Pix → f = 0,2105…; resto 5x = 3.947,37 (5× 789,47); total 4.947,37',
+      executar: function () {
+        var c = cenarioEntrada('1000', 'pix', 5).calc, en = c.entradaCartao;
+        return { obtido: [c.preco.ancora.totalCentavos, c.preco.precoCentavos, en.entradaC, en.restoC, en.parcelaC, en.totalC], esperado: [500000, 475000, 100000, 394737, 78947, 494737] };
+      } },
+    { id: 'EN2', descricao: 'Entrada com 10x (acima da referência): P10 = 4.621,50 ÷ 0,8894 = 5.196,20 → resto 4.102,26 (10× 410,23); total 5.102,26; padrão das parcelas = a referência (5x)',
+      executar: function () {
+        var c10 = cenarioEntrada('1000', 'pix', 10).calc, c = cenarioEntrada('1000', 'pix', null).calc;
+        return { obtido: [c10.entradaCartao.restoC, c10.entradaCartao.parcelaC, c10.entradaCartao.totalC, c.parcelasEntrada.escolhida, c.entradaCartao.parcelas], esperado: [410226, 41023, 510226, 5, 5] };
+      } },
+    { id: 'EN3', descricao: 'Fechamento "Entrada + cartão" 5x: valor sugerido 4.947,37; taxa só sobre o resto (3.947,37 × 7,57% = 298,82); entrada no débito: + 1.000 × 1,37% = 312,52; soma no centavo',
+      executar: function () {
+        var s = cenarioEntrada('1000', 'pix', 5);
+        var v = valorSugeridoEntrada(s.e, s.foto, s.resultado, 5, NAO_SEI, 100000);
+        var pix = calcularFechamento(s.foto, s.resultado, 'entrada', 5, NAO_SEI, v, { entradaC: 100000, formaEntrada: 'pix' });
+        var deb = calcularFechamento(s.foto, s.resultado, 'entrada', 5, NAO_SEI, v, { entradaC: 100000, formaEntrada: 'debito' });
+        var fecha = function (f) { return f.valorCombinadoC - f.taxaC - f.impostoC - f.pecasPagarC - f.terceirosPagarC - f.pagaOficinaC - (f.vaiParaCasaC || 0) === f.sobraC; };
+        return { obtido: [v, pix.taxaC, [deb.taxaC, deb.taxaEntradaPct, deb.formaEntrada], fecha(pix) && fecha(deb), [pix.forma, pix.parcelas, pix.entradaC]], esperado: [494737, 29882, [31252, 1.37, 'debito'], true, ['entrada', 5, 100000]] };
+      } },
+    { id: 'EN4', descricao: 'Validação da entrada: igual ou maior que o à vista → aviso; 0/vazio → sem entrada; no fechamento, entrada ≥ valor combinado → sem conta; WhatsApp com UMA linha da entrada',
+      executar: function () {
+        var igual = cenarioEntrada('4750', 'pix', 5).calc.entradaCartao, zero = cenarioEntrada('0', 'pix', 5).calc.entradaCartao;
+        var s = cenarioEntrada('1000', 'pix', 5);
+        var f = calcularFechamento(s.foto, s.resultado, 'entrada', 5, NAO_SEI, 100000, { entradaC: 100000, formaEntrada: 'pix' });
+        var zap = textoWhatsApp(s.calc.res, { nomeOficina: '' }, '', s.calc.preco, [], { entrada: s.calc.entradaCartao, formaEntrada: 'pix' }).split('\n');
+        var linhasEntrada = zap.filter(function (l) { return /Entrada de/.test(l); }).map(function (l) { return l.replace(/\u00a0/g, ' '); });
+        return { obtido: [igual.erro, zero, f, linhasEntrada, /À vista/.test(zap[zap.length - 1])],
+                 esperado: ['A entrada precisa ser menor que o preço à vista (' + formatarCentavos(475000) + ').', null, null, ['💳 Entrada de R$ 1.000,00 no Pix + 5x de R$ 789,47 no cartão (total R$ 4.947,37)'], true] };
+      } },
+    { id: 'IM1', descricao: 'Imposto separado: mão de obra 1.000 + peças cliente 500 = base 1.500; peças 4%, serviço 6% → efetiva 80 ÷ 1.500 = 5,3333%; à vista 1.500 → imposto 80,00 (peças 20,00 · serviço 60,00)',
+      executar: function () {
+        var c = cenarioImposto(false).calc;
+        return { obtido: [Math.round(c.res.impostoPct * 1e6) / 1e6, c.preco.precoCentavos, c.det.imposto, c.det.impostoPecas, c.det.impostoServico], esperado: [5.333333, 150000, 8000, 2000, 6000] };
+      } },
+    { id: 'IM2', descricao: 'Com terceiros 100 a 30% (cliente 130): base 1.630; efetiva = (20 + 67,80) ÷ 1.630 = 87,80 ÷ 1.630 = 5,3865%; imposto 87,80 (peças 20,00 · serviço 67,80)',
+      executar: function () {
+        var c = cenarioImposto(true).calc;
+        return { obtido: [c.preco.precoCentavos, Math.round(c.res.impostoPct * 1e6) / 1e6, c.det.imposto, c.det.impostoPecas, c.det.impostoServico], esperado: [163000, Math.round(8780 / 1630 * 1e6) / 1e6, 8780, 2000, 6780] };
+      } },
+    { id: 'IM3', descricao: 'Planilha antiga (só imposto 10%): os dois impostos = 10%, a efetiva = 10% exata (sem conta) e o cenário D dá o mesmo de antes (lucro 930,61 com 5%)',
+      executar: function () {
+        var imp = impostosDosParametros({ impostoPercentual: 10 });
+        var c = cenarioDesconto();
+        var preco = calcularPrecoComDesconto(c.res, c.params, 5, 0);
+        return { obtido: [imp, taxaImpostoEfetiva(imp, 1000, 333.33, 7), c.res.impostoPct, centavos(preco.lucro)], esperado: [{ pecas: 10, servico: 10 }, 10, 10, 93061] };
+      } },
+    { id: 'IM4', descricao: 'Fechamento usa a taxa efetiva gravada (5,3333% sobre 1.500 = 80,00); registro antigo (sem a efetiva) usa o imposto da foto, como antes',
+      executar: function () {
+        var s = cenarioImposto(false);
+        var f = calcularFechamento(s.foto, s.resultado, 'pix', null, NAO_SEI, 150000);
+        var antigo = JSON.parse(JSON.stringify(s.resultado)); delete antigo.impostoEfetivoPct;
+        var fotoAntiga = JSON.parse(JSON.stringify(s.foto)); fotoAntiga.parametros.impostoPercentual = 6;
+        return { obtido: [f.impostoC, calcularFechamento(fotoAntiga, antigo, 'pix', null, NAO_SEI, 150000).impostoC], esperado: [8000, 9000] };
+      } },
     // ---- Seção 15: preço por forma de pagamento (base 1.500; Visa débito 1,37%, 5x 7,57%; desconto 5%) ----
     { id: 'RP1', descricao: 'Âncora 5x 1.622,85 (1.500 ÷ 0,9243) · Pix 1.541,71 · Débito = Pix 1.541,71 · 1x/3x/4x/5x = 1.622,85 (3× 540,95; 5× 324,57) · 6x 1.635,41 (acima da âncora, sobre a base)',
       executar: function () {
@@ -1587,6 +1908,54 @@ function cenarioRegraPreco(desconto, parcelasDestaque) {
   var foto = fotoDeHoje(dados, '2026-11-08 10:00');
   var e = { descricao: 'Serviço', modo: 'fechado', horasTexto: '', valorTexto: '1000', horasFechadoTexto: '8', pecasModo: 'valor', pecas: [],
     pecasPagarTexto: '388,79', pecasCobrarTexto: '500', acrescimoTexto: null, descontoTexto: desconto === undefined ? null : desconto, extraTexto: '', bandeira: NAO_SEI };
+  var calc = calcularComFoto(e, foto);
+  return { foto: foto, e: e, calc: calc, resultado: resultadoParaGravar(calc) };
+}
+
+/**
+ * Cenário dos terceiros (seção 16): oficina 4.000 e casa 3.000 em 130 h; mão de obra fechada 1.000 (8 h); sem peças;
+ * eletricista 100 com o % pedido; impostos 0; sem cartões (preço = base).
+ */
+function cenarioTerceiros(acrTexto) {
+  var dados = { gastos: [{ tipo: 'Oficina', valor: 4000 }, { tipo: 'Casa', valor: 3000 }], cartoes: [],
+    parametros: { diasPorSemana: 5, horasPorDia: 8, horasCobradasPorDia: 6, valorHoraCobrado: 150, impostoPercentual: 0, impostoPecasPercentual: 0, impostoServicoPercentual: 0,
+      acrescimoPecasPadrao: 0, acrescimoTerceirosPadrao: 0, descontoAVistaPadrao: 5, parcelasDestaque: '5,10', nomeOficina: '' } };
+  var foto = fotoDeHoje(dados, '2026-11-08 10:00');
+  var e = { descricao: 'Serviço', modo: 'fechado', horasTexto: '', valorTexto: '1000', horasFechadoTexto: '8', pecasModo: 'acrescimo', pecas: [],
+    pecasPagarTexto: '', pecasCobrarTexto: '', acrescimoTexto: null, descontoTexto: null, extraTexto: '', bandeira: NAO_SEI,
+    terceiros: [{ descricao: 'Eletricista', valorTexto: '100', acrescimoTexto: acrTexto }] };
+  var calc = calcularComFoto(e, foto);
+  return { foto: foto, e: e, calc: calc, resultado: resultadoParaGravar(calc) };
+}
+
+/**
+ * Cenário da entrada (seção 16): base 4.621,50 (mão de obra fechada, sem horas) → âncora 5x = 4.621,50 ÷ 0,9243 = 5.000,00;
+ * Visa padrão; desconto 5% → à vista 4.750,00; imposto 0; sem gastos.
+ */
+function cenarioEntrada(entradaTexto, formaEntrada, parcelasEntrada) {
+  var dados = { gastos: [], cartoes: [cartaoDeTeste('Visa/Master', VISA_TESTE)],
+    parametros: { diasPorSemana: 5, horasPorDia: 8, horasCobradasPorDia: 6, valorHoraCobrado: 150, impostoPercentual: 0,
+      acrescimoPecasPadrao: 0, descontoAVistaPadrao: 5, parcelasDestaque: '5,10', nomeOficina: '' } };
+  var foto = fotoDeHoje(dados, '2026-11-08 10:00');
+  var e = { descricao: 'Serviço', modo: 'fechado', horasTexto: '', valorTexto: '4621,50', horasFechadoTexto: '', pecasModo: 'acrescimo', pecas: [],
+    pecasPagarTexto: '', pecasCobrarTexto: '', acrescimoTexto: null, descontoTexto: null, extraTexto: '', bandeira: NAO_SEI,
+    entradaTexto: entradaTexto, formaEntrada: formaEntrada, parcelasEntrada: parcelasEntrada };
+  var calc = calcularComFoto(e, foto);
+  return { foto: foto, e: e, calc: calc, resultado: resultadoParaGravar(calc) };
+}
+
+/**
+ * Cenário do imposto separado (seção 16): mão de obra fechada 1.000 (8 h) + peças pagas 400 cobradas 500 (valor direto);
+ * peças 4%, serviço 6%; sem cartões (preço = base); com terceiros: + 100 a 30%.
+ */
+function cenarioImposto(comTerceiros) {
+  var dados = { gastos: [{ tipo: 'Oficina', valor: 4000 }, { tipo: 'Casa', valor: 3000 }], cartoes: [],
+    parametros: { diasPorSemana: 5, horasPorDia: 8, horasCobradasPorDia: 6, valorHoraCobrado: 150, impostoPercentual: 6, impostoPecasPercentual: 4, impostoServicoPercentual: 6,
+      acrescimoPecasPadrao: 25, acrescimoTerceirosPadrao: 0, descontoAVistaPadrao: 5, parcelasDestaque: '5,10', nomeOficina: '' } };
+  var foto = fotoDeHoje(dados, '2026-11-08 10:00');
+  var e = { descricao: 'Serviço', modo: 'fechado', horasTexto: '', valorTexto: '1000', horasFechadoTexto: '8', pecasModo: 'valor', pecas: [],
+    pecasPagarTexto: '400', pecasCobrarTexto: '500', acrescimoTexto: null, descontoTexto: null, extraTexto: '', bandeira: NAO_SEI,
+    terceiros: comTerceiros ? [{ descricao: 'Eletricista', valorTexto: '100', acrescimoTexto: '30' }] : [] };
   var calc = calcularComFoto(e, foto);
   return { foto: foto, e: e, calc: calc, resultado: resultadoParaGravar(calc) };
 }
