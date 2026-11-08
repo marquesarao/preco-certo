@@ -12,6 +12,19 @@ Mesmo modelo do app **Pendências**:
 
 ---
 
+## Identidade do PWA (`sw.js` v7): só a tela muda — e quem já instalou precisa reinstalar
+
+- O `manifest.webmanifest` tinha `"id": "./"`, que o Chrome resolve contra a **origem** (`https://marquesarao.github.io/`): o mesmo id do app Pendências. Agora é `"id": "/preco-certo/"` → `https://marquesarao.github.io/preco-certo/`. O `Codigo.gs` não muda.
+- Publicar: conferência de segredos e **`git push`** (a `VERSAO` do `sw.js` já está em `v7`).
+- **Em cada aparelho que já tinha o Preço Certo instalado** (e o Pendências), uma vez só:
+  1. **Desinstale o Preço Certo** (celular: segure o ícone → "Desinstalar"/"Remover"; computador: abra o app → 3 pontinhos (⋮) → "Desinstalar Preço Certo").
+  2. Se aparecer a opção **"Também limpar dados do Chrome"** (ou parecida), **NÃO marque**: o Preço Certo e o Pendências usam o mesmo armazenamento do site, e marcar apaga a ligação e os dados guardados dos **dois** apps.
+  3. Abra o app de novo pelo link de sempre (`https://marquesarao.github.io/preco-certo/`) e **instale de novo** (como acima).
+  4. Se o **Pendências** instalado estiver com o nome ou o ícone do Preço Certo: abra o Pendências com internet; o Chrome pode corrigir sozinho (às vezes pede para confirmar a troca de nome e ícone, e pode levar um dia). Se não corrigir, desinstale e reinstale o Pendências também, do mesmo jeito (**sem** limpar dados).
+- Nada muda no repositório nem na pasta do Pendências.
+
+---
+
 ## Fase 11 (tela mais simples + mês atual automático): só a tela muda
 
 - O `apps-script/Codigo.gs` **não mudou** desde a fase 10. Não precisa colar nada nem criar "Nova versão".

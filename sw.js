@@ -4,7 +4,7 @@
 // aparelhos baixarem a versão nova (o app mostra "Nova versão disponível · ATUALIZAR").
 // Todos os caminhos são relativos à pasta do sw.js (funciona em /preco-certo/ e em localhost).
 
-const VERSAO = 'v6';
+const VERSAO = 'v7';
 const CACHE = `preco-certo-${VERSAO}`;
 
 const CASCA = [

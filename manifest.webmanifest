@@ -4,7 +4,7 @@
   "description": "Quanto cobrar em cada serviço, já com a taxa da maquininha — CliniCar Motors Tech.",
   "lang": "pt-BR",
   "dir": "ltr",
-  "id": "./",
+  "id": "/preco-certo/",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

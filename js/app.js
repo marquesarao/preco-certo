@@ -2459,6 +2459,7 @@ function desconectar() {
   PrecoCertoConfig.apagar();
   apagarStorage(CHAVE_CACHE);
   apagarStorage(CHAVE_PIN);
+  apagarStorage(CHAVE_FOTO_PENDENTE); // a pendência era da planilha desconectada
   conexao = null;
   estado.dados = null;
   estado.carregadoDoServidor = false;

@@ -21,7 +21,7 @@ App web gratuito para um mecânico que abriu uma oficina e tem pouca familiarida
 | Token nas Propriedades do script (2 UUIDs = 64 hex), comparação em tempo constante, checagem antes de tudo | Mensagem única "Acesso não autorizado" (também quando o servidor ainda não tem token) |
 | Funções manuais públicas no editor (`trocarToken`, `testarApi`) | `gerarLinkDeConfiguracao()` gera o **link `#cfg=`**. O Pendências só tem configuração manual; aqui ela fica como opção discreta |
 | `sw.js` com `VERSAO`, cache-first da casca, `cache:'reload'`, sem `skipWaiting` automático ("Nova versão · ATUALIZAR"); `beforeinstallprompt` | — |
-| Manifest com `id`, `start_url` e `scope` em `"./"`, `standalone`, ícones 192, 512, maskable e apple-touch | Ícones gerados do logo CliniCar por `tools/gerar-icones.ps1` |
+| Manifest com `id` `"/preco-certo/"` (único na origem; veja "Mesma origem"), `start_url` e `scope` em `"./"`, `standalone`, ícones 192, 512, maskable e apple-touch | Ícones gerados do logo CliniCar por `tools/gerar-icones.ps1` |
 | Fonte hospedada no repositório; Pages "Deploy from a branch" (main, raiz), `.nojekyll`; conferência de segredos antes do push | **Sem IndexedDB nem fila de envio offline:** sem conexão, só orçar (regra que já existia), mais simples e sem conflitos |
 
 ### Diretriz principal: simples e intuitivo
@@ -327,7 +327,14 @@ Erros de validação voltam com a própria mensagem ("Dias de trabalho por seman
   - **service worker:** cache `preco-certo-vN` com a casca (15 arquivos); a navegação recebe sempre o `index.html` do cache; a API não passa pelo cache;
   - **versão nova:** barra "Nova versão disponível · ATUALIZAR". Só recarrega quando a pessoa toca;
   - **instalação:** `beforeinstallprompt` → aviso único "Instale o Preço Certo…" e botão "Instalar app" em Ajustes;
-  - **manifest:** "Preço Certo", `./`, `standalone`, `theme_color` e `background_color` `#0e0e0e`.
+  - **manifest:** "Preço Certo", `id` `/preco-certo/` (veja "Mesma origem" abaixo), `start_url` e `scope` `./`, `standalone`, `theme_color` e `background_color` `#0e0e0e`.
+- **Mesma origem** (`marquesarao.github.io` também serve o app Pendências, em `/pendencias/`). Nada pode ser compartilhado sem prefixo:
+  - **identidade do PWA:** o `id` do manifest é resolvido contra a **origem** do `start_url`; `"./"` virava `https://marquesarao.github.io/`, o mesmo id do Pendências, e o Chrome tratou os dois como o mesmo app (o Pendências instalado mostrou nome e ícone do Preço Certo). Agora `"id": "/preco-certo/"` → `https://marquesarao.github.io/preco-certo/` (único). `start_url` e `scope` continuam `./`;
+  - **service worker:** registrado com `scope: './'` (= `/preco-certo/`), nunca `"/"`;
+  - **caches:** só `preco-certo-vN`; o `activate` apaga só os caches com o prefixo `preco-certo-` (os do Pendências ficam);
+  - **armazenamento do aparelho:** todas as chaves com o prefixo `precoCerto.` (`conexao.v1`, `dados.v1`, `orcamento.v1`, `pin.v1`, `descontoPadrao.v1`, `fotoMesPendente.v1`, `avisoInstalar`); não usa IndexedDB nem sessionStorage; **nenhuma** limpeza genérica (`localStorage.clear`, `caches.delete` sem filtro);
+  - **"Desconectar este aparelho"** apaga só chaves `precoCerto.` (conexão, dados, PIN e a pendência do mês);
+  - **quem já instalou** com o id antigo: desinstalar o Preço Certo **sem** marcar "Também limpar dados" (o armazenamento do site é o mesmo do Pendências) e reinstalar pelo link (GUIA e DEPLOY).
 - **Cálculo** (funções puras, em `js/calculo.js`):
   - números e validação: `lerNumeroBR`, `validarNumeroCampo`, `validarHorasCobradas`, `normalizarParcelas`, `centavos`, `formatarBRL`, `formatarHoras`;
   - gastos e horas: `horasCobradasMes`, `precoMinimoHora`, `calcularMaoDeObra`, `calcularPecasCobrar`;

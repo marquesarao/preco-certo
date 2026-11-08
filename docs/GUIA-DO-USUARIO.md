@@ -24,6 +24,12 @@ O Preço Certo mostra **quanto cobrar** em cada serviço, **já com a taxa da ma
 > O app funciona **mesmo sem internet**, só que aí ele serve só para orçar (aparece "Sem conexão: só orçamento").
 > Quando sair uma versão nova, aparece **"Nova versão disponível · ATUALIZAR"**. Toque em ATUALIZAR.
 
+**Já tinha instalado antes de novembro/2026 e o app Pendências também?** Numa versão antiga, o Chrome confundia os dois (o Pendências instalado aparecia com o nome e o ícone do Preço Certo). Para acertar, uma vez só:
+1. **Desinstale o Preço Certo** (celular: segure o ícone → "Desinstalar"/"Remover"; computador: abra o app → 3 pontinhos (⋮) → "Desinstalar Preço Certo").
+2. Se aparecer a opção **"Também limpar dados do Chrome"** (ou parecida), **NÃO marque**: o Preço Certo e o Pendências usam o mesmo armazenamento do site, e marcar apaga a ligação e os dados guardados dos **dois** apps.
+3. Abra o app de novo pelo link de sempre (`https://marquesarao.github.io/preco-certo/`) e **instale de novo** (como acima).
+4. Se o **Pendências** instalado estiver com o nome ou o ícone do Preço Certo: abra o Pendências com internet; o Chrome pode corrigir sozinho (às vezes pede para confirmar a troca de nome e ícone, e pode levar um dia). Se não corrigir, desinstale e reinstale o Pendências também, do mesmo jeito (**sem** limpar dados).
+
 ---
 
 ## Onde fica cada coisa

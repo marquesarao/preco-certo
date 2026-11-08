@@ -31,9 +31,9 @@ var PrecoCertoPwa = (function () {
     iniciarInstalacao();
     if (!('serviceWorker' in navigator)) { avisar(); return; }
 
-    // Caminho relativo: o escopo é a pasta do app (/preco-certo/ no GitHub Pages).
+    // Escopo SEMPRE a pasta do app (/preco-certo/ no GitHub Pages), nunca "/": a mesma origem tem o app Pendências.
     // updateViaCache 'none': a checagem de versão do sw.js nunca usa o cache HTTP.
-    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(function (reg) {
+    navigator.serviceWorker.register('sw.js', { scope: './', updateViaCache: 'none' }).then(function (reg) {
       registro = reg;
       if (reg.waiting && navigator.serviceWorker.controller) novaVersao(reg.waiting);
       reg.addEventListener('updatefound', function () {

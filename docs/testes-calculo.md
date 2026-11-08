@@ -14,6 +14,8 @@
 
 ## Resultados (08/11/2026)
 
+**Identidade do PWA (`sw.js` v7):** manifest `"id": "/preco-certo/"` → resolvido (como na spec: contra a origem do `start_url`, e também contra o próprio `start_url`) = `https://marquesarao.github.io/preco-certo/`; o Chrome (`Page.getAppId`, app servido em `/preco-certo/`) confirma o id `…/preco-certo/` e o escopo do service worker `/preco-certo/`. Varredura do código: nenhuma limpeza genérica (`localStorage.clear` etc.), `caches.delete` só com o prefixo `preco-certo-`, service worker só com `scope: './'`, todas as chaves com `precoCerto.`, "Desconectar" só apaga chaves `precoCerto.`. Frontend 114/114 (9 verificações novas).
+
 **Fase 11 (tela mais simples + mês atual automático): Frontend 105/105 (os 96 de antes + 9 casos novos) · Backend (dados) 45/45 · API 26/26 · Backend de orçamentos 79/79 · Tela 111/111 (fluxos antigos) + 81/81 (fase 10) + 65/65 (fase 11), estáveis em 3 rodadas seguidas · 10 cenários antigos sem erro · PWA: v6 → v7.**
 
 > Fase 11: só frontend. `apps-script/` sem mudança (o teste D10 confere o sha256 da versão aprovada na 10a). `sw.js` v6. Nenhum caso de cálculo antigo mudou; os testes de tela antigos mudaram só onde a seção 12 do DESENHO mudou a tela (ex.: "+ Novo orçamento" pergunta antes, extra atrás do link, card "Fica para você", 18 "?", a linha do mês atual na aba Meses criada ao abrir Resultados).
