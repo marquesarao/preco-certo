@@ -14,7 +14,9 @@
 
 ## Resultados (07/11/2026)
 
-**Frontend: 85 de 85 · Backend (dados): 45 de 45 · API: 26 de 26 · Tela: 10 cenários + 108 verificações (desconto, engrenagem, PIN, desconto padrão, peças discriminadas, dicas "?", card "Ver outras formas", espaço entre os botões, "Neste serviço"), estável em 3 rodadas seguidas · PWA: install, modo avião e versão nova.**
+**Fase 10 (orçamentos salvos + situação + Resultados): Frontend 96/96 · Backend (dados) 45/45 · API 26/26 · Backend de orçamentos 79/79 · Tela 109/109 (fluxos antigos) + 81/81 (fase 10, com o `Codigo.gs` real rodando na página), estáveis em 3 rodadas seguidas · 10 cenários antigos sem erro · PWA: v5 → v6.**
+
+> Fase 10: o backend mudou de propósito na fatia 10a (aprovada). Na 10b o `Codigo.gs` não muda: o teste D10 confere o sha256 da versão aprovada. `sw.js` v5.
 
 > Pacote "dicas ? + peças discriminadas": `apps-script/` sem nenhuma mudança (D10); `sw.js` v3. Os casos D usam peças = 1 item 1 × 100 e continuam iguais.
 
@@ -102,7 +104,8 @@ Cenário: 12 h × R$ 165 + peças R$ 100 com 47% → base R$ 2.127,00; Visa/Mast
 | D10 | `apps-script/` | `git diff` e `git status` vazios | ✅ |
 | D11 | 10x Visa 11,06% sobre a base | 2.127 ÷ 0,8894 = 2.391,4999 → Total 2.391,50 · 10× 239,15, também no WhatsApp | ✅ |
 | D12 | Parcelas em destaque × à vista oferecido (0%, 5%, 7%, 10%) | nenhum total abaixo do à vista (Node e tela) | ✅ |
-| L1 | Desconto padrão do aparelho | nada salvo → 5; "7" → 7; "7,5" → 7,5; "0" → 0; "abc", "150", "-1" → 5 | ✅ |
+| L1 | Desconto padrão do aparelho (agora só para a migração) | nada salvo → 5; "7" → 7; "7,5" → 7,5; "0" → 0; "abc", "150", "-1" → 5 | ✅ |
+| L2 | Desconto padrão dos Ajustes (aba Parâmetros) | 7,5 → 7,5; 0 → 0; ausente, 100 ou texto → 5 | ✅ |
 
 Com desconto 0, o à vista é igual à âncora (2.301,20).
 
@@ -169,7 +172,7 @@ Com desconto 0, o à vista é igual à âncora (2.301,20).
 | Token trocado | faixa "Este aparelho perdeu o acesso à planilha…"; status "Sem acesso à planilha"; edição bloqueada ✅ |
 | `?teste=1` | "31 de 31 passaram." ✅ |
 | PWA (Chrome em tempo real) | service worker ativo; casca com 15 arquivos; versão "v2"; **em modo avião o app abre** (faixa offline, fonte Inter, logo); publicação simulada "v3" → "Nova versão disponível · ATUALIZAR" → recarrega na v3 e o cache antigo é apagado ✅ |
-| **Engrenagem** | abre só no Orçamento, sem barra de abas; engrenagem com `aria-label="Configurações"` e área de toque ≥ 44 px; abre Configurações → Meus gastos; aba Ajustes; "← Voltar ao orçamento", **Esc** e o **voltar do navegador** voltam ao orçamento sem sair do app; reabre na última aba; links "Meus gastos"/"Ajustes" das dicas abrem a aba certa ✅ |
+| **Engrenagem** | abre no Orçamento (fase 10: com as abas Orçamento \| Resultados no topo); engrenagem com `aria-label="Configurações"` e área de toque ≥ 44 px; abre Configurações → Meus gastos; aba Ajustes; "← Voltar ao orçamento", **Esc** e o **voltar do navegador** voltam ao orçamento sem sair do app; reabre na última aba; links "Meus gastos"/"Ajustes" das dicas abrem a aba certa ✅ |
 | **Primeiro acesso** (sem gastos) | abre direto em Configurações → Meus gastos, com a faixa; "voltar" leva ao orçamento ✅ |
 | **PIN** | desligado: a engrenagem não pede nada; ligar recusa PIN curto e PINs diferentes; ligado: a engrenagem pede o PIN; PIN errado não abre ("PIN errado. Tente de novo."); Esc volta; PIN certo abre; "avançar" do navegador não pula o PIN; "Esqueci o PIN" → desconectar apaga o PIN e **mantém o desconto padrão**; abrir o link de configuração de novo apaga o PIN, inclusive com o app já aberto na mesma aba (só muda o `#`) ✅ |
 | **Desconto padrão do aparelho** | nada salvo → 5; Ajustes mostra 5 e "Vale só para este aparelho."; 150 → erro e não grava; 7 → gravado; mudar no orçamento não muda o padrão; Novo orçamento começa com 7; valor inválido guardado → 5 ✅ |
@@ -180,6 +183,61 @@ Com desconto 0, o à vista é igual à âncora (2.301,20).
 | **Desconto na tela** | card do cartão 5x 460,24 / 2.301,20; à vista 2.186,14 "· 5% de desconto"; faixa "ainda pode dar até 2,57% (R$ 59,14)"; 10x 239,15 / 2.391,50; detalhes somam o lucro (com "Diferença pelo desconto à vista" e imposto); piso; extra 2% → 2.140,12 / 0,57% (R$ 13,12); extra 5% → 2.071,08 + faixa vermelha "abre mão de R$ 55,92"; desconto 0 → 2.301,20 sem sufixo; 120 → erro; texto do WhatsApp copiado de verdade (área de transferência) na ordem certa e sem palavras proibidas; sem rolagem horizontal em 390 px ✅ |
 
 Nenhum erro de JavaScript em nenhum cenário. Os fluxos já existentes (cartões, Desfazer, link, manual, desconectar, offline, sem acesso) foram refeitos com a engrenagem no lugar das abas e continuam passando.
+
+### Fase 10: fechamento (FC) e resumo do mês (M) — cenário F, DESENHO 11.6
+Cenário F: oficina R$ 4.000 e casa R$ 3.000; 130 h; hora R$ 150; imposto 6%; Visa/Master padrão; serviço 8 h; 1 peça 400 + 25%; desconto 5% → base 1.700,00, âncora 5x 1.839,23, à vista oferecido 1.747,27.
+
+| # | Caso | Esperado | Resultado |
+|---|---|---|---|
+| FC1 | Pix pelo oferecido | 1.747,27 − 0 − 104,84 − 400 − 246,15 − 184,62 = **811,66** · total seu 996,28 | ✅ |
+| FC1 | Débito 1,37% | 1.700 ÷ 0,9863 = 1.723,61; taxa 23,61; imposto 103,42 → **765,81** · 950,43 | ✅ |
+| FC1 | Cartão 5x 7,57% | 1.839,23; taxa 139,23; imposto 110,35 → **758,88** · 943,50 | ✅ |
+| FC1 | Cartão 10x 11,06% | 1.700 ÷ 0,8894 = 1.911,40; taxa 211,40; imposto 114,68 → **754,55** · 939,17 | ✅ |
+| FC1 | Pix com valor alterado (1.700) | imposto 102,00 → **767,23** · 951,85 | ✅ |
+| FC2 | Coerência com o orçamento | Pix pelo oferecido = sobra de "Neste serviço" (811,66); 5x pelo total = sobra extra no cartão em 5x (758,88) | ✅ |
+| FC3 | Soma no centavo (regra do R8) | 20 valores × com casa / sem casa / sem horas × Pix, débito, 7x: V − taxa − imposto − peças − oficina − casa = sobra; nenhuma linha negativa | ✅ |
+| FC4 | Estados | 1.747,27 verde; 800 âmbar (sobra −78,77, paga a oficina); 600 vermelho (−266,77) | ✅ |
+| FC5 | Foto × recalcular | gastos 5.000/3.500 → oficina 307,69 na conta de hoje; refeita com a foto gravada = resultado gravado; forma sem taxa → sem fechamento | ✅ |
+| M1 | Mês da 11.6 (5 fechados, 2 não fecharam, 1 aberto; foto 4.000/3.000/130 h) | faturamento 8.921,51 · peças 2.000,00 · taxas 374,24 · imposto 535,29 · depois da oficina 2.011,98 (oficina se pagou) · casa em parte 2.011,98 de 3.000,00 (67%) · sobra do mês **−988,02** (âmbar) · total que é seu 2.011,98 · 40 de 130 h (31%) · 8 · 5 fecharam (63%) · vs. anterior (7.500,00 / −1.500,00): ↑ R$ 1.421,51 (19%) · sobra ↑ R$ 511,98 | ✅ |
+| M2 | Outros gastos com os mesmos fechamentos | casa 1.500 → casa toda, sobra 511,98 (verde) · oficina 8.000 → −1.988,02, casa nada, total seu 0 (vermelho) · sem foto → sem resultado | ✅ |
+| M3 | Mês pela data do fechamento | feito em 28/10, fechado em 03/11 → conta como feito em outubro; dinheiro e horas em novembro | ✅ |
+| M4 | Navegação de meses | 2026-12 → 2027-01 e volta; −13 meses; "Novembro 2026"/"março"; `mesDe` | ✅ |
+| M5 | Busca | "joao" acha "João"; "GOL" acha o serviço; "98888-77" e "11 9888" acham "(11) 98888-7777"; "maria" não acha | ✅ |
+
+### Fase 10: backend de orçamentos (O) — Node, planilha simulada, relógio controlado
+| # | Caso | Resultado |
+|---|---|---|
+| O1 | Upsert: mesmo ID → 1 linha ("Criado em" mantido, "Atualizado em" novo); ID novo → linha nova; cada gravação escreve **uma** linha (nunca a aba inteira) | ✅ |
+| O2 | Conflito: B salva com base velha → `conflito:true` + mensagem, a linha fica com os dados de A; ID existente sem base → conflito; mudar situação e excluir com base velha → conflito | ✅ |
+| O3 | Dois aparelhos, orçamentos diferentes intercalados → os dois gravados, nenhum tocou no outro | ✅ |
+| O4 | **Excluído não ressuscita:** A abre, B exclui, A salva → "excluído em outro aparelho", nenhuma linha criada; "salvar como novo" (ID novo, sem base) → linha nova; mudar situação de excluído → recusado; excluir de novo → ok | ✅ |
+| O5 | Fechamentos da 11.6 gravados nas colunas I–T; somas do mês pela lista (8.921,51 · 2.000 · 374,24 · 535,29 · 40 h); cada linha fecha no centavo | ✅ |
+| O6 | Fechamento: soma, taxa, imposto e total que é seu conferidos (±1 centavo); data futura/inexistente/antes de 2000; parcelas 13; forma desconhecida; Pix com taxa; valor 0; nada gravado quando recusa; Fechado só aceita cliente/telefone; Aberto desfaz; Não fechou com motivo | ✅ |
+| O7 | Aba Meses: 1º fechamento de cada mês grava a foto (mês da DATA DO FECHAMENTO); mudar os gastos não muda meses gravados; "Usar meus gastos de hoje" troca só aquele mês; mês futuro recusado | ✅ |
+| O8 | Listar: feitos OU fechados no mês e no anterior; primeiroMes; mês vazio; virada de ano | ✅ |
+| O9 | Leitura tolerante: JSON corrompido ignorado e registrado no log; sem ID / ID ruim ignorados; situação desconhecida → Aberto; Meses inválido → sem foto | ✅ |
+| O10 | `salvarDados` não altera Orçamentos nem Meses (conteúdo idêntico, nenhuma escrita) | ✅ |
+| O11 | Validação rígida: cliente 61, telefone com letra/21, 31 peças, JSON > 30.000, ID, versão, modo, estado, centavos, ajustes e cartões da foto | ✅ |
+| O12 | Desconto padrão: planilha nova com 5; planilha antiga → `parametrosAusentes`; **tela antiga sem a chave mantém o valor da aba**; fora de 0–99 → erro | ✅ |
+| O13 | Roteador: ações novas sem token → "Acesso não autorizado" sem tocar na planilha; funções internas → "Ação desconhecida."; públicas continuam as 5 | ✅ |
+| O14 | Carimbo com milissegundos no fuso de São Paulo; mesmo milissegundo → carimbo diferente | ✅ |
+| O15 | `testarApi()` inteiro passa e não deixa rastro | ✅ |
+| O16 | Proteção "somente aviso" + nota em A1 nas abas Orçamentos e Meses; não duplica (5 pedidos, e mesmo sem a marca); o app continua gravando | ✅ |
+
+### Fase 10: tela (Chrome headless, `Codigo.gs` real rodando na página)
+| Cenário | Resultado |
+|---|---|
+| **Topo** | abas Orçamento \| Resultados (≥ 44 px); Resultados no mês atual; mês vazio com mensagem; › e ‹ desabilitados quando não há para onde ir ✅ |
+| **Salvar** | telefone com letra não salva; "Salvar orçamento" → "Orçamento salvo ✓" + "Salvo · Aberto · João Silva"; copiar sem mudança não chama o servidor; copiar com mudança salva no MESMO registro ("Copiado ✓ · Orçamento salvo ✓"); **sem conexão: copia e mostra em vermelho "Sem conexão: orçamento NÃO foi salvo."**; WhatsApp sem cliente/telefone/situação/termos internos ✅ |
+| **Fechamento** | Pix 1.747,27 → 811,66; Débito 1.723,61 → 765,81; 5x 1.839,23 → 758,88; 10x 1.911,40 → 754,55; valor alterado 1.700 → 767,23; detalhes fecham no centavo; valor 0 e data futura bloqueiam; confirmar trava os valores (cliente continua editável); planilha e aba Meses gravadas ✅ |
+| **Situação** | Voltar para Aberto com confirmação ("O fechamento de R$ 1.747,27 será desfeito."); Não fechou com motivo ✅ |
+| **Foto × recalcular** | gastos mudam → orçamento continua com os valores do dia + "Valores de …"; "Recalcular" → sobra 780,90 sem gravar; salvar grava a foto nova ✅ |
+| **Dois aparelhos** | conflito → "Esse orçamento foi alterado em outro aparelho." → "Ver a versão nova" carrega a do outro; excluído em outro aparelho → recusado, não ressuscita → "Salvar as minhas como novo" cria ID novo ✅ |
+| **Lista** | busca por cliente, telefone (só números) e serviço; filtros; Excluir + DESFAZER (nada enviado); sem desfazer, o pedido vai depois de 6 s; rascunho não salvo pergunta antes de abrir outro ("Salvar e abrir"); Duplicar; fechar pela lista volta para a lista; `visibilitychange` atualiza ✅ |
+| **PIN** | Resultados pede o PIN ("Resultados protegidos"); o desbloqueio vale para a engrenagem; mais de 5 min em segundo plano → pede de novo ✅ |
+| **Mês da 11.6** | "Sim. Sobraram R$ 2.011,98" · "Em parte: R$ 2.011,98 de R$ 3.000,00 (67%)" · "− R$ 988,02" âmbar · "Total que é seu no mês: R$ 2.011,98" · comparação "↑ R$ 1.421,51 (19%) · sobra ↑ R$ 511,98" · 8 · 5 fecharam · 2 não fecharam · 1 em aberto · 63% · dinheiro 8.921,51 / 2.000,00 / 374,24 / 535,29 · 40 de 130 horas — 31%; mês anterior −1.500,00 ✅ |
+| **Mês positivo** (casa 1.500) | "Sim, toda: R$ 1.500,00" · sobra R$ 511,98 verde ✅ |
+| **Desconto padrão** | planilha antiga + aparelho 8% → grava 8 e apaga a chave; planilha 5% + aparelho 7% → planilha vence, avisa e apaga; campo em Outros ajustes (some de "Este aparelho"); 150 → erro; 7,5 gravado; orçamento novo usa 7,5 ✅ |
 
 ## Divergências conhecidas
 

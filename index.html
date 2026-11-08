@@ -34,12 +34,19 @@
     <symbol id="i-engrenagem" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></symbol>
     <symbol id="i-voltar" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></symbol>
     <symbol id="i-cadeado" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+    <symbol id="i-salvar" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-busca" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></symbol>
   </defs>
 </svg>
 
 <header class="topo">
   <div class="topo-linha">
     <div class="marca"><img class="logo" id="logo" alt="CliniCar Motors Tech" src="icons/logo-clinicar.jpg" width="52" height="52"><span>Preço Certo</span></div>
+    <nav class="abas-topo" id="abas-topo" role="tablist" aria-label="Telas do app">
+      <button type="button" class="aba-topo" role="tab" id="aba-orcamento" aria-selected="true" aria-controls="tela-orcamento">Orçamento</button>
+      <button type="button" class="aba-topo" role="tab" id="aba-resultados" aria-selected="false" aria-controls="tela-resultados">Resultados</button>
+    </nav>
     <div class="topo-acoes">
       <button type="button" id="status" class="status" disabled>Carregando…</button>
       <button type="button" class="btn-engrenagem" id="btn-engrenagem" aria-label="Configurações" title="Configurações">
@@ -95,10 +102,32 @@
       <div class="coluna">
         <div class="card">
           <h2 class="card-titulo">Serviço</h2>
+          <!-- Orçamento salvo: situação, cliente, de quando são os valores -->
+          <div class="faixa-vinculo" id="faixa-vinculo" hidden>
+            <span id="vinculo-texto"></span>
+            <button type="button" class="link link-inline" id="btn-ver-resultados">Ver em Resultados</button>
+          </div>
+          <p class="ajuda vinculo-foto" id="vinculo-foto" hidden>
+            <span id="vinculo-foto-texto"></span>
+            <button type="button" class="link link-inline" id="btn-recalcular">Recalcular com os valores de hoje</button>
+          </p>
+          <div class="faixa faixa-discreta" id="faixa-travado" hidden></div>
+          <div class="campos-desconto">
+            <div class="campo">
+              <label for="orc-cliente">Cliente (opcional)</label>
+              <div class="entrada"><input id="orc-cliente" type="text" data-orc="cliente" maxlength="60" autocomplete="off" placeholder="Ex.: João Silva"></div>
+              <p class="erro"></p>
+            </div>
+            <div class="campo">
+              <label for="orc-telefone">Telefone (opcional)</label>
+              <div class="entrada"><input id="orc-telefone" type="text" inputmode="tel" data-orc="telefone" maxlength="20" autocomplete="off" placeholder="(11) 98888-7777"></div>
+              <p class="erro"></p>
+            </div>
+          </div>
           <div class="campo">
             <label for="orc-descricao">Qual serviço / veículo?</label>
             <div class="entrada">
-              <input id="orc-descricao" type="text" data-orc="descricao" maxlength="120" autocomplete="off" placeholder="Ex.: Troca de embreagem – Gol 2015">
+              <input id="orc-descricao" type="text" data-orc="descricao" maxlength="100" autocomplete="off" placeholder="Ex.: Troca de embreagem – Gol 2015">
             </div>
           </div>
 
@@ -265,6 +294,12 @@
           <button type="button" class="btn btn-fantasma" id="btn-compartilhar" hidden>
             <svg class="ic" aria-hidden="true"><use href="#i-compartilhar"/></svg>Compartilhar
           </button>
+          <button type="button" class="btn btn-fantasma" id="btn-salvar-orc">
+            <svg class="ic" aria-hidden="true"><use href="#i-salvar"/></svg>Salvar orçamento
+          </button>
+          <button type="button" class="btn btn-fantasma" id="btn-mudar-situacao" hidden>
+            <svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Mudar situação
+          </button>
         </div>
 
         <button type="button" class="btn btn-fantasma" id="btn-novo">
@@ -274,10 +309,132 @@
     </div>
   </section>
 
+  <!-- ============================ RESULTADOS (mês a mês) ============================ -->
+  <section id="tela-resultados" hidden aria-labelledby="mes-titulo">
+    <div class="nav-mes">
+      <button type="button" class="btn-mes" id="mes-anterior" aria-label="Mês anterior">‹</button>
+      <h1 class="mes-titulo" id="mes-titulo"></h1>
+      <button type="button" class="btn-mes" id="mes-seguinte" aria-label="Próximo mês">›</button>
+    </div>
+    <p class="ajuda centro" id="res-status" role="status"></p>
+    <div class="dica" id="res-vazio" hidden></div>
+
+    <div class="grade-2" id="res-conteudo" hidden>
+      <div class="coluna">
+        <div class="card" id="card-mes">
+          <div class="titulo-valor" id="titulo-mes-real">Resultado real do mês</div>
+          <div id="mes-sem-foto" hidden>
+            <p class="ajuda">Sem gastos gravados para este mês.</p>
+          </div>
+          <div id="mes-com-foto">
+            <div class="resumo-linha mes-pergunta"><span>A oficina se pagou?</span><strong id="mes-oficina"></strong></div>
+            <div class="resumo-linha mes-pergunta"><span>Sua casa foi coberta?</span><strong id="mes-casa"></strong></div>
+            <div class="valor-grande" id="mes-sobra-linha"><span class="rotulo-sobra">Sobra extra do mês:</span> <span id="mes-sobra"></span></div>
+            <p class="total-seu" id="mes-total-seu"></p>
+            <p class="pequeno" id="mes-comparacao" hidden></p>
+          </div>
+          <hr class="separador">
+          <p class="pequeno" id="mes-gastos"></p>
+          <button type="button" class="link" id="btn-usar-gastos-hoje">Usar meus gastos de hoje neste mês</button>
+        </div>
+
+        <div class="card">
+          <h2 class="card-titulo" id="titulo-contagem">Orçamentos feitos</h2>
+          <p class="contagem" id="mes-contagem"></p>
+          <p class="pequeno" id="mes-taxa-fechamento"></p>
+        </div>
+
+        <div class="card">
+          <h2 class="card-titulo" id="titulo-dinheiro">Dinheiro que entrou</h2>
+          <dl class="detalhes" id="mes-dinheiro"></dl>
+        </div>
+
+        <div class="card">
+          <h2 class="card-titulo" id="titulo-horas">Horas</h2>
+          <p class="contagem" id="mes-horas"></p>
+          <div class="barra" aria-hidden="true"><div class="barra-cheia" id="mes-horas-barra"></div></div>
+        </div>
+      </div>
+
+      <div class="coluna">
+        <div class="card">
+          <div class="entrada com-prefixo busca">
+            <span class="prefixo"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-busca"/></svg></span>
+            <input id="res-busca" type="search" autocomplete="off" placeholder="Buscar cliente, telefone ou serviço" aria-label="Buscar cliente, telefone ou serviço">
+          </div>
+          <div class="chips" id="res-filtros" role="radiogroup" aria-label="Situação">
+            <button type="button" class="chip" role="radio" data-filtro="todos" aria-checked="true">Todos</button>
+            <button type="button" class="chip" role="radio" data-filtro="Aberto" aria-checked="false">Aberto</button>
+            <button type="button" class="chip" role="radio" data-filtro="Fechado" aria-checked="false">Fechado</button>
+            <button type="button" class="chip" role="radio" data-filtro="Não fechou" aria-checked="false">Não fechou</button>
+          </div>
+        </div>
+        <div id="res-lista" class="lista-orc"></div>
+        <p class="ajuda centro" id="res-lista-vazia" hidden>Nenhum orçamento com esse filtro.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ FECHAR ORÇAMENTO ============================ -->
+  <section id="tela-fechar" class="config" hidden aria-labelledby="fechar-titulo">
+    <div class="config-topo">
+      <button type="button" class="btn-voltar" id="btn-voltar-fechar">
+        <svg class="ic" aria-hidden="true"><use href="#i-voltar"/></svg>Voltar
+      </button>
+      <h1 class="config-titulo" id="fechar-titulo">Fechar orçamento</h1>
+      <p class="ajuda" id="fechar-quem"></p>
+    </div>
+    <div class="grade-2">
+      <div class="coluna">
+        <div class="card">
+          <p class="rotulo" style="margin-top:0">Como o cliente vai pagar?</p>
+          <div class="chips" id="fechar-formas" role="radiogroup" aria-label="Como o cliente vai pagar"></div>
+          <div id="fechar-bloco-parcelas" hidden>
+            <p class="rotulo">Parcelas</p>
+            <div class="chips" id="fechar-parcelas" role="radiogroup" aria-label="Parcelas"></div>
+          </div>
+          <div id="fechar-bloco-cartao" hidden>
+            <p class="rotulo">Cartão</p>
+            <div class="chips" id="fechar-cartoes" role="radiogroup" aria-label="Cartão"></div>
+          </div>
+          <div class="campo" style="margin-top:16px">
+            <label for="fechar-valor">Valor combinado</label>
+            <div class="entrada com-prefixo">
+              <span class="prefixo">R$</span>
+              <input id="fechar-valor" class="num" type="text" inputmode="decimal" data-formato="dinheiro" autocomplete="off">
+            </div>
+            <p class="erro"></p>
+            <p class="ajuda" id="fechar-valor-ajuda"></p>
+          </div>
+          <div class="campo">
+            <label for="fechar-data">Data do fechamento</label>
+            <div class="entrada"><input id="fechar-data" type="date"></div>
+            <p class="erro"></p>
+          </div>
+        </div>
+      </div>
+      <div class="coluna">
+        <div class="card" id="card-fechamento">
+          <div class="titulo-valor" id="titulo-fechamento">Neste fechamento</div>
+          <div class="valor-grande" id="fech-sobra-linha"><span class="rotulo-sobra">Sobra extra:</span> <span id="fech-sobra"></span></div>
+          <p class="total-seu" id="fech-total-seu" hidden></p>
+          <p class="alerta" id="fech-alerta" hidden></p>
+          <details>
+            <summary>Ver detalhes<svg class="ic" aria-hidden="true"><use href="#i-seta"/></svg></summary>
+            <dl class="detalhes" id="fech-detalhes"></dl>
+          </details>
+        </div>
+        <button type="button" class="btn btn-primario" id="btn-confirmar-fechamento">
+          <svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Confirmar fechamento
+        </button>
+      </div>
+    </div>
+  </section>
+
   <!-- ============================ PIN (antes de abrir Configurações) ============================ -->
   <section id="tela-pin" class="conectar" hidden>
     <div class="card">
-      <div class="titulo-valor" style="justify-content:center"><svg class="ic" aria-hidden="true"><use href="#i-cadeado"/></svg>Configurações protegidas</div>
+      <div class="titulo-valor" style="justify-content:center"><svg class="ic" aria-hidden="true"><use href="#i-cadeado"/></svg><span id="pin-titulo">Configurações protegidas</span></div>
       <div class="campo" style="margin-top:16px">
         <label for="pin-entrada">Digite o PIN deste aparelho</label>
         <div class="entrada"><input id="pin-entrada" class="num pin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></div>
@@ -450,6 +607,15 @@
               <p class="ajuda">Cada orçamento novo começa com este número.</p>
             </div>
             <div class="campo">
+              <label for="p-descontoAVistaPadrao">Desconto à vista padrão</label>
+              <div class="entrada com-sufixo">
+                <input id="p-descontoAVistaPadrao" class="num" type="text" inputmode="decimal" data-param="descontoAVistaPadrao" autocomplete="off">
+                <span class="sufixo">%</span>
+              </div>
+              <p class="erro"></p>
+              <p class="ajuda">Vale para todos os aparelhos ligados a esta planilha. Cada orçamento novo começa com este número.</p>
+            </div>
+            <div class="campo">
               <label for="p-impostoPercentual">Imposto</label>
               <div class="entrada com-sufixo">
                 <input id="p-impostoPercentual" class="num" type="text" inputmode="decimal" data-param="impostoPercentual" autocomplete="off">
@@ -487,17 +653,6 @@
       <div class="resumo-linha" style="margin-top:8px"><span>Versão do app</span><strong id="aparelho-versao">—</strong></div>
 
       <hr class="separador">
-      <div class="campo">
-        <label for="desconto-padrao">Desconto à vista padrão</label>
-        <div class="entrada com-sufixo">
-          <input id="desconto-padrao" class="num" type="text" inputmode="decimal" autocomplete="off">
-          <span class="sufixo">%</span>
-        </div>
-        <p class="erro"></p>
-        <p class="ajuda">Vale só para este aparelho. Cada orçamento novo começa com este número.</p>
-      </div>
-
-      <hr class="separador">
       <div class="linha-pin">
         <div>
           <p class="rotulo" id="rotulo-pin" style="margin:0">Proteger configurações com PIN</p>
@@ -521,7 +676,7 @@
         <button type="button" class="btn btn-primario" id="btn-pin-salvar">Salvar PIN</button>
         <button type="button" class="btn btn-fantasma" id="btn-pin-cancelar-novo">Cancelar</button>
       </div>
-      <p class="ajuda">Não é uma senha forte: serve só para evitar que alguém mexa nos gastos e ajustes sem querer. Vale só para este aparelho.</p>
+      <p class="ajuda">Não é uma senha forte: serve só para evitar que alguém mexa nos gastos e ajustes ou veja os resultados sem querer. Vale só para este aparelho.</p>
 
       <hr class="separador">
       <button type="button" class="btn btn-fantasma" id="btn-instalar" hidden style="margin-top:16px">Instalar app</button>
@@ -559,6 +714,37 @@
     <p class="ajuda" style="margin:0 0 12px">Toque e segure no texto → Selecionar tudo → Copiar. Depois cole no WhatsApp.</p>
     <textarea id="texto-copia" readonly></textarea>
     <button type="button" class="btn btn-fantasma" id="btn-fechar-copia" style="margin-top:12px">Fechar</button>
+  </div>
+</div>
+
+<!-- Pergunta com botões (orçamento não salvo, conflito, excluído, confirmações) -->
+<div id="dialogo" class="modal" role="dialog" aria-modal="true" aria-labelledby="dialogo-titulo" hidden>
+  <div class="modal-corpo">
+    <p id="dialogo-titulo" class="dialogo-titulo"></p>
+    <p id="dialogo-texto" class="ajuda" style="margin:0 0 12px"></p>
+    <div id="dialogo-botoes" class="dialogo-botoes"></div>
+  </div>
+</div>
+
+<!-- Mudar situação (no orçamento salvo e na lista de Resultados) -->
+<div id="menu-situacao" class="modal" role="dialog" aria-modal="true" aria-labelledby="menu-situacao-titulo" hidden>
+  <div class="modal-corpo">
+    <p id="menu-situacao-titulo" class="dialogo-titulo">Mudar situação</p>
+    <p id="menu-situacao-quem" class="ajuda" style="margin:0 0 12px"></p>
+    <div id="menu-situacao-botoes" class="dialogo-botoes"></div>
+    <div id="bloco-motivo" hidden>
+      <div class="campo">
+        <label for="motivo-texto">Motivo (opcional)</label>
+        <div class="entrada"><input id="motivo-texto" type="text" maxlength="80" autocomplete="off"></div>
+      </div>
+      <div class="chips" id="motivo-sugestoes">
+        <button type="button" class="chip" data-motivo="Achou caro">Achou caro</button>
+        <button type="button" class="chip" data-motivo="Vai pensar">Vai pensar</button>
+        <button type="button" class="chip" data-motivo="Fez em outro lugar">Fez em outro lugar</button>
+      </div>
+      <button type="button" class="btn btn-primario" id="btn-confirmar-nao-fechou">Confirmar: não fechou</button>
+    </div>
+    <button type="button" class="btn btn-fantasma" id="btn-fechar-menu-situacao">Cancelar</button>
   </div>
 </div>
 

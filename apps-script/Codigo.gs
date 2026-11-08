@@ -4,12 +4,24 @@
  *
  * A tela do app fica no GitHub Pages; este script só lê e grava a planilha.
  * Implantação: App da Web · Executar como: Eu · Quem pode acessar: Qualquer pessoa.
- * Fonte da verdade das regras: docs/DESENHO.md
+ * Fonte da verdade das regras: docs/DESENHO.md (seções 5 e 11)
  *
  * PROTOCOLO (só POST; corpo JSON enviado como text/plain, para o navegador não fazer preflight de CORS):
- *   { token, action: "obterDados" }                    → { ok:true, gastos, parametros, cartoes, atualizadoEm, urlPlanilha }
+ *   { token, action: "obterDados" }                    → { ok:true, gastos, parametros, cartoes, atualizadoEm, urlPlanilha,
+ *                                                          parametrosAusentes }
  *   { token, action: "salvarDados", dados: {…} }       → { ok:true, atualizadoEm }
  *   { token, action: "obterTaxasPadraoVisa" }          → { ok:true, taxas: { debito, p1 … p12 } }
+ *   Orçamentos (um registro por vez; NUNCA regrava a aba inteira):
+ *   { token, action: "listarOrcamentos", mes }         → { ok:true, mes, mesAnterior, primeiroMes, orcamentos:[resumo],
+ *                                                          meses:{ mes: foto|null, mesAnterior: foto|null }, gastosHoje }
+ *   { token, action: "obterOrcamento", id }            → { ok:true, orcamento } | { ok:false, excluido:true, erro }
+ *   { token, action: "salvarOrcamento", orcamento }    → { ok:true, id, criadoEm, atualizadoEm, situacao }
+ *   { token, action: "mudarSituacao", id, atualizadoEmBase, situacao, fechamento?, motivo? }
+ *                                                       → { ok:true, atualizadoEm, situacao, mesGravado }
+ *   { token, action: "excluirOrcamento", id, atualizadoEmBase } → { ok:true } | { ok:true, jaExcluido:true }
+ *   { token, action: "usarGastosDeHojeNoMes", mes }    → { ok:true, foto }
+ *   conflito (outro aparelho salvou antes)              → { ok:false, conflito:true, erro, atual: resumo }
+ *   excluído em outro aparelho                          → { ok:false, excluido:true, erro }
  *   qualquer erro                                       → { ok:false, erro: "mensagem em português" }
  *   GET                                                 → { ok:false, erro: "Acesso não autorizado" }
  *
@@ -20,13 +32,18 @@
  *   As três últimas são para rodar À MÃO no editor (menu "Executar") e por isso não podem terminar em "_"
  *   (funções com "_" são privadas e não aparecem no menu). Isso é seguro porque este projeto NÃO usa
  *   HtmlService: não existe google.script.run, e a ÚNICA porta de entrada externa é o doPost, que só
- *   executa as ações da lista ACOES_ (obterDados, salvarDados, obterTaxasPadraoVisa). Qualquer outro
- *   nome em "action" — inclusive o de uma função pública — recebe "Ação desconhecida.".
+ *   executa as ações da lista ACOES_. Qualquer outro nome em "action" — inclusive o de uma função
+ *   pública — recebe "Ação desconhecida.".
  * - Todas as demais funções terminam em "_" (privadas).
  *
  * Regra geral dos dados: tudo o que obterDados devolve precisa passar em validarDados_() sem erro.
  * Por isso leitura e validação usam os MESMOS limites
- * (LIMITES_PARAMETROS_, LIMITE_TAXA_, LIMITE_VALOR_GASTO_, MAX_CARTOES_, MAX_NOME_CARTAO_).
+ * (LIMITES_PARAMETROS_, LIMITE_TAXA_, LIMITE_VALOR_GASTO_, MAX_CARTOES_, MAX_NOME_CARTAO_ e os MAX_* dos orçamentos).
+ *
+ * CONFLITO ENTRE APARELHOS (orçamentos): o servidor carimba "Atualizado em" (texto com milissegundos).
+ * O aparelho manda o carimbo que leu (atualizadoEmBase): igual → grava; diferente → conflito;
+ * ID que não existe mais, mas com base → "excluído em outro aparelho" (não ressuscita).
+ * Só um ID inédito SEM base vira linha nova.
  *
  * @OnlyCurrentDoc
  */
@@ -49,6 +66,8 @@ var ABA_GASTOS_ = 'Gastos';
 var ABA_PARAMETROS_ = 'Parâmetros';
 var ABA_TAXAS_ = 'Taxas';
 var ABA_TAXAS_ANTIGA_ = 'Taxas (antigo)';
+var ABA_ORCAMENTOS_ = 'Orçamentos';
+var ABA_MESES_ = 'Meses';
 
 var CAB_GASTOS_ = ['Tipo', 'Descrição', 'Valor por mês (R$)'];
 var CAB_PARAMETROS_ = ['Chave', 'Valor'];
@@ -57,6 +76,31 @@ var CAB_PARAMETROS_ = ['Chave', 'Valor'];
 var CAMPOS_TAXA_ = ['debito', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9', 'p10', 'p11', 'p12'];
 var CAB_TAXAS_ = ['Cartão', 'Débito (%)', '1x (%)', '2x (%)', '3x (%)', '4x (%)', '5x (%)', '6x (%)',
   '7x (%)', '8x (%)', '9x (%)', '10x (%)', '11x (%)', '12x (%)'];
+
+/** Aba Orçamentos: colunas A..V (V = Dados em JSON). A..U são escritas pelo servidor a partir do JSON validado. */
+var CAB_ORCAMENTOS_ = ['ID', 'Criado em', 'Atualizado em', 'Cliente', 'Telefone', 'Serviço / veículo', 'Situação',
+  'Valor orçado (à vista)', 'Data do fechamento', 'Forma de pagamento', 'Parcelas', 'Cartão', 'Valor combinado',
+  'Horas', 'Peças pagas', 'Taxa da maquininha', 'Imposto', 'Paga a oficina', 'Vai para a casa', 'Sobra extra',
+  'Motivo', 'Dados (JSON)'];
+var COL_ORC_ = {
+  id: 1, criadoEm: 2, atualizadoEm: 3, cliente: 4, telefone: 5, servico: 6, situacao: 7, valorOrcado: 8,
+  dataFechamento: 9, forma: 10, parcelas: 11, cartao: 12, valorCombinado: 13, horas: 14, pecasPagas: 15,
+  taxa: 16, imposto: 17, pagaOficina: 18, vaiParaCasa: 19, sobra: 20, motivo: 21, dados: 22
+};
+var DINHEIRO_ = '#,##0.00';
+var TEXTO_ = '@';
+/** Formato de cada coluna da aba Orçamentos (datas e IDs em texto, para a planilha não convertê-los). */
+var FORMATOS_ORC_ = [TEXTO_, TEXTO_, TEXTO_, TEXTO_, TEXTO_, TEXTO_, TEXTO_, DINHEIRO_, TEXTO_, TEXTO_, '0', TEXTO_,
+  DINHEIRO_, DINHEIRO_, DINHEIRO_, DINHEIRO_, DINHEIRO_, DINHEIRO_, DINHEIRO_, DINHEIRO_, TEXTO_, TEXTO_];
+
+var CAB_MESES_ = ['Mês', 'Gastos da oficina (R$)', 'Gastos da casa (R$)', 'Horas que você pode cobrar', 'Gravado em', 'Origem'];
+var FORMATOS_MESES_ = [TEXTO_, DINHEIRO_, DINHEIRO_, DINHEIRO_, TEXTO_, TEXTO_];
+var ORIGEM_PRIMEIRO_FECHAMENTO_ = 'Primeiro fechamento';
+var ORIGEM_GASTOS_DE_HOJE_ = 'Usar meus gastos de hoje';
+
+var SITUACOES_ = ['Aberto', 'Fechado', 'Não fechou'];
+var FORMAS_FECHAMENTO_ = { pix: 'Pix/dinheiro', debito: 'Débito', credito: 'Cartão' };
+var ESTADOS_ = ['verde', 'ambar', 'vermelho'];
 
 var TIPOS_GASTO_ = ['Oficina', 'Casa'];
 
@@ -68,6 +112,7 @@ var ORDEM_PARAMETROS_ = [
   'valorHoraCobrado',
   'impostoPercentual',
   'acrescimoPecasPadrao',
+  'descontoAVistaPadrao',
   'parcelasDestaque',
   'nomeOficina'
 ];
@@ -78,9 +123,27 @@ var MAX_NOME_OFICINA_ = 60;
 var MAX_VALOR_ = 1e9;
 var MAX_TAXA_ = 99;
 var MAX_ACRESCIMO_ = 1000;
+var MAX_DESCONTO_ = 99;
 var MAX_CARTOES_ = 12;
 var MAX_NOME_CARTAO_ = 30;
 var ESPERA_LOCK_MS_ = 10000;
+
+/** Limites ÚNICOS dos orçamentos (mesmos valores no app). */
+var MAX_CLIENTE_ = 60;
+var MAX_TELEFONE_ = 20;
+var MAX_MOTIVO_ = 80;
+var MAX_SERVICO_ = 100;
+var MAX_TEXTO_CAMPO_ = 40;
+var MAX_DESCRICAO_PECA_ = 80;
+var MAX_PECAS_ = 30;
+var MAX_JSON_ORCAMENTO_ = 30000;
+var MAX_CENTAVOS_ = 1e11;      // R$ 1 bilhão
+var MAX_HORAS_ = 10000;
+var DATA_MINIMA_ = '2000-01-01';
+var RE_ID_ = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+var RE_TELEFONE_ = /^[0-9 ()+.\-]*$/;
+var RE_MES_ = /^(\d{4})-(0[1-9]|1[0-2])$/;
+var RE_DATA_ = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /**
  * Limites ÚNICOS dos parâmetros numéricos: usados pela leitura (fora do limite → padrão)
@@ -92,9 +155,16 @@ var LIMITES_PARAMETROS_ = {
   horasCobradasPorDia:  { nome: 'Horas que você cobra por dia',    min: 0, max: 24, minExclusivo: true },
   valorHoraCobrado:     { nome: 'Quanto você vai cobrar por hora', min: 0, max: MAX_VALOR_ },
   impostoPercentual:    { nome: 'Imposto (%)',                     min: 0, max: MAX_TAXA_ },
-  acrescimoPecasPadrao: { nome: 'Acréscimo padrão nas peças (%)',  min: 0, max: MAX_ACRESCIMO_ }
+  acrescimoPecasPadrao: { nome: 'Acréscimo padrão nas peças (%)',  min: 0, max: MAX_ACRESCIMO_ },
+  descontoAVistaPadrao: { nome: 'Desconto à vista padrão (%)',     min: 0, max: MAX_DESCONTO_ }
 };
 var PARAMETROS_NUMERICOS_ = Object.keys(LIMITES_PARAMETROS_);
+
+/**
+ * Parâmetros que a tela ANTIGA (de antes da fase 10) não manda. Ausente no salvarDados → mantém o valor da aba.
+ * Sem isso, um celular que ainda não tocou em ATUALIZAR não conseguiria salvar os gastos depois da troca do backend.
+ */
+var PARAMETROS_OPCIONAIS_ = ['descontoAVistaPadrao'];
 
 /** Limite de cada taxa (%) de cada cartão. */
 var LIMITE_TAXA_ = { min: 0, max: MAX_TAXA_ };
@@ -119,9 +189,14 @@ var COLUNAS_BANDEIRAS_ANTIGAS_ = [
 
 var PROP_ATUALIZADO_EM_ = 'atualizadoEm';
 var PROP_TOKEN_ = 'TOKEN';
+var PROP_PROTECAO_ = 'protecaoAvisoV1';
+var AVISO_EDICAO_MANUAL_ = 'Use o app para alterar orçamentos. Editar aqui pode deixar a lista diferente do orçamento.';
 var MSG_SEM_ACESSO_ = 'Acesso não autorizado';
 var MSG_ACAO_DESCONHECIDA_ = 'Ação desconhecida.';
 var MSG_ERRO_INTERNO_ = 'Erro interno no servidor. Tente de novo.';
+var MSG_CONFLITO_ = 'Esse orçamento foi alterado em outro aparelho.';
+var MSG_EXCLUIDO_ = 'Esse orçamento foi excluído em outro aparelho.';
+var MSG_DEFEITO_ = 'Esse orçamento está com defeito na planilha (coluna "Dados"). Ele foi ignorado.';
 
 /** Formato da URL /exec (igual ao validado pelo app em js/config.js). */
 var URL_API_VALIDA_ = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
@@ -162,16 +237,31 @@ var ACOES_ = {
     return dados;
   },
   salvarDados: function (req) {
-    var limpo;
-    try {
-      limpo = validarDados_(req.dados);
-    } catch (e) {
-      throw erroApi_(e.message); // mensagem de validação vai para o usuário
-    }
+    var limpo = comMensagem_(function () { return validarDados_(req.dados); });
     return { ok: true, atualizadoEm: salvarDados_(limpo) };
   },
   obterTaxasPadraoVisa: function () {
     return { ok: true, taxas: obterTaxasPadraoVisa_() };
+  },
+  listarOrcamentos: function (req) {
+    return listarOrcamentos_(validarMes_(req.mes));
+  },
+  obterOrcamento: function (req) {
+    return obterOrcamento_(validarId_(req.id));
+  },
+  salvarOrcamento: function (req) {
+    return salvarOrcamento_(validarPedidoSalvar_(req.orcamento));
+  },
+  mudarSituacao: function (req) {
+    return mudarSituacao_(validarPedidoSituacao_(req));
+  },
+  excluirOrcamento: function (req) {
+    return excluirOrcamento_(validarId_(req.id), validarBase_(req.atualizadoEmBase, true));
+  },
+  usarGastosDeHojeNoMes: function (req) {
+    var mes = validarMes_(req.mes);
+    if (mes > mesDe_(hojeTexto_(Date.now()))) throw erroApi_('Esse mês ainda não chegou.');
+    return { ok: true, foto: gravarFotoDoMes_(mes, ORIGEM_GASTOS_DE_HOJE_, true) };
   }
 };
 
@@ -195,6 +285,16 @@ function erroApi_(mensagem) {
   var e = new Error(mensagem);
   e.api = true;
   return e;
+}
+
+/** Roda uma validação "antiga" (que lança Error comum) e faz a mensagem ir para o usuário. */
+function comMensagem_(fn, prefixo) {
+  try {
+    return fn();
+  } catch (e) {
+    if (e && e.api) throw e;
+    throw erroApi_((prefixo || '') + (e && e.message ? e.message : 'Dados inválidos.'));
+  }
 }
 
 /** Token ausente, errado, ou servidor sem token → "Acesso não autorizado". Não toca na planilha. */
@@ -258,11 +358,16 @@ function trocarToken() {
     'Agora rode gerarLinkDeConfiguracao() e abra o link novo em cada aparelho que deve continuar usando o app.');
 }
 
-/** Teste de ponta a ponta da API, rodando doPost() aqui no editor. Não altera os dados (regrava os mesmos). */
+/**
+ * Teste de ponta a ponta da API, rodando doPost() aqui no editor. Não altera os dados:
+ * regrava os mesmos gastos/ajustes/cartões e cria um orçamento de TESTE (cliente "TESTE testarApi",
+ * fechado em 2000-01) que é apagado no fim, junto com a linha "2000-01" da aba Meses, se foi ele que a criou.
+ */
 function testarApi() {
   var token = obterOuCriarToken_();
   var chamar = function (corpo) { return JSON.parse(doPost({ postData: { contents: corpo } }).getContent()); };
   var json = function (obj) { return JSON.stringify(obj); };
+  var pedir = function (acao, extra) { var c = { token: token, action: acao }; for (var k in extra) c[k] = extra[k]; return chamar(json(c)); };
   var conferir = function (condicao, descricao, r) {
     if (!condicao) throw new Error('FALHOU: ' + descricao + '\nResposta: ' + JSON.stringify(r));
     Logger.log('✓ ' + descricao);
@@ -275,22 +380,94 @@ function testarApi() {
   conferir(r.ok === false && r.erro === MSG_SEM_ACESSO_, 'pedido sem token é recusado', r);
   r = chamar(json({ token: 'token-errado', action: 'obterDados' }));
   conferir(r.ok === false && r.erro === MSG_SEM_ACESSO_, 'token errado é recusado', r);
+  r = chamar(json({ token: 'token-errado', action: 'salvarOrcamento' }));
+  conferir(r.ok === false && r.erro === MSG_SEM_ACESSO_, 'token errado é recusado também nas ações de orçamento', r);
   r = chamar('isto não é json');
   conferir(r.ok === false, 'corpo que não é JSON é recusado', r);
-  ['apagarTudo', 'gerarLinkDeConfiguracao', 'trocarToken', 'testarApi'].forEach(function (acao) {
-    r = chamar(json({ token: token, action: acao }));
+  ['apagarTudo', 'gerarLinkDeConfiguracao', 'trocarToken', 'testarApi', 'salvarOrcamento_', 'gravarFotoDoMes_'].forEach(function (acao) {
+    r = pedir(acao, {});
     conferir(r.ok === false && r.erro === MSG_ACAO_DESCONHECIDA_, 'ação "' + acao + '" não é executada pela API', r);
   });
-  r = chamar(json({ token: token, action: 'obterDados' }));
+  r = pedir('obterDados', {});
   conferir(r.ok === true && Array.isArray(r.cartoes) && r.parametros, 'obterDados devolve os dados', r);
   var atuais = { gastos: r.gastos, parametros: r.parametros, cartoes: r.cartoes };
-  r = chamar(json({ token: token, action: 'salvarDados', dados: atuais }));
+  var antigos = JSON.parse(JSON.stringify(atuais));
+  delete antigos.parametros.descontoAVistaPadrao;
+  r = pedir('salvarDados', { dados: antigos });
+  conferir(r.ok === true, 'salvarDados da tela antiga (sem o desconto padrão) continua funcionando', r);
+  r = pedir('salvarDados', { dados: atuais });
   conferir(r.ok === true && r.atualizadoEm, 'salvarDados regrava os mesmos dados', r);
-  r = chamar(json({ token: token, action: 'salvarDados', dados: { gastos: [], parametros: {}, cartoes: [] } }));
+  r = pedir('salvarDados', { dados: { gastos: [], parametros: {}, cartoes: [] } });
   conferir(r.ok === false && typeof r.erro === 'string' && r.erro !== MSG_ERRO_INTERNO_, 'dados inválidos voltam com mensagem clara', r);
-  r = chamar(json({ token: token, action: 'obterTaxasPadraoVisa' }));
+  r = pedir('obterTaxasPadraoVisa', {});
   conferir(r.ok === true && r.taxas && r.taxas.p5 === 7.57, 'obterTaxasPadraoVisa devolve as taxas', r);
-  Logger.log('Todos os testes da API passaram.');
+
+  // ---- Orçamentos (registro de teste, apagado no fim) ----
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var mesDeTeste = '2000-01';
+  var tinhaMesDeTeste = !!acharLinhaMes_(ss.getSheetByName(ABA_MESES_), mesDeTeste);
+  var id = Utilities.getUuid().toLowerCase();
+  try {
+    var dados = orcamentoDeTeste_(atuais.parametros, atuais.cartoes);
+    r = pedir('salvarOrcamento', { orcamento: { id: id, atualizadoEmBase: null, cliente: 'TESTE testarApi', telefone: '', dados: dados } });
+    conferir(r.ok === true && r.situacao === 'Aberto' && r.atualizadoEm, 'salvarOrcamento cria o orçamento (Aberto)', r);
+    var a1 = r.atualizadoEm;
+    r = pedir('salvarOrcamento', { orcamento: { id: id, atualizadoEmBase: a1, cliente: 'TESTE testarApi 2', telefone: '', dados: dados } });
+    conferir(r.ok === true && r.atualizadoEm !== a1, 'salvar de novo (mesmo ID) atualiza o mesmo registro', r);
+    var a2 = r.atualizadoEm;
+    conferir(contarLinhasDoId_(id) === 1, 'continua 1 linha só para esse ID', null);
+    r = pedir('salvarOrcamento', { orcamento: { id: id, atualizadoEmBase: a1, cliente: 'versão velha', telefone: '', dados: dados } });
+    conferir(r.ok === false && r.conflito === true && r.erro === MSG_CONFLITO_, 'salvar sobre versão mais nova → conflito', r);
+    r = pedir('obterOrcamento', { id: id });
+    conferir(r.ok === true && r.orcamento.cliente === 'TESTE testarApi 2', 'obterOrcamento devolve o registro', r);
+    var imposto = Math.round(10000 * atuais.parametros.impostoPercentual / 100);
+    r = pedir('mudarSituacao', { id: id, atualizadoEmBase: a2, situacao: 'Fechado', fechamento: {
+      forma: 'pix', parcelas: null, cartao: '', taxaPct: 0, valorCombinadoC: 10000, data: '2000-01-15',
+      taxaC: 0, impostoC: imposto, pecasPagarC: 0, pagaOficinaC: 0, vaiParaCasaC: null,
+      sobraC: 10000 - imposto, totalSeuC: null, estado: 'verde' } });
+    conferir(r.ok === true && r.situacao === 'Fechado', 'mudarSituacao → Fechado', r);
+    r = pedir('listarOrcamentos', { mes: mesDeTeste });
+    conferir(r.ok === true && r.meses[mesDeTeste] && r.orcamentos.some(function (o) { return o.id === id && o.valorCombinadoC === 10000; }),
+      'listarOrcamentos traz o fechamento e a foto dos gastos do mês', r);
+    r = pedir('mudarSituacao', { id: id, atualizadoEmBase: r.orcamentos.filter(function (o) { return o.id === id; })[0].atualizadoEm, situacao: 'Aberto' });
+    conferir(r.ok === true && r.situacao === 'Aberto', 'voltar para Aberto desfaz o fechamento', r);
+    r = pedir('mudarSituacao', { id: id, atualizadoEmBase: r.atualizadoEm, situacao: 'Não fechou', motivo: 'Achou caro' });
+    conferir(r.ok === true && r.situacao === 'Não fechou', 'mudarSituacao → Não fechou (com motivo)', r);
+    var a3 = r.atualizadoEm;
+    r = pedir('excluirOrcamento', { id: id, atualizadoEmBase: a3 });
+    conferir(r.ok === true, 'excluirOrcamento apaga o registro', r);
+    r = pedir('salvarOrcamento', { orcamento: { id: id, atualizadoEmBase: a3, cliente: 'ressuscitar?', telefone: '', dados: dados } });
+    conferir(r.ok === false && r.excluido === true && r.erro === MSG_EXCLUIDO_ && contarLinhasDoId_(id) === 0,
+      'salvar um orçamento excluído em outro aparelho é recusado (não ressuscita)', r);
+    r = pedir('obterOrcamento', { id: id });
+    conferir(r.ok === false && r.excluido === true, 'obterOrcamento de um excluído avisa', r);
+  } finally {
+    var linha = acharLinhaOrcamento_(ss.getSheetByName(ABA_ORCAMENTOS_), id);
+    if (linha) ss.getSheetByName(ABA_ORCAMENTOS_).deleteRow(linha);
+    var linhaMes = acharLinhaMes_(ss.getSheetByName(ABA_MESES_), mesDeTeste);
+    if (linhaMes && !tinhaMesDeTeste) ss.getSheetByName(ABA_MESES_).deleteRow(linhaMes);
+  }
+  Logger.log('Todos os testes da API passaram (o orçamento de teste foi apagado).');
+}
+
+/** Dados mínimos e válidos de um orçamento de teste (para o testarApi). */
+function orcamentoDeTeste_(parametros, cartoes) {
+  return {
+    v: 1,
+    entrada: { descricao: 'TESTE testarApi', modo: 'fechado', horasTexto: '', valorTexto: '100', horasFechadoTexto: '',
+      pecasModo: 'acrescimo', pecas: [], pecasPagarTexto: '', pecasCobrarTexto: '', acrescimoTexto: null,
+      descontoTexto: '0', extraTexto: '', bandeira: '' },
+    foto: { em: hojeTexto_(Date.now()), parametros: parametros, gastosOficina: 0, gastosCasa: 0, horasCobradasMes: 0,
+      minimoHoraOficina: 0, minimoHoraCasa: 0, cartoes: cartoes },
+    resultado: { horas: 0, pecasPagarC: 0, pecasCobrarC: 0, aVistaBaseC: 10000, ancora: null, descontoTotal: 0,
+      oferecidoC: 10000, destaques: [], pagaOficinaC: 0, vaiParaCasaC: null, sobraC: 10000, totalSeuC: null,
+      pisoOficinaC: 0, pisoCasaC: 0, estado: 'verde' }
+  };
+}
+
+function contarLinhasDoId_(id) {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABA_ORCAMENTOS_);
+  return lerCorpo_(sh, 1).filter(function (l) { return String(l[0]).trim() === id; }).length;
 }
 
 /** Diz o que falta/está errado nas URLs do topo do arquivo; '' = tudo certo. (Pura, testável.) */
@@ -324,21 +501,27 @@ function gerarToken_() {
 }
 
 // ============================================================
-// Ações (internas)
+// Ações (internas): gastos, ajustes e cartões
 // ============================================================
 
 function obterDados_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ausentes = [];
   return {
     gastos: lerGastos_(ss),
-    parametros: lerParametros_(ss),
+    parametros: lerParametros_(ss, ausentes),
+    parametrosAusentes: ausentes.filter(function (k) { return PARAMETROS_OPCIONAIS_.indexOf(k) >= 0; }),
     cartoes: lerCartoes_(ss),
     atualizadoEm: PropertiesService.getDocumentProperties().getProperty(PROP_ATUALIZADO_EM_),
     urlPlanilha: ss.getUrl()
   };
 }
 
-/** Regrava as 3 abas com dados JÁ validados. Quem chama segura o lock. @return atualizadoEm (ISO) */
+/**
+ * Regrava SÓ as abas Gastos, Parâmetros e Taxas com dados JÁ validados (nunca Orçamentos nem Meses).
+ * Parâmetro opcional ausente (tela antiga) → mantém o valor que já está na aba. Quem chama segura o lock.
+ * @return atualizadoEm (ISO)
+ */
 function salvarDados_(limpo) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
 
@@ -347,6 +530,14 @@ function salvarDados_(limpo) {
   });
   regravarCorpo_(ss.getSheetByName(ABA_GASTOS_), CAB_GASTOS_.length, linhasGastos);
 
+  var faltando = PARAMETROS_OPCIONAIS_.filter(function (k) { return limpo.parametros[k] === undefined; });
+  if (faltando.length) {
+    var ausentesNaAba = [];
+    var naAba = lerParametros_(ss, ausentesNaAba);
+    faltando.forEach(function (k) {
+      if (ausentesNaAba.indexOf(k) < 0) limpo.parametros[k] = naAba[k]; // senão: continua sem a linha (migração depois)
+    });
+  }
   var shParametros = ss.getSheetByName(ABA_PARAMETROS_);
   shParametros.getRange('B:B').setNumberFormat('@');
   regravarCorpo_(shParametros, CAB_PARAMETROS_.length, linhasParametros_(limpo.parametros));
@@ -365,6 +556,679 @@ function obterTaxasPadraoVisa_() {
   var taxas = {};
   CAMPOS_TAXA_.forEach(function (campo, i) { taxas[campo] = TAXAS_VISA_PADRAO_[i]; });
   return taxas;
+}
+
+// ============================================================
+// Ações (internas): orçamentos — um registro por vez
+// ============================================================
+
+/**
+ * Lista do mês: resumos (colunas A–U) dos orçamentos FEITOS ou FECHADOS no mês pedido e no anterior
+ * (o anterior serve para a comparação). O JSON não é devolvido, mas é conferido: linha com JSON
+ * corrompido é ignorada e registrada no log.
+ */
+function listarOrcamentos_(mes) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(ABA_ORCAMENTOS_);
+  var anterior = mesAnterior_(mes);
+  var linhas = lerCorpo_(sh, COL_ORC_.motivo);
+  var escolhidas = [];
+  var primeiroMes = null;
+  linhas.forEach(function (l, i) {
+    var r = resumoDaLinha_(l);
+    if (!r) return;
+    var mesCriado = mesDe_(r.criadoEm);
+    if (mesCriado && (!primeiroMes || mesCriado < primeiroMes)) primeiroMes = mesCriado;
+    var mesFechado = r.situacao === 'Fechado' ? mesDe_(r.dataFechamento) : '';
+    if (mesCriado === mes || mesCriado === anterior || mesFechado === mes || mesFechado === anterior) {
+      escolhidas.push({ linha: i + 2, resumo: r });
+    }
+  });
+
+  // Confere o JSON só das linhas escolhidas (um único bloco de leitura).
+  var orcamentos = [];
+  if (escolhidas.length) {
+    var primeira = escolhidas[0].linha;
+    var ultima = escolhidas[escolhidas.length - 1].linha;
+    var jsons = sh.getRange(primeira, COL_ORC_.dados, ultima - primeira + 1, 1).getValues();
+    escolhidas.forEach(function (e) {
+      if (lerJsonOrcamento_(jsons[e.linha - primeira][0], e.linha, e.resumo.id)) orcamentos.push(e.resumo);
+    });
+  }
+
+  var meses = {};
+  meses[mes] = lerFotoDoMes_(ss, mes);
+  meses[anterior] = lerFotoDoMes_(ss, anterior);
+  return {
+    ok: true,
+    mes: mes,
+    mesAnterior: anterior,
+    primeiroMes: primeiroMes,
+    orcamentos: orcamentos,
+    meses: meses,
+    gastosHoje: gastosDeHoje_(ss)
+  };
+}
+
+function obterOrcamento_(id) {
+  var reg = lerRegistro_(id);
+  if (!reg) return { ok: false, excluido: true, erro: MSG_EXCLUIDO_ };
+  return { ok: true, orcamento: publicoDoRegistro_(reg) };
+}
+
+/**
+ * Upsert por ID com controle de conflito:
+ * - sem base: ID inédito → linha nova "Aberto"; ID que já existe → conflito;
+ * - com base: ID sumiu → "excluído em outro aparelho" (não ressuscita); base diferente → conflito; igual → grava.
+ * Em Fechado/Não fechou só cliente e telefone mudam (a conta e a foto ficam).
+ */
+function salvarOrcamento_(pedido) {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABA_ORCAMENTOS_);
+  var linha = acharLinhaOrcamento_(sh, pedido.id);
+  var agora = Date.now();
+
+  if (!linha) {
+    if (pedido.base !== null) return { ok: false, excluido: true, erro: MSG_EXCLUIDO_ };
+    var novo = {
+      id: pedido.id,
+      criadoEm: dataHoraTexto_(agora),
+      atualizadoEm: carimbo_(agora, ''),
+      cliente: pedido.cliente,
+      telefone: pedido.telefone,
+      dados: pedido.dados
+    };
+    novo.dados.situacao = 'Aberto';
+    novo.dados.fechamento = null;
+    novo.dados.motivo = '';
+    var ultima = Math.max(sh.getLastRow(), 1);
+    escreverRegistro_(sh, ultima + 1, novo);
+    return { ok: true, id: novo.id, criadoEm: novo.criadoEm, atualizadoEm: novo.atualizadoEm, situacao: 'Aberto' };
+  }
+
+  var reg = lerRegistroDaLinha_(sh, linha);
+  if (!reg) throw erroApi_(MSG_DEFEITO_);
+  if (pedido.base === null || pedido.base !== reg.atualizadoEm) return conflito_(reg);
+
+  reg.cliente = pedido.cliente;
+  reg.telefone = pedido.telefone;
+  if (reg.dados.situacao === 'Aberto') {
+    pedido.dados.situacao = 'Aberto';
+    pedido.dados.fechamento = null;
+    pedido.dados.motivo = '';
+    reg.dados = pedido.dados;
+  }
+  reg.atualizadoEm = carimbo_(agora, reg.atualizadoEm);
+  escreverRegistro_(sh, linha, reg);
+  return { ok: true, id: reg.id, criadoEm: reg.criadoEm, atualizadoEm: reg.atualizadoEm, situacao: reg.dados.situacao };
+}
+
+/**
+ * Fechado (com o fechamento já conferido), Aberto (desfaz o fechamento e o motivo) ou Não fechou (com motivo).
+ * O 1º fechamento de um mês grava a foto dos gastos daquele mês na aba Meses.
+ */
+function mudarSituacao_(p) {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABA_ORCAMENTOS_);
+  var linha = acharLinhaOrcamento_(sh, p.id);
+  if (!linha) return { ok: false, excluido: true, erro: MSG_EXCLUIDO_ };
+  var reg = lerRegistroDaLinha_(sh, linha);
+  if (!reg) throw erroApi_(MSG_DEFEITO_);
+  if (p.base !== reg.atualizadoEm) return conflito_(reg);
+
+  var mesGravado = null;
+  if (p.situacao === 'Fechado') {
+    if (reg.dados.situacao === 'Fechado') throw erroApi_('Este orçamento já está fechado. Volte para Aberto antes de fechar de novo.');
+    conferirFechamento_(p.fechamento, reg.dados);
+    reg.dados.fechamento = p.fechamento;
+    reg.dados.motivo = '';
+    var mes = mesDe_(p.fechamento.data);
+    if (!lerFotoDoMes_(SpreadsheetApp.getActiveSpreadsheet(), mes)) {
+      gravarFotoDoMes_(mes, ORIGEM_PRIMEIRO_FECHAMENTO_, false);
+      mesGravado = mes;
+    }
+  } else if (p.situacao === 'Aberto') {
+    reg.dados.fechamento = null;
+    reg.dados.motivo = '';
+  } else {
+    reg.dados.fechamento = null;
+    reg.dados.motivo = p.motivo;
+  }
+  reg.dados.situacao = p.situacao;
+  reg.atualizadoEm = carimbo_(Date.now(), reg.atualizadoEm);
+  escreverRegistro_(sh, linha, reg);
+  return { ok: true, atualizadoEm: reg.atualizadoEm, situacao: p.situacao, mesGravado: mesGravado };
+}
+
+/** Apaga a linha. ID que já não existe → ok (nada a fazer). Base diferente → conflito. */
+function excluirOrcamento_(id, base) {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABA_ORCAMENTOS_);
+  var linha = acharLinhaOrcamento_(sh, id);
+  if (!linha) return { ok: true, jaExcluido: true };
+  var atual = textoCelula_(sh.getRange(linha, COL_ORC_.atualizadoEm).getValue());
+  if (atual !== base) {
+    var reg = lerRegistroDaLinha_(sh, linha);
+    return reg ? conflito_(reg) : { ok: false, conflito: true, erro: MSG_CONFLITO_ };
+  }
+  sh.deleteRow(linha);
+  return { ok: true };
+}
+
+function conflito_(reg) {
+  return { ok: false, conflito: true, erro: MSG_CONFLITO_, atual: resumoDoRegistro_(reg) };
+}
+
+// ---------- Foto dos gastos por mês (aba Meses) ----------
+
+/** Totais de hoje (abas Gastos e Parâmetros), em centavos e horas. */
+function gastosDeHoje_(ss) {
+  var gastos = lerGastos_(ss);
+  var p = lerParametros_(ss, []);
+  var soma = function (tipo) {
+    return gastos.reduce(function (t, g) { return t + (g.tipo === tipo && typeof g.valor === 'number' ? g.valor : 0); }, 0);
+  };
+  return {
+    oficinaC: Math.round(soma('Oficina') * 100),
+    casaC: Math.round(soma('Casa') * 100),
+    horas: Math.round(p.horasCobradasPorDia * p.diasPorSemana * 52 / 12 * 10000) / 10000
+  };
+}
+
+/** Grava (ou, com sobrescrever, troca) a linha do mês com os gastos de hoje. @return a foto gravada */
+function gravarFotoDoMes_(mes, origem, sobrescrever) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(ABA_MESES_);
+  var linha = acharLinhaMes_(sh, mes);
+  if (linha && !sobrescrever) return lerFotoDoMes_(ss, mes);
+  var hoje = gastosDeHoje_(ss);
+  var gravadoEm = dataHoraTexto_(Date.now()).slice(0, 16);
+  var valores = [mes, hoje.oficinaC / 100, hoje.casaC / 100, hoje.horas, gravadoEm, origem];
+  var destino = linha || Math.max(sh.getLastRow(), 1) + 1;
+  sh.getRange(destino, 1, 1, CAB_MESES_.length).setNumberFormats([FORMATOS_MESES_]).setValues([valores]);
+  return { mes: mes, oficinaC: hoje.oficinaC, casaC: hoje.casaC, horas: hoje.horas, gravadoEm: gravadoEm, origem: origem };
+}
+
+/** Foto do mês ou null (sem linha, ou linha inválida). Leitura tolerante. */
+function lerFotoDoMes_(ss, mes) {
+  var sh = ss.getSheetByName(ABA_MESES_);
+  var linha = acharLinhaMes_(sh, mes);
+  if (!linha) return null;
+  var l = sh.getRange(linha, 1, 1, CAB_MESES_.length).getValues()[0];
+  var oficina = lerNumeroBR_(l[1]);
+  var casa = lerNumeroBR_(l[2]);
+  var horas = lerNumeroBR_(l[3]);
+  if (!dentroDoLimite_(oficina, LIMITE_VALOR_FOTO_) || !dentroDoLimite_(casa, LIMITE_VALOR_FOTO_) ||
+      !dentroDoLimite_(horas, { min: 0, max: MAX_HORAS_ })) {
+    avisoNoLog_('Meses: linha ' + linha + ' (' + mes + ') ignorada: valores inválidos.');
+    return null;
+  }
+  return { mes: mes, oficinaC: Math.round(oficina * 100), casaC: Math.round(casa * 100), horas: horas,
+    gravadoEm: textoCelula_(l[4]), origem: textoCelula_(l[5]) };
+}
+var LIMITE_VALOR_FOTO_ = { min: 0, max: MAX_VALOR_ * MAX_GASTOS_ };
+
+function acharLinhaMes_(sh, mes) {
+  if (!sh) return 0;
+  var col = lerCorpo_(sh, 1);
+  for (var i = 0; i < col.length; i++) {
+    if (textoMes_(col[i][0]) === mes) return i + 2;
+  }
+  return 0;
+}
+
+// ---------- Linhas da aba Orçamentos ----------
+
+function acharLinhaOrcamento_(sh, id) {
+  if (!sh) return 0;
+  var col = lerCorpo_(sh, 1);
+  for (var i = 0; i < col.length; i++) {
+    if (String(col[i][0]).trim() === id) return i + 2;
+  }
+  return 0;
+}
+
+function lerRegistro_(id) {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABA_ORCAMENTOS_);
+  var linha = acharLinhaOrcamento_(sh, id);
+  if (!linha) return null;
+  var reg = lerRegistroDaLinha_(sh, linha);
+  if (!reg) throw erroApi_(MSG_DEFEITO_);
+  return reg;
+}
+
+/** Registro completo da linha (com o JSON). JSON corrompido → null (e registro no log). */
+function lerRegistroDaLinha_(sh, linha) {
+  var l = sh.getRange(linha, 1, 1, CAB_ORCAMENTOS_.length).getValues()[0];
+  var id = String(l[0]).trim();
+  var dados = lerJsonOrcamento_(l[COL_ORC_.dados - 1], linha, id);
+  if (!dados) return null;
+  return {
+    id: id,
+    criadoEm: textoCelula_(l[COL_ORC_.criadoEm - 1]),
+    atualizadoEm: textoCelula_(l[COL_ORC_.atualizadoEm - 1]),
+    cliente: textoCelula_(l[COL_ORC_.cliente - 1]).slice(0, MAX_CLIENTE_),
+    telefone: textoCelula_(l[COL_ORC_.telefone - 1]).slice(0, MAX_TELEFONE_),
+    dados: dados
+  };
+}
+
+/** JSON da coluna "Dados" → objeto, ou null (registrado no log). */
+function lerJsonOrcamento_(texto, linha, id) {
+  var dados = null;
+  try {
+    dados = JSON.parse(String(texto));
+  } catch (_) {
+    dados = null;
+  }
+  if (!dados || typeof dados !== 'object' || dados.v !== 1 || !dados.entrada || !dados.resultado) {
+    avisoNoLog_('Orçamentos: linha ' + linha + ' ignorada (JSON inválido), ID ' + id);
+    return null;
+  }
+  if (SITUACOES_.indexOf(dados.situacao) < 0) dados.situacao = 'Aberto';
+  return dados;
+}
+
+/** O que obterOrcamento devolve ao app. */
+function publicoDoRegistro_(reg) {
+  return {
+    id: reg.id,
+    criadoEm: reg.criadoEm,
+    atualizadoEm: reg.atualizadoEm,
+    cliente: reg.cliente,
+    telefone: reg.telefone,
+    situacao: reg.dados.situacao,
+    motivo: reg.dados.motivo || '',
+    dados: reg.dados
+  };
+}
+
+/** Linha da planilha (A..V) a partir do registro. As colunas legíveis vêm do JSON. */
+function linhaDoRegistro_(reg) {
+  var d = reg.dados;
+  var f = d.situacao === 'Fechado' ? d.fechamento : null;
+  var reais = function (c) { return c === null || c === undefined ? '' : c / 100; };
+  return [
+    reg.id,
+    reg.criadoEm,
+    reg.atualizadoEm,
+    reg.cliente,
+    reg.telefone,
+    d.entrada.descricao,
+    d.situacao,
+    reais(d.resultado.oferecidoC),
+    f ? f.data : '',
+    f ? FORMAS_FECHAMENTO_[f.forma] : '',
+    f && f.forma !== 'pix' ? f.parcelas : '',
+    f && f.forma !== 'pix' ? (f.cartao || 'Não sei') : '',
+    f ? reais(f.valorCombinadoC) : '',
+    d.resultado.horas,
+    reais(f ? f.pecasPagarC : d.resultado.pecasPagarC),
+    f ? reais(f.taxaC) : '',
+    f ? reais(f.impostoC) : '',
+    f ? reais(f.pagaOficinaC) : '',
+    f ? reais(f.vaiParaCasaC) : '',
+    f ? reais(f.sobraC) : '',
+    d.situacao === 'Não fechou' ? (d.motivo || '') : '',
+    JSON.stringify(d)
+  ];
+}
+
+/** Escreve UMA linha (formatos + valores). Nunca regrava a aba inteira. */
+function escreverRegistro_(sh, linha, reg) {
+  sh.getRange(linha, 1, 1, CAB_ORCAMENTOS_.length).setNumberFormats([FORMATOS_ORC_]).setValues([linhaDoRegistro_(reg)]);
+}
+
+/** Resumo de uma linha lida (colunas A..U), tolerante. Sem ID válido → null. */
+function resumoDaLinha_(l) {
+  var id = String(l[0]).trim();
+  if (!RE_ID_.test(id)) return null;
+  var centavos = function (v) {
+    var n = lerNumeroBR_(v);
+    return n === null || !isFinite(n) || Math.abs(n) * 100 > MAX_CENTAVOS_ ? null : Math.round(n * 100);
+  };
+  var situacao = textoCelula_(l[COL_ORC_.situacao - 1]);
+  if (SITUACOES_.indexOf(situacao) < 0) situacao = 'Aberto';
+  var parcelas = lerNumeroBR_(l[COL_ORC_.parcelas - 1]);
+  var horas = lerNumeroBR_(l[COL_ORC_.horas - 1]);
+  return {
+    id: id,
+    criadoEm: textoCelula_(l[COL_ORC_.criadoEm - 1]),
+    atualizadoEm: textoCelula_(l[COL_ORC_.atualizadoEm - 1]),
+    cliente: textoCelula_(l[COL_ORC_.cliente - 1]).slice(0, MAX_CLIENTE_),
+    telefone: textoCelula_(l[COL_ORC_.telefone - 1]).slice(0, MAX_TELEFONE_),
+    servico: textoCelula_(l[COL_ORC_.servico - 1]).slice(0, MAX_SERVICO_),
+    situacao: situacao,
+    valorOrcadoC: centavos(l[COL_ORC_.valorOrcado - 1]),
+    dataFechamento: situacao === 'Fechado' ? textoData_(l[COL_ORC_.dataFechamento - 1]) : '',
+    forma: textoCelula_(l[COL_ORC_.forma - 1]),
+    parcelas: parcelas !== null && parcelas >= 1 && parcelas <= 12 ? parcelas : null,
+    cartao: textoCelula_(l[COL_ORC_.cartao - 1]).slice(0, MAX_NOME_CARTAO_),
+    valorCombinadoC: centavos(l[COL_ORC_.valorCombinado - 1]),
+    horas: horas !== null && horas >= 0 && horas <= MAX_HORAS_ ? horas : 0,
+    pecasPagarC: centavos(l[COL_ORC_.pecasPagas - 1]),
+    taxaC: centavos(l[COL_ORC_.taxa - 1]),
+    impostoC: centavos(l[COL_ORC_.imposto - 1]),
+    pagaOficinaC: centavos(l[COL_ORC_.pagaOficina - 1]),
+    vaiParaCasaC: centavos(l[COL_ORC_.vaiParaCasa - 1]),
+    sobraC: centavos(l[COL_ORC_.sobra - 1]),
+    motivo: textoCelula_(l[COL_ORC_.motivo - 1]).slice(0, MAX_MOTIVO_)
+  };
+}
+
+/** Resumo (mesmo formato da lista) a partir de um registro completo. */
+function resumoDoRegistro_(reg) {
+  return resumoDaLinha_(linhaDoRegistro_(reg));
+}
+
+// ============================================================
+// Validação dos orçamentos (rígida; a mensagem vai para o usuário)
+// ============================================================
+
+function validarId_(id) {
+  if (typeof id !== 'string' || !RE_ID_.test(id)) throw erroApi_('Orçamento inválido: ID.');
+  return id;
+}
+
+/** atualizadoEmBase: null/ausente (só quando "obrigatorio" é falso) ou texto. */
+function validarBase_(base, obrigatorio) {
+  if (base === null || base === undefined) {
+    if (obrigatorio) throw erroApi_('Pedido inválido.');
+    return null;
+  }
+  if (typeof base !== 'string' || base.length > 40) throw erroApi_('Pedido inválido.');
+  return base;
+}
+
+function validarMes_(mes) {
+  if (typeof mes !== 'string' || !RE_MES_.test(mes)) throw erroApi_('Mês inválido.');
+  return mes;
+}
+
+function validarPedidoSalvar_(o) {
+  if (!o || typeof o !== 'object' || Array.isArray(o)) throw erroApi_('Orçamento inválido.');
+  return {
+    id: validarId_(o.id),
+    base: validarBase_(o.atualizadoEmBase, false),
+    cliente: exigirTexto_(o.cliente, MAX_CLIENTE_, 'Cliente'),
+    telefone: validarTelefone_(o.telefone),
+    dados: validarDadosOrcamento_(o.dados)
+  };
+}
+
+function validarPedidoSituacao_(req) {
+  var p = {
+    id: validarId_(req.id),
+    base: validarBase_(req.atualizadoEmBase, true),
+    situacao: req.situacao,
+    fechamento: null,
+    motivo: ''
+  };
+  if (SITUACOES_.indexOf(p.situacao) < 0) throw erroApi_('Situação inválida.');
+  if (p.situacao === 'Fechado') p.fechamento = validarFechamento_(req.fechamento);
+  if (p.situacao === 'Não fechou') p.motivo = exigirTexto_(req.motivo, MAX_MOTIVO_, 'Motivo');
+  return p;
+}
+
+function validarTelefone_(v) {
+  var t = exigirTexto_(v, MAX_TELEFONE_, 'Telefone');
+  if (!RE_TELEFONE_.test(t)) throw erroApi_('Telefone: use só números, espaço, ( ) + - e ponto.');
+  return t;
+}
+
+/** Texto opcional: null/undefined → ''; aparado; acima do máximo → erro. */
+function exigirTexto_(v, max, nome) {
+  if (v === null || v === undefined) return '';
+  if (typeof v !== 'string') throw erroApi_(nome + ': texto inválido.');
+  var t = v.trim();
+  if (t.length > max) throw erroApi_(nome + ': muito longo (máx. ' + max + ' letras).');
+  return t;
+}
+
+/** Texto de campo da tela (guardado como foi digitado); null permitido quando "podeNulo". */
+function textoDeCampo_(v, max, nome, podeNulo) {
+  if (v === null && podeNulo) return null;
+  if (v === undefined || v === null) return '';
+  if (typeof v !== 'string' || v.length > max) throw erroApi_('Orçamento inválido: ' + nome + '.');
+  return v;
+}
+
+function exigirCentavos_(v, nome, opcoes) {
+  opcoes = opcoes || {};
+  if (v === null && opcoes.nulo) return null;
+  if (typeof v !== 'number' || !isFinite(v) || Math.floor(v) !== v || Math.abs(v) > MAX_CENTAVOS_ || (!opcoes.negativo && v < 0)) {
+    throw erroApi_('Orçamento inválido: ' + nome + '.');
+  }
+  return v;
+}
+
+function exigirNumeroOrc_(v, nome, min, max) {
+  if (typeof v !== 'number' || !isFinite(v) || v < min || v > max) throw erroApi_('Orçamento inválido: ' + nome + '.');
+  return v;
+}
+
+function exigirOpcao_(v, lista, nome) {
+  if (lista.indexOf(v) < 0) throw erroApi_('Orçamento inválido: ' + nome + '.');
+  return v;
+}
+
+/** {v, entrada, foto, resultado} → cópia limpa (só os campos conhecidos). */
+function validarDadosOrcamento_(d) {
+  if (!d || typeof d !== 'object' || Array.isArray(d)) throw erroApi_('Orçamento inválido.');
+  var tamanho;
+  try { tamanho = JSON.stringify(d).length; } catch (_) { throw erroApi_('Orçamento inválido.'); }
+  if (tamanho > MAX_JSON_ORCAMENTO_) throw erroApi_('Orçamento grande demais.');
+  if (d.v !== 1) throw erroApi_('Orçamento inválido: versão.');
+  return {
+    v: 1,
+    entrada: validarEntrada_(d.entrada),
+    foto: validarFoto_(d.foto),
+    resultado: validarResultado_(d.resultado)
+  };
+}
+
+function validarEntrada_(e) {
+  if (!e || typeof e !== 'object' || Array.isArray(e)) throw erroApi_('Orçamento inválido: entrada.');
+  if (!Array.isArray(e.pecas)) throw erroApi_('Orçamento inválido: peças.');
+  if (e.pecas.length > MAX_PECAS_) throw erroApi_('Peças demais: o limite é ' + MAX_PECAS_ + '.');
+  var descricao = exigirTexto_(e.descricao, MAX_SERVICO_, 'Serviço / veículo');
+  return {
+    descricao: descricao,
+    modo: exigirOpcao_(e.modo, ['horas', 'fechado'], 'modo'),
+    horasTexto: textoDeCampo_(e.horasTexto, MAX_TEXTO_CAMPO_, 'horas'),
+    valorTexto: textoDeCampo_(e.valorTexto, MAX_TEXTO_CAMPO_, 'valor'),
+    horasFechadoTexto: textoDeCampo_(e.horasFechadoTexto, MAX_TEXTO_CAMPO_, 'horas'),
+    pecasModo: exigirOpcao_(e.pecasModo, ['acrescimo', 'valor'], 'modo das peças'),
+    pecas: e.pecas.map(function (p, i) {
+      if (!p || typeof p !== 'object') throw erroApi_('Orçamento inválido: peça nº ' + (i + 1) + '.');
+      var desc = textoDeCampo_(p.descricao, MAX_DESCRICAO_PECA_, 'peça nº ' + (i + 1));
+      return {
+        descricao: desc,
+        qtdTexto: textoDeCampo_(p.qtdTexto, MAX_TEXTO_CAMPO_, 'peça nº ' + (i + 1)),
+        valorTexto: textoDeCampo_(p.valorTexto, MAX_TEXTO_CAMPO_, 'peça nº ' + (i + 1))
+      };
+    }),
+    pecasPagarTexto: textoDeCampo_(e.pecasPagarTexto, MAX_TEXTO_CAMPO_, 'peças'),
+    pecasCobrarTexto: textoDeCampo_(e.pecasCobrarTexto, MAX_TEXTO_CAMPO_, 'peças'),
+    acrescimoTexto: textoDeCampo_(e.acrescimoTexto, MAX_TEXTO_CAMPO_, 'acréscimo', true),
+    descontoTexto: textoDeCampo_(e.descontoTexto, MAX_TEXTO_CAMPO_, 'desconto', true),
+    extraTexto: textoDeCampo_(e.extraTexto, MAX_TEXTO_CAMPO_, 'desconto extra'),
+    bandeira: textoDeCampo_(e.bandeira, MAX_NOME_CARTAO_, 'cartão')
+  };
+}
+
+function validarFoto_(f) {
+  if (!f || typeof f !== 'object' || Array.isArray(f)) throw erroApi_('Orçamento inválido: foto.');
+  var limiteGastos = { min: 0, max: MAX_VALOR_ * MAX_GASTOS_ };
+  var num = function (v, nome, lim) {
+    if (!dentroDoLimite_(v, lim)) throw erroApi_('Orçamento inválido: ' + nome + '.');
+    return v;
+  };
+  return {
+    em: textoDeCampo_(f.em, 20, 'data da foto'),
+    parametros: comMensagem_(function () { return validarParametros_(f.parametros); }, 'Orçamento inválido (ajustes): '),
+    gastosOficina: num(f.gastosOficina, 'gastos da oficina', limiteGastos),
+    gastosCasa: num(f.gastosCasa, 'gastos da casa', limiteGastos),
+    horasCobradasMes: num(f.horasCobradasMes, 'horas do mês', { min: 0, max: MAX_HORAS_ }),
+    minimoHoraOficina: num(f.minimoHoraOficina, 'mínimo por hora', limiteGastos),
+    minimoHoraCasa: num(f.minimoHoraCasa, 'mínimo por hora', limiteGastos),
+    cartoes: comMensagem_(function () { return validarCartoes_(f.cartoes); }, 'Orçamento inválido (cartões): ')
+  };
+}
+
+function validarOpcaoGravada_(o, nome) {
+  if (!o || typeof o !== 'object') throw erroApi_('Orçamento inválido: ' + nome + '.');
+  return {
+    parcelas: exigirNumeroOrc_(o.parcelas, nome, 1, 12),
+    totalC: exigirCentavos_(o.totalC, nome),
+    parcelaC: exigirCentavos_(o.parcelaC, nome)
+  };
+}
+
+function validarResultado_(r) {
+  if (!r || typeof r !== 'object' || Array.isArray(r)) throw erroApi_('Orçamento inválido: resultado.');
+  if (!Array.isArray(r.destaques) || r.destaques.length > 12) throw erroApi_('Orçamento inválido: parcelas em destaque.');
+  var limpo = {
+    horas: exigirNumeroOrc_(r.horas, 'horas', 0, MAX_HORAS_),
+    pecasPagarC: exigirCentavos_(r.pecasPagarC, 'peças pagas'),
+    pecasCobrarC: exigirCentavos_(r.pecasCobrarC, 'peças cobradas'),
+    aVistaBaseC: exigirCentavos_(r.aVistaBaseC, 'à vista'),
+    ancora: r.ancora === null ? null : validarOpcaoGravada_(r.ancora, 'cartão em destaque'),
+    descontoTotal: exigirNumeroOrc_(r.descontoTotal, 'desconto', 0, MAX_DESCONTO_),
+    oferecidoC: exigirCentavos_(r.oferecidoC, 'à vista oferecido'),
+    destaques: r.destaques.map(function (o) { return validarOpcaoGravada_(o, 'parcelas em destaque'); }),
+    pagaOficinaC: exigirCentavos_(r.pagaOficinaC, 'oficina'),
+    vaiParaCasaC: exigirCentavos_(r.vaiParaCasaC, 'casa', { nulo: true }),
+    sobraC: exigirCentavos_(r.sobraC, 'sobra extra', { negativo: true }),
+    totalSeuC: exigirCentavos_(r.totalSeuC, 'total que é seu', { nulo: true, negativo: true }),
+    pisoOficinaC: exigirCentavos_(r.pisoOficinaC, 'piso'),
+    pisoCasaC: exigirCentavos_(r.pisoCasaC, 'piso'),
+    estado: exigirOpcao_(r.estado, ESTADOS_, 'estado')
+  };
+  if ((limpo.vaiParaCasaC === null) !== (limpo.totalSeuC === null)) throw erroApi_('Orçamento inválido: total que é seu.');
+  return limpo;
+}
+
+/** Forma, valor e data do fechamento + as contas (a conferência com a foto fica em conferirFechamento_). */
+function validarFechamento_(f) {
+  if (!f || typeof f !== 'object' || Array.isArray(f)) throw erroApi_('Fechamento inválido.');
+  var forma = f.forma;
+  if (!FORMAS_FECHAMENTO_.hasOwnProperty(forma)) throw erroApi_('Fechamento inválido: forma de pagamento.');
+  var parcelas = null;
+  if (forma === 'debito') parcelas = 1;
+  if (forma === 'credito') parcelas = exigirNumeroOrc_(f.parcelas, 'parcelas', 1, 12);
+  if (forma === 'credito' && Math.floor(parcelas) !== parcelas) throw erroApi_('Fechamento inválido: parcelas.');
+  var limpo = {
+    forma: forma,
+    parcelas: parcelas,
+    cartao: forma === 'pix' ? '' : exigirTexto_(f.cartao, MAX_NOME_CARTAO_, 'Cartão'),
+    taxaPct: forma === 'pix' ? 0 : exigirNumeroOrc_(f.taxaPct, 'taxa', 0, MAX_TAXA_),
+    valorCombinadoC: exigirCentavos_(f.valorCombinadoC, 'valor combinado'),
+    data: validarDataFechamento_(f.data),
+    taxaC: exigirCentavos_(f.taxaC, 'taxa da maquininha'),
+    impostoC: exigirCentavos_(f.impostoC, 'imposto'),
+    pecasPagarC: exigirCentavos_(f.pecasPagarC, 'peças pagas'),
+    pagaOficinaC: exigirCentavos_(f.pagaOficinaC, 'oficina'),
+    vaiParaCasaC: exigirCentavos_(f.vaiParaCasaC, 'casa', { nulo: true }),
+    sobraC: exigirCentavos_(f.sobraC, 'sobra extra', { negativo: true }),
+    totalSeuC: exigirCentavos_(f.totalSeuC, 'total que é seu', { nulo: true, negativo: true }),
+    estado: exigirOpcao_(f.estado, ESTADOS_, 'estado')
+  };
+  if (forma === 'pix' && f.taxaPct !== undefined && f.taxaPct !== 0) throw erroApi_('Fechamento inválido: Pix não tem taxa.');
+  if (limpo.valorCombinadoC <= 0) throw erroApi_('Valor combinado: deve ser maior que zero.');
+  var casa = limpo.vaiParaCasaC === null ? 0 : limpo.vaiParaCasaC;
+  if (limpo.valorCombinadoC - limpo.taxaC - limpo.impostoC - limpo.pecasPagarC - limpo.pagaOficinaC - casa !== limpo.sobraC) {
+    throw erroApi_('Fechamento com contas que não batem. Recarregue o app e tente de novo.');
+  }
+  if ((limpo.vaiParaCasaC === null) !== (limpo.totalSeuC === null) ||
+      (limpo.totalSeuC !== null && limpo.totalSeuC !== limpo.vaiParaCasaC + limpo.sobraC)) {
+    throw erroApi_('Fechamento com contas que não batem. Recarregue o app e tente de novo.');
+  }
+  return limpo;
+}
+
+/** Taxa e imposto do fechamento conferem com o valor combinado e o imposto da foto (±1 centavo). */
+function conferirFechamento_(f, dados) {
+  var impostoPct = dados.foto && dados.foto.parametros ? dados.foto.parametros.impostoPercentual : 0;
+  var perto = function (c, exato) { return Math.abs(c - exato) <= 1; };
+  if (!perto(f.taxaC, f.valorCombinadoC * f.taxaPct / 100) || !perto(f.impostoC, f.valorCombinadoC * impostoPct / 100) ||
+      f.pecasPagarC !== dados.resultado.pecasPagarC) {
+    throw erroApi_('Fechamento com contas que não batem. Recarregue o app e tente de novo.');
+  }
+}
+
+/** "aaaa-mm-dd" válida, de 2000-01-01 até amanhã (folga de fuso). */
+function validarDataFechamento_(v) {
+  var m = typeof v === 'string' ? RE_DATA_.exec(v) : null;
+  if (!m) throw erroApi_('Data do fechamento inválida.');
+  var d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  if (d.getUTCFullYear() !== Number(m[1]) || d.getUTCMonth() + 1 !== Number(m[2]) || d.getUTCDate() !== Number(m[3])) {
+    throw erroApi_('Data do fechamento inválida.');
+  }
+  if (v < DATA_MINIMA_) throw erroApi_('Data do fechamento inválida.');
+  if (v > hojeTexto_(Date.now() + 24 * 3600 * 1000)) throw erroApi_('A data do fechamento não pode ser no futuro.');
+  return v;
+}
+
+// ============================================================
+// Datas e carimbos (fuso do script: America/Sao_Paulo)
+// ============================================================
+
+function fuso_() {
+  return Session.getScriptTimeZone() || 'America/Sao_Paulo';
+}
+
+function dataHoraTexto_(ms) {
+  return Utilities.formatDate(new Date(ms), fuso_(), 'yyyy-MM-dd HH:mm:ss');
+}
+
+function hojeTexto_(ms) {
+  return Utilities.formatDate(new Date(ms), fuso_(), 'yyyy-MM-dd');
+}
+
+/** Carimbo de "Atualizado em" (com milissegundos), sempre diferente do anterior. */
+function carimbo_(ms, anterior) {
+  var t = Utilities.formatDate(new Date(ms), fuso_(), 'yyyy-MM-dd HH:mm:ss.SSS');
+  while (t === anterior) {
+    ms += 1;
+    t = Utilities.formatDate(new Date(ms), fuso_(), 'yyyy-MM-dd HH:mm:ss.SSS');
+  }
+  return t;
+}
+
+/** "2026-11-07…" → "2026-11"; outro texto → ''. */
+function mesDe_(texto) {
+  var m = /^(\d{4}-\d{2})/.exec(String(texto || ''));
+  return m && RE_MES_.test(m[1]) ? m[1] : '';
+}
+
+function mesAnterior_(mes) {
+  var m = RE_MES_.exec(mes);
+  var ano = Number(m[1]);
+  var n = Number(m[2]) - 1;
+  if (n === 0) { n = 12; ano -= 1; }
+  return ano + '-' + (n < 10 ? '0' : '') + n;
+}
+
+/** Célula → texto (Date vira "aaaa-mm-dd hh:mm:ss", caso alguém mude o formato da coluna). */
+function textoCelula_(v) {
+  if (v === null || v === undefined) return '';
+  if (Object.prototype.toString.call(v) === '[object Date]') return isNaN(v.getTime()) ? '' : dataHoraTexto_(v.getTime());
+  return String(v).trim();
+}
+
+/** Célula de data → "aaaa-mm-dd" ou ''. */
+function textoData_(v) {
+  var t = textoCelula_(v).slice(0, 10);
+  return RE_DATA_.test(t) ? t : '';
+}
+
+/** Célula do mês → "aaaa-mm" ou ''. */
+function textoMes_(v) {
+  var t = textoCelula_(v).slice(0, 7);
+  return RE_MES_.test(t) ? t : '';
+}
+
+function avisoNoLog_(msg) {
+  console.warn(msg);
+  Logger.log(msg);
 }
 
 // ============================================================
@@ -393,6 +1257,40 @@ function configurarPlanilha_() {
 
   migrarTaxasAntigas_(ss);
   garantirAba_(ss, ABA_TAXAS_, CAB_TAXAS_, linhasCartoes_(cartoesPadrao_()), formatarAbaTaxas_);
+
+  garantirAba_(ss, ABA_ORCAMENTOS_, CAB_ORCAMENTOS_, [], function (sh) {
+    sh.setColumnWidth(1, 90);
+    sh.setColumnWidths(2, 2, 150);
+    sh.setColumnWidth(6, 220);
+    sh.setColumnWidth(22, 120);
+  });
+
+  garantirAba_(ss, ABA_MESES_, CAB_MESES_, [], function (sh) {
+    sh.setColumnWidths(1, CAB_MESES_.length, 150);
+  });
+
+  protegerComAviso_(ss);
+}
+
+/**
+ * Proteção "somente aviso" + nota em A1 nas abas Orçamentos e Meses: quem editar à mão vê o aviso
+ * (o app continua gravando normalmente). Idempotente: uma marca nas Propriedades do documento evita
+ * consultar a cada pedido, e a busca pela descrição evita duplicar mesmo sem a marca.
+ * Se a pessoa remover a proteção de propósito, ela não volta sozinha (a marca já existe).
+ */
+function protegerComAviso_(ss) {
+  var props = PropertiesService.getDocumentProperties();
+  if (props.getProperty(PROP_PROTECAO_) === '1') return;
+  [ABA_ORCAMENTOS_, ABA_MESES_].forEach(function (nome) {
+    var sh = ss.getSheetByName(nome);
+    if (!sh) return;
+    var jaTem = sh.getProtections(SpreadsheetApp.ProtectionType.SHEET).some(function (p) {
+      return p.getDescription() === AVISO_EDICAO_MANUAL_;
+    });
+    if (!jaTem) sh.protect().setDescription(AVISO_EDICAO_MANUAL_).setWarningOnly(true);
+    sh.getRange(1, 1).setNote(AVISO_EDICAO_MANUAL_);
+  });
+  props.setProperty(PROP_PROTECAO_, '1');
 }
 
 function formatarAbaTaxas_(sh) {
@@ -476,6 +1374,7 @@ function parametrosPadrao_() {
     valorHoraCobrado: 150,
     impostoPercentual: 0,
     acrescimoPecasPadrao: 47,
+    descontoAVistaPadrao: 5,
     parcelasDestaque: '5,10',
     nomeOficina: 'CliniCar Motors Tech'
   };
@@ -515,13 +1414,18 @@ function lerGastos_(ss) {
   return gastos.slice(0, MAX_GASTOS_);
 }
 
-function lerParametros_(ss) {
+/**
+ * @param ausentes (opcional) lista que recebe as chaves que NÃO têm linha na aba (para a migração do desconto padrão)
+ */
+function lerParametros_(ss, ausentes) {
   var padrao = parametrosPadrao_();
   var p = parametrosPadrao_();
+  var vistos = {};
   var valores = lerCorpo_(ss.getSheetByName(ABA_PARAMETROS_), CAB_PARAMETROS_.length);
   valores.forEach(function (l) {
     var chave = String(l[0]).trim();
     if (!padrao.hasOwnProperty(chave)) return;
+    vistos[chave] = true;
     if (LIMITES_PARAMETROS_.hasOwnProperty(chave)) {
       var n = lerNumeroBR_(l[1]);
       p[chave] = dentroDoLimite_(n, LIMITES_PARAMETROS_[chave]) ? n : padrao[chave];
@@ -531,6 +1435,7 @@ function lerParametros_(ss) {
       p[chave] = String(l[1]).trim().slice(0, MAX_NOME_OFICINA_).trim();
     }
   });
+  if (ausentes) Object.keys(padrao).forEach(function (k) { if (!vistos[k]) ausentes.push(k); });
   // horasPorDia já está no limite (> 0); ao limitar por ele, horasCobradasPorDia continua > 0.
   if (p.horasCobradasPorDia > p.horasPorDia) p.horasCobradasPorDia = p.horasPorDia;
   return p;
@@ -610,11 +1515,13 @@ function validarGastos_(gastos) {
   });
 }
 
+/** Parâmetro de PARAMETROS_OPCIONAIS_ ausente (tela antiga) fica de fora do resultado (undefined). */
 function validarParametros_(p) {
   if (!p || typeof p !== 'object') throw new Error('Ajustes inválidos.');
   var limpo = {};
   PARAMETROS_NUMERICOS_.forEach(function (chave) {
     var lim = LIMITES_PARAMETROS_[chave];
+    if (PARAMETROS_OPCIONAIS_.indexOf(chave) >= 0 && (p[chave] === null || p[chave] === undefined)) return;
     limpo[chave] = exigirNumero_(p[chave], lim.nome, lim);
   });
   if (limpo.horasCobradasPorDia > limpo.horasPorDia) {
@@ -726,9 +1633,9 @@ function regravarCorpo_(sh, numColunas, linhas) {
   }
 }
 
-/** Parâmetros → linhas [Chave, Valor], com números em texto pt-BR ("150,5"). */
+/** Parâmetros → linhas [Chave, Valor], com números em texto pt-BR ("150,5"). Chave sem valor (undefined) fica de fora. */
 function linhasParametros_(p) {
-  return ORDEM_PARAMETROS_.map(function (chave) {
+  return ORDEM_PARAMETROS_.filter(function (chave) { return p[chave] !== undefined; }).map(function (chave) {
     var v = p[chave];
     return [chave, LIMITES_PARAMETROS_.hasOwnProperty(chave) ? formatarNumeroBR_(v) : String(v)];
   });

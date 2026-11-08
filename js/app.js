@@ -6,9 +6,10 @@
 
 var CHAVE_CACHE = 'precoCerto.dados.v1';
 var CHAVE_ORCAMENTO = 'precoCerto.orcamento.v1';
-var CHAVE_DESCONTO_PADRAO = 'precoCerto.descontoPadrao.v1'; // só deste aparelho; "Desconectar" NÃO apaga
+var CHAVE_DESCONTO_PADRAO = 'precoCerto.descontoPadrao.v1'; // versão antiga (por aparelho): migrado para a aba Parâmetros e apagado
 var CHAVE_PIN = 'precoCerto.pin.v1';                        // só deste aparelho; "Desconectar" e novo link apagam
 var ESPERA_SALVAR_MS = 800;
+var BLOQUEIO_PIN_MS = 5 * 60 * 1000;  // PIN ligado: mais de 5 min em segundo plano → pede de novo
 var TEMPO_DESFAZER_MS = 6000;
 var TIPOS = ['Oficina', 'Casa'];
 var SUGESTOES = {
@@ -24,13 +25,20 @@ var sync = { sujo: false, salvando: false, erro: false, timer: null };
 var desfazer = { tipo: null, item: null, indice: -1, timer: null }; // último gasto/cartão removido (barra "Desfazer")
 var remocoesNaoSalvas = 0;     // remoções que ainda não entraram em nenhum salvamento
 var usuarioEscolheuTela = false;
-var nav = { tela: 'orcamento', aba: 'gastos', abaPin: 'gastos' }; // tela: 'orcamento' | 'pin' | 'config'
+var nav = { tela: 'orcamento', aba: 'gastos', abaPin: 'gastos', voltarFechar: 'orcamento' }; // tela: 'orcamento' | 'resultados' | 'fechar' | 'pin' | 'config'
 var ui = { cartao: 0, adicionandoCartao: false, outroAberto: false }; // tela "Seus cartões"
 var SUGESTOES_CARTAO = ['Elo', 'Amex', 'Hipercard', 'Visa', 'Mastercard', 'Cabal', 'Banescard', 'Sorocred'];
 var ultimoResultado = null;
 var ultimasPecas = [];        // peças lidas no último render [{descricao, qtd, valor}] (vão para o WhatsApp, sem valores)
 var ultimoPreco = null;       // calcularPrecoComDesconto do último render (vai para o WhatsApp)
 var timerAviso = null;
+var ultimoCalc = null;         // calcularComFoto do último render (vai para a planilha ao salvar)
+var salvandoOrc = null;        // Promise do salvamento do orçamento em andamento
+var desbloqueio = { ok: false, escondidoEm: null }; // PIN: um desbloqueio vale para Resultados e Configurações
+var resul = { mes: null, dados: null, filtro: 'todos', busca: '', aberto: null, ocultos: {}, pedido: 0 }; // aba Resultados
+var fech = null;               // tela de fechamento
+var menuSit = { alvo: null };  // menu "Mudar situação"
+var dialogo = { resolver: null, botoes: [] };
 
 // ------------------------------------------------------------------
 // Utilitários
@@ -64,9 +72,6 @@ function gravarTexto(chave, valor) {
   try { localStorage.setItem(chave, valor); return true; } catch (e) { return false; }
 }
 
-/** Desconto à vista padrão deste aparelho (0 a 99). Nada guardado ou valor inválido → 5. */
-function lerDescontoPadrao() { return descontoPadraoDoAparelho(lerTexto(CHAVE_DESCONTO_PADRAO)); }
-
 /** PIN deste aparelho (4 números) ou null se desligado. */
 function lerPin() {
   var p = lerTexto(CHAVE_PIN);
@@ -81,12 +86,14 @@ function mensagemDoErro(e) {
   return m || 'Verifique a internet e tente de novo.';
 }
 
-function mostrarAviso(msg) {
+/** tipo 'alerta': fundo vermelho e mais tempo na tela (ex.: "Sem conexão: orçamento NÃO foi salvo."). */
+function mostrarAviso(msg, tipo) {
   var el = $('aviso');
   el.textContent = msg;
+  el.classList.toggle('toast-alerta', tipo === 'alerta');
   el.hidden = false;
   clearTimeout(timerAviso);
-  timerAviso = setTimeout(function () { el.hidden = true; }, 3500);
+  timerAviso = setTimeout(function () { el.hidden = true; }, tipo === 'alerta' ? 7000 : 3500);
 }
 
 // ------------------------------------------------------------------
@@ -100,6 +107,9 @@ function aplicarDados(dados, url, atualizadoEm) {
   estado.dados = clonar(dados);
   if (typeof estado.dados.parametros.acrescimoPecasPadrao !== 'number') {
     estado.dados.parametros.acrescimoPecasPadrao = 47; // cache de versão anterior
+  }
+  if (typeof estado.dados.parametros.descontoAVistaPadrao !== 'number') {
+    estado.dados.parametros.descontoAVistaPadrao = descontoPadraoDoAparelho(lerTexto(CHAVE_DESCONTO_PADRAO)); // antes da fase 10
   }
   if (url) estado.urlPlanilha = url;
   estado.atualizadoEm = atualizadoEm || null;
@@ -190,6 +200,7 @@ function salvarAgora() {
   PrecoCertoApi.chamar(conexao, 'salvarDados', montarEnvio()).then(function (r) {
     sync.salvando = false;
     estado.atualizadoEm = r.atualizadoEm;
+    if (estado.migrandoDesconto) { apagarStorage(CHAVE_DESCONTO_PADRAO); estado.migrandoDesconto = false; }
     salvarCache();
     atualizarInfoSalvo();
     if (sync.sujo) atualizarStatusSalvamento();
@@ -215,6 +226,7 @@ function montarEnvio() {
 /** Aplica a resposta de obterDados (vinda do servidor) e libera a edição. */
 function receberDadosDoServidor(r) {
   aplicarDados({ gastos: r.gastos, parametros: r.parametros, cartoes: r.cartoes }, r.urlPlanilha, r.atualizadoEm);
+  var migrar = migrarDescontoPadrao(r);
   estado.carregadoDoServidor = true;
   sync.sujo = false;
   sync.erro = false;
@@ -227,6 +239,30 @@ function receberDadosDoServidor(r) {
   renderTudo();
   if (!usuarioEscolheuTela) escolherTelaInicial();
   mostrarStatus('salvo');
+  if (migrar) alterou(); // grava o desconto do aparelho na aba Parâmetros
+}
+
+/**
+ * Desconto à vista padrão: antes ficava no aparelho; agora fica na aba Parâmetros.
+ * Planilha sem a linha → grava o valor deste aparelho (ou 5) e, depois do "Salvo ✓", apaga a chave local.
+ * Planilha já com a linha → ela vence; a chave local é apagada (com aviso se era diferente).
+ * @return true se precisa salvar
+ */
+function migrarDescontoPadrao(r) {
+  var local = lerTexto(CHAVE_DESCONTO_PADRAO);
+  var ausente = Array.isArray(r.parametrosAusentes) && r.parametrosAusentes.indexOf('descontoAVistaPadrao') >= 0;
+  if (ausente) {
+    estado.dados.parametros.descontoAVistaPadrao = descontoPadraoDoAparelho(local);
+    estado.migrandoDesconto = true;
+    return true;
+  }
+  if (local !== null && typeof r.parametros.descontoAVistaPadrao === 'number') {
+    if (descontoPadraoDoAparelho(local) !== r.parametros.descontoAVistaPadrao) {
+      mostrarAviso('O desconto padrão agora vem da planilha: ' + formatarPercentual(r.parametros.descontoAVistaPadrao) + '.');
+    }
+    apagarStorage(CHAVE_DESCONTO_PADRAO);
+  }
+  return false;
 }
 
 function carregarServidor() {
@@ -272,10 +308,18 @@ function salvarAoSair() {
 
 function aoMudarVisibilidade() {
   if (document.visibilityState === 'hidden') {
+    desbloqueio.escondidoEm = Date.now();
     salvarAoSair();
     return;
   }
+  // PIN ligado: mais de 5 min em segundo plano → bloqueia de novo (e sai de Resultados/Configurações).
+  if (desbloqueio.escondidoEm !== null && Date.now() - desbloqueio.escondidoEm > BLOQUEIO_PIN_MS) {
+    desbloqueio.ok = false;
+    if (lerPin() && (nav.tela === 'config' || nav.tela === 'resultados')) voltarAoOrcamento(false);
+  }
+  desbloqueio.escondidoEm = null;
   if (estado.carregadoDoServidor && !temPendencia()) carregarServidor();
+  if (nav.tela === 'resultados') carregarMes();
 }
 
 function atualizarInfoSalvo() {
@@ -326,13 +370,18 @@ function mostrarTela(nome) {
   if (document.body.classList.contains('sem-conexao')) return; // tela "conectar" manda: nada aparece por trás
   nav.tela = nome;
   $('tela-orcamento').hidden = nome !== 'orcamento';
+  $('tela-resultados').hidden = nome !== 'resultados';
+  $('tela-fechar').hidden = nome !== 'fechar';
+  var topo = nome === 'fechar' ? nav.voltarFechar : nome;
+  $('aba-orcamento').setAttribute('aria-selected', String(topo === 'orcamento'));
+  $('aba-resultados').setAttribute('aria-selected', String(topo === 'resultados'));
   $('tela-pin').hidden = nome !== 'pin';
   $('tela-config').hidden = nome !== 'config';
   ['gastos', 'ajustes'].forEach(function (t) {
     $('tela-' + t).hidden = !(nome === 'config' && nav.aba === t);
     $('aba-' + t).setAttribute('aria-selected', nav.aba === t ? 'true' : 'false');
   });
-  document.body.classList.toggle('em-config', nome !== 'orcamento');
+  document.body.classList.toggle('em-config', nome === 'pin' || nome === 'config' || nome === 'fechar');
 }
 
 function trocarAbaConfig(aba) {
@@ -353,13 +402,14 @@ function abrirConfig(aba, peloUsuario) {
   if (peloUsuario) usuarioEscolheuTela = true;
   aba = aba === 'ajustes' ? 'ajustes' : 'gastos';
   if (nav.tela === 'config') { trocarAbaConfig(aba); return; }
-  if (lerPin()) { abrirPin(aba); return; }
+  if (lerPin() && !desbloqueio.ok) { abrirPin(aba); return; }
   empilharHistorico('config');
   trocarAbaConfig(aba);
 }
 
 function abrirPin(aba) {
   nav.abaPin = aba;
+  $('pin-titulo').textContent = aba === 'resultados' ? 'Resultados protegidos' : 'Configurações protegidas';
   empilharHistorico('pin');
   $('pin-entrada').value = '';
   $('pin-erro').textContent = '';
@@ -381,6 +431,8 @@ function conferirPin() {
     $('pin-entrada').focus();
     return;
   }
+  desbloqueio.ok = true; // vale para Resultados e Configurações enquanto o app estiver aberto
+  if (nav.abaPin === 'resultados') { empilharHistorico('resultados'); mostrarResultados(); return; }
   empilharHistorico('config');
   trocarAbaConfig(nav.abaPin);
 }
@@ -399,8 +451,24 @@ function voltarAoOrcamento(peloUsuario) {
 function aoVoltarHistorico() {
   if (document.body.classList.contains('sem-conexao')) return;
   usuarioEscolheuTela = true;
+  if (nav.tela === 'fechar' && nav.voltarFechar === 'resultados') { // "voltar" no fechamento aberto da lista: volta para a lista
+    fech = null;
+    empilharHistorico('resultados');
+    mostrarTela('resultados');
+    renderResultados();
+    return;
+  }
+  fech = null;
   mostrarTela('orcamento'); // nunca reabre Configurações pelo "avançar" (o PIN seria pulado)
   try { if (history.state && history.state.precoCerto) history.replaceState(null, ''); } catch (e) { /* ignora */ }
+  window.scrollTo(0, 0);
+}
+
+/** Aba "Orçamento" do topo (e depois de abrir/duplicar um orçamento salvo). */
+function irParaOrcamento() {
+  usuarioEscolheuTela = true;
+  fech = null;
+  if (nav.tela !== 'orcamento') voltarAoOrcamento(true);
   window.scrollTo(0, 0);
 }
 
@@ -425,13 +493,21 @@ function orcamentoVazio() {
     descricao: '', modo: 'horas',
     horasTexto: '', valorTexto: '', horasFechadoTexto: '',
     pecasPagarTexto: '', pecasModo: 'acrescimo', acrescimoTexto: null, pecasCobrarTexto: '',
-    descontoTexto: null, extraTexto: '',   // descontoTexto null = segue o padrão deste aparelho
+    descontoTexto: null, extraTexto: '',   // descontoTexto null = segue o padrão dos Ajustes (da foto em uso)
     pecas: [],                             // [{descricao, qtdTexto, valorTexto}] (modo acréscimo)
-    bandeira: NAO_SEI
+    bandeira: NAO_SEI,
+    cliente: '', telefone: '',
+    // Orçamento salvo: {id, criadoEm, atualizadoEm, situacao, motivo, fechamento, foto, recalcular, assinatura}
+    vinculo: null
   };
 }
 
 function pecaVazia() { return { descricao: '', qtdTexto: '1', valorTexto: '' }; }
+
+function vinculoValido(v) {
+  return !!(v && typeof v === 'object' && typeof v.id === 'string' && typeof v.atualizadoEm === 'string' &&
+    typeof v.situacao === 'string' && v.foto && typeof v.foto === 'object' && v.foto.parametros && Array.isArray(v.foto.cartoes));
+}
 
 function carregarOrcamentoSalvo() {
   var o = lerStorage(CHAVE_ORCAMENTO);
@@ -452,8 +528,25 @@ function carregarOrcamentoSalvo() {
     // Rascunho da versão anterior (um campo só): vira uma peça 1 × valor, sem perder o que estava digitado.
     base.pecas = [{ descricao: '', qtdTexto: '1', valorTexto: base.pecasPagarTexto }];
   }
+  if (vinculoValido(o.vinculo)) base.vinculo = o.vinculo;
   orc = base;
 }
+
+function gravarRascunho() { gravarStorage(CHAVE_ORCAMENTO, orc); }
+
+/** Orçamento salvo sem "Recalcular": a conta usa a foto gravada (os valores daquele dia). */
+function usandoFotoGravada() { return !!(orc.vinculo && !orc.vinculo.recalcular); }
+
+/** Foto que entra na conta: a gravada, ou a de hoje (gastos, ajustes e cartões atuais). */
+function fotoEmUso() {
+  if (usandoFotoGravada()) return orc.vinculo.foto;
+  return estado.dados ? fotoDeHoje(estado.dados, '') : null;
+}
+
+function parametrosEmUso() { var f = fotoEmUso(); return f ? f.parametros : null; }
+
+/** Fechado ou Não fechou: os valores ficam só para ver (cliente e telefone continuam editáveis). */
+function travado() { return !!(orc.vinculo && orc.vinculo.situacao !== 'Aberto'); }
 
 // ---------------- Peças discriminadas ----------------
 /** Desenha as linhas de peças (só ao carregar, adicionar, remover ou começar um novo orçamento). */
@@ -463,11 +556,11 @@ function renderPecas() {
     return '<div class="peca-linha" data-peca="' + i + '">' +
       '<div class="entrada peca-desc"><input type="text" data-peca-campo="descricao" data-indice="' + i + '" maxlength="80"' +
       ' placeholder="Peça (ex.: Pastilha de freio)" aria-label="Descrição da peça" autocomplete="off" value="' + esc(p.descricao) + '"></div>' +
-      '<div class="entrada peca-qtd"><input type="text" class="num" inputmode="decimal" data-peca-campo="qtdTexto" data-indice="' + i + '"' +
+      '<div class="entrada peca-qtd"><input type="text" class="num" inputmode="decimal" data-peca-campo="qtdTexto" data-indice="' + i + '" maxlength="40"' +
       ' placeholder="Qtd" aria-label="Quantidade de ' + nome + '" autocomplete="off" value="' + esc(p.qtdTexto) + '"></div>' +
       '<span class="peca-vezes" aria-hidden="true">×</span>' +
       '<div class="entrada com-prefixo peca-valor"><span class="prefixo">R$</span>' +
-      '<input type="text" class="num" inputmode="decimal" data-peca-campo="valorTexto" data-formato="dinheiro" data-indice="' + i + '"' +
+      '<input type="text" class="num" inputmode="decimal" data-peca-campo="valorTexto" data-formato="dinheiro" data-indice="' + i + '" maxlength="40"' +
       ' placeholder="0,00" aria-label="Valor unitário que você paga por ' + nome + '" autocomplete="off" value="' + esc(p.valorTexto) + '"></div>' +
       '<button type="button" class="btn-remover" data-remover-peca="' + i + '" aria-label="Remover ' + nome + '">' + icone('i-lixeira') + '</button>' +
       '<p class="erro"></p>' +
@@ -480,30 +573,25 @@ function renderPecas() {
   $('btn-adicionar-peca').hidden = orc.pecas.length >= MAX_PECAS;
 }
 
-/** Lê e valida as peças (mostra o erro de cada linha). @return [{descricao, qtd, valor}] */
-function lerPecas() {
-  var msgValor = 'Digite um valor igual ou maior que zero.';
-  return orc.pecas.map(function (p, i) {
-    var q = validarQtdPeca(p.qtdTexto);
-    var v = validarNumeroCampo(p.valorTexto, LIMITE_VALOR_ORCAMENTO, { vazioPermitido: true, mensagem: msgValor });
+/** Mostra o erro de cada linha de peça (a leitura é de lerEntradaOrcamento, em calculo.js). */
+function mostrarErrosPecas(pecas) {
+  pecas.forEach(function (p, i) {
     var linha = document.querySelector('.peca-linha[data-peca="' + i + '"]');
-    if (linha) {
-      var inQtd = linha.querySelector('[data-peca-campo="qtdTexto"]');
-      var inValor = linha.querySelector('[data-peca-campo="valorTexto"]');
-      [[inQtd, q.erro], [inValor, v.erro]].forEach(function (par) {
-        par[0].classList.toggle('invalido', !!par[1]);
-        if (par[1]) par[0].setAttribute('aria-invalid', 'true'); else par[0].removeAttribute('aria-invalid');
-      });
-      linha.querySelector('.erro').textContent = q.erro || v.erro || '';
-    }
-    return { descricao: p.descricao, qtd: q.valor, valor: v.valor };
+    if (!linha) return;
+    var inQtd = linha.querySelector('[data-peca-campo="qtdTexto"]');
+    var inValor = linha.querySelector('[data-peca-campo="valorTexto"]');
+    [[inQtd, p.erroQtd], [inValor, p.erroValor]].forEach(function (par) {
+      par[0].classList.toggle('invalido', !!par[1]);
+      if (par[1]) par[0].setAttribute('aria-invalid', 'true'); else par[0].removeAttribute('aria-invalid');
+    });
+    linha.querySelector('.erro').textContent = p.erroQtd || p.erroValor || '';
   });
 }
 
 function adicionarPeca() {
-  if (orc.pecas.length >= MAX_PECAS) return;
+  if (orc.pecas.length >= MAX_PECAS || travado()) return;
   orc.pecas.push(pecaVazia());
-  gravarStorage(CHAVE_ORCAMENTO, orc);
+  gravarRascunho();
   renderPecas();
   renderOrcamento();
   var campo = document.querySelector('[data-indice="' + (orc.pecas.length - 1) + '"][data-peca-campo="descricao"]');
@@ -512,22 +600,23 @@ function adicionarPeca() {
 
 function onPecaInput(el) {
   var p = orc.pecas[Number(el.dataset.indice)];
-  if (!p) return;
+  if (!p || travado()) return;
   p[el.dataset.pecaCampo] = el.value;
-  gravarStorage(CHAVE_ORCAMENTO, orc);
+  gravarRascunho();
   renderOrcamento();
 }
 
-/** Texto do acréscimo deste orçamento: o digitado, ou o padrão de Ajustes enquanto ele não mexeu. */
+/** Texto do acréscimo deste orçamento: o digitado, ou o padrão dos ajustes (da foto em uso) enquanto ele não mexeu. */
 function textoAcrescimo() {
   if (orc.acrescimoTexto !== null) return orc.acrescimoTexto;
-  return estado.dados ? numeroParaCampo(estado.dados.parametros.acrescimoPecasPadrao, false) : '';
+  var p = parametrosEmUso();
+  return p ? numeroParaCampo(p.acrescimoPecasPadrao, false) : '';
 }
 
-/** Texto do desconto à vista deste orçamento: o digitado, ou o padrão deste aparelho enquanto ele não mexeu. */
+/** Texto do desconto à vista deste orçamento: o digitado, ou o padrão dos Ajustes (da foto em uso). */
 function textoDesconto() {
   if (orc.descontoTexto !== null) return orc.descontoTexto;
-  return numeroParaCampo(lerDescontoPadrao(), false);
+  return numeroParaCampo(descontoPadraoDosParametros(parametrosEmUso()), false);
 }
 
 function preencherOrcamento() {
@@ -538,32 +627,7 @@ function preencherOrcamento() {
   renderPecas();
 }
 
-function lerCampoOrcamento(id, texto, lim, msg) {
-  var r = validarNumeroCampo(texto, lim, { vazioPermitido: true, mensagem: msg });
-  mostrarErroCampo($(id), r.erro);
-  return r.valor;
-}
-
-function montarEntrada() {
-  var msgHoras = 'Digite as horas. Ex.: 2,5';
-  var msgValor = 'Digite um valor igual ou maior que zero.';
-  var fechado = orc.modo === 'fechado';
-  var porAcrescimo = orc.pecasModo === 'acrescimo';
-  ultimasPecas = porAcrescimo ? lerPecas() : [];
-  return {
-    modo: orc.modo,
-    horas: fechado
-      ? lerCampoOrcamento('orc-horas-fechado', orc.horasFechadoTexto, LIMITE_HORAS_SERVICO, msgHoras)
-      : lerCampoOrcamento('orc-horas', orc.horasTexto, LIMITE_HORAS_SERVICO, msgHoras),
-    valorFechado: fechado ? lerCampoOrcamento('orc-valor', orc.valorTexto, LIMITE_VALOR_ORCAMENTO, msgValor) : null,
-    pecasPagar: porAcrescimo
-      ? totalPecasItens(ultimasPecas)
-      : lerCampoOrcamento('orc-pecas-pagar', orc.pecasPagarTexto, LIMITE_VALOR_ORCAMENTO, msgValor),
-    pecasModo: orc.pecasModo,
-    pecasAcrescimo: porAcrescimo ? lerCampoOrcamento('orc-acrescimo', textoAcrescimo(), LIMITE_ACRESCIMO, MENSAGENS_PARAMETROS.acrescimoPecasPadrao) : null,
-    pecasCobrar: porAcrescimo ? null : lerCampoOrcamento('orc-pecas-cobrar', orc.pecasCobrarTexto, LIMITE_VALOR_ORCAMENTO, msgValor)
-  };
-}
+var CAMPOS_NUMERICOS_ORC = ['orc-horas', 'orc-horas-fechado', 'orc-valor', 'orc-pecas-pagar', 'orc-acrescimo', 'orc-pecas-cobrar', 'orc-desconto', 'orc-extra'];
 
 /** Chips "Não sei · cartão · cartão…" — só aparecem com 2 ou mais cartões. */
 function renderChipsBandeira(cartoes, efetivo) {
@@ -577,32 +641,47 @@ function renderChipsBandeira(cartoes, efetivo) {
   $('chips-bandeira').innerHTML = html;
 }
 
+/** Negativo sempre como "− R$ 130,77" (mesmo sinal das linhas de custo). */
+function comSinal(c) { return c < 0 ? '− ' + formatarCentavos(-c) : formatarCentavos(c); }
+function menos(c) { return (c < 0 ? '+ ' : '− ') + formatarCentavos(Math.abs(c)); }
+
 function renderOrcamento() {
   if (!estado.dados) return;
-  var d = estado.dados;
-
+  var calc = calcularComFoto(orc, fotoEmUso());
+  var ctx = calc.ctx;
+  var p = ctx.parametros;
   // Cartão escolhido que não existe mais (removido ou renomeado fora daqui) volta para "Não sei".
-  if (orc.bandeira !== NAO_SEI && acharCartao(d.cartoes, orc.bandeira) < 0) orc.bandeira = NAO_SEI;
+  if (orc.bandeira !== calc.bandeira) orc.bandeira = calc.bandeira;
+  ultimoCalc = calc;
+  ultimoResultado = calc.res;
+  ultimoPreco = calc.preco;
+  ultimasPecas = calc.lido.pecas;
 
   $('bloco-horas').hidden = orc.modo !== 'horas';
   $('bloco-fechado').hidden = orc.modo !== 'fechado';
   $('bloco-acrescimo').hidden = orc.pecasModo !== 'acrescimo';
   $('bloco-pecas-valor').hidden = orc.pecasModo !== 'valor';
 
-  // Enquanto ele não mexeu no acréscimo deste orçamento, o campo acompanha o padrão de Ajustes.
+  // Enquanto ele não mexeu no acréscimo/desconto deste orçamento, o campo acompanha o padrão (da foto em uso).
   var campoAcrescimo = $('orc-acrescimo');
   if (orc.acrescimoTexto === null && document.activeElement !== campoAcrescimo) campoAcrescimo.value = textoAcrescimo();
+  var campoDesconto = $('orc-desconto');
+  if (orc.descontoTexto === null && document.activeElement !== campoDesconto) campoDesconto.value = textoDesconto();
 
-  $('faixa-sem-gastos-orc').hidden = totalGastos(d.gastos) !== 0;
+  $('faixa-sem-gastos-orc').hidden = ctx.gastosTotal !== 0;
 
-  var entrada = montarEntrada();
-  var res = calcularOrcamento(entrada, d.parametros, d.cartoes, orc.bandeira, precoMinimoHora(d.gastos, d.parametros));
-  ultimoResultado = res;
+  CAMPOS_NUMERICOS_ORC.forEach(function (id) { mostrarErroCampo($(id), calc.lido.erros[id] || ''); });
+  mostrarErrosPecas(calc.lido.pecas);
+  mostrarErroCampo($('orc-telefone'), validarTelefone(orc.telefone));
+
+  var res = calc.res;
+  renderVinculo();
+  aplicarTrava();
 
   // Linhas de apoio
   var infoMao = '';
   if (orc.modo === 'horas' && res.horas > 0) {
-    infoMao = d.parametros.valorHoraCobrado > 0
+    infoMao = p.valorHoraCobrado > 0
       ? 'Mão de obra: <strong>' + esc(formatarBRL(res.maoDeObra)) + '</strong>'
       : 'Coloque quanto você cobra por hora em Meus gastos.';
   }
@@ -612,10 +691,11 @@ function renderOrcamento() {
     : '';
   // Peças: "Cliente paga" em cada linha e os totais do card
   if (orc.pecasModo === 'acrescimo') {
-    var fator = 1 + (typeof entrada.pecasAcrescimo === 'number' ? entrada.pecasAcrescimo : 0) / 100;
-    ultimasPecas.forEach(function (p, i) {
+    var acr = calc.lido.entrada.pecasAcrescimo;
+    var fator = 1 + (typeof acr === 'number' ? acr : 0) / 100;
+    calc.lido.pecas.forEach(function (pc, i) {
       var el = document.querySelector('.peca-linha[data-peca="' + i + '"] .peca-cliente');
-      var pagaLinha = totalPecasItens([p]);
+      var pagaLinha = totalPecasItens([pc]);
       if (el) el.textContent = pagaLinha > 0 ? 'Cliente paga: ' + formatarBRL(pagaLinha * fator) : '';
     });
     $('pecas-totais').hidden = !(res.pecasPagar > 0);
@@ -630,16 +710,12 @@ function renderOrcamento() {
   $('orc-resultado').hidden = !temValor;
   if (!temValor) return;
 
-  // Desconto à vista (desconto + extra somam; vazio = 0)
-  var msgDesconto = 'Use um número de 0 a 99.';
-  var desconto = lerCampoOrcamento('orc-desconto', textoDesconto(), LIMITE_DESCONTO, msgDesconto);
-  var extra = lerCampoOrcamento('orc-extra', orc.extraTexto, LIMITE_DESCONTO, msgDesconto);
-  var preco = calcularPrecoComDesconto(res, d.parametros, desconto, extra);
-  ultimoPreco = preco;
+  var preco = calc.preco;
   atualizarDicaDesconto();
 
   // Preço cheio no cartão (âncora) + chips do cartão do cliente
-  renderChipsBandeira(d.cartoes, res.cartao);
+  renderChipsBandeira(ctx.cartoes, res.cartao);
+  aplicarTrava(); // os chips acabaram de ser desenhados
   $('card-ancora').hidden = res.semCartoes;
   var anc = preco.ancora;
   $('ancora-titulo').textContent = anc
@@ -658,10 +734,8 @@ function renderOrcamento() {
     : '';
   $('bloco-desconto').hidden = !preco.temAncora;
   $('dica-sem-ancora').hidden = preco.temAncora || res.semCartoes;
-  var campoDesconto = $('orc-desconto');
-  if (orc.descontoTexto === null && document.activeElement !== campoDesconto) campoDesconto.value = textoDesconto();
 
-  // Só para o mecânico: quanto ainda pode dar / quanto abre mão do lucro
+  // Só para o mecânico: quanto ainda pode dar / quanto abre mão da sobra extra
   var faixaAinda = $('faixa-ainda-pode');
   var faixaAbre = $('faixa-abre-mao');
   faixaAinda.hidden = !preco.temAncora || preco.acimaDoMaximo;
@@ -707,12 +781,9 @@ function renderOrcamento() {
     : '<li>Nenhuma taxa cadastrada para este cartão. Veja em Ajustes.</li>';
 
   // Neste serviço: paga a oficina, vai para a casa (o "salário") e a sobra extra (sobre o à vista oferecido)
-  var ganho = separarGanho(res, preco, d.parametros,
-    minimoHoraDoTipo(d.gastos, d.parametros, 'Oficina'), minimoHoraDoTipo(d.gastos, d.parametros, 'Casa'));
-  var det = linhasDetalheServico(res, preco, ganho);
+  var ganho = calc.ganho;
+  var det = calc.det;
   var cor = { verde: 'positivo', ambar: 'ambar', vermelho: 'negativo' }[ganho.estado];
-  // Negativo sempre como "− R$ 130,77" (mesmo sinal das linhas de custo).
-  function comSinal(c) { return c < 0 ? '− ' + formatarCentavos(-c) : formatarCentavos(c); }
   $('res-sobra').textContent = comSinal(det.sobra);
   $('res-lucro').className = 'valor-grande ' + cor;
   $('card-lucro').className = 'card' + (ganho.estado === 'vermelho' ? ' card-negativo' : ganho.estado === 'ambar' ? ' card-ambar' : '');
@@ -725,7 +796,7 @@ function renderOrcamento() {
     : ganho.estado === 'vermelho' ? 'Com esse preço a oficina não se paga.' : '';
 
   // No cartão: a sobra na maior parcela em destaque (o imposto é sobre o total do cartão), como antes
-  var impostoPct = d.parametros.impostoPercentual;
+  var impostoPct = p.impostoPercentual;
   var maiorDestaque = res.destaques.length ? res.destaques[res.destaques.length - 1] : null;
   var elCartao = $('res-lucro-cartao');
   if (impostoPct > 0 && maiorDestaque) {
@@ -736,7 +807,6 @@ function renderOrcamento() {
   }
 
   // Ver detalhes (as linhas fecham no centavo com a sobra exibida: veja linhasDetalheServico)
-  function menos(c) { return (c < 0 ? '+ ' : '− ') + formatarCentavos(Math.abs(c)); }
   var linhas = [
     ['Mão de obra', formatarCentavos(det.maoDeObra)],
     ['Lucro nas peças', formatarCentavos(det.lucroPecas)]
@@ -746,46 +816,857 @@ function renderOrcamento() {
   linhas.push(['Paga os gastos da oficina', menos(det.pagaOficina)]);
   if (det.vaiParaCasa !== null) linhas.push(['Vai para a sua casa', menos(det.vaiParaCasa), 'é o seu salário']);
   linhas.push(['Sobra extra', comSinal(det.sobra), null, 'total']);
-  $('res-detalhes').innerHTML = linhas.map(function (l) {
-    var classe = l[3] ? ' class="' + l[3] + '"' : '';
-    return '<dt' + classe + '>' + esc(l[0]) + (l[2] ? '<span class="nota-casa">' + esc(l[2]) + '</span>' : '') + '</dt>' +
-      '<dd' + classe + '>' + esc(l[1]) + '</dd>';
-  }).join('');
+  $('res-detalhes').innerHTML = htmlDetalhes(linhas);
   $('res-piso-oficina').textContent = 'Abaixo de ' + formatarBRL(ganho.pisoOficina) + ' a oficina não se paga.';
   $('res-piso').hidden = !ganho.temCasa; // sem gastos de casa: um só piso
   $('res-piso').textContent = ganho.temCasa ? 'Abaixo de ' + formatarBRL(ganho.pisoCasa) + ' não sobra nada para a sua casa.' : '';
 }
 
+/** Linhas [rótulo, valor, nota?, classe?] → <dt>/<dd>. */
+function htmlDetalhes(linhas) {
+  return linhas.map(function (l) {
+    var classe = l[3] ? ' class="' + l[3] + '"' : '';
+    return '<dt' + classe + '>' + esc(l[0]) + (l[2] ? '<span class="nota-casa">' + esc(l[2]) + '</span>' : '') + '</dt>' +
+      '<dd' + classe + '>' + esc(l[1]) + '</dd>';
+  }).join('');
+}
+
 function onOrcamentoInput(el) {
-  orc[el.dataset.orc] = el.value;
-  gravarStorage(CHAVE_ORCAMENTO, orc);
+  var k = el.dataset.orc;
+  if (travado() && k !== 'cliente' && k !== 'telefone') return;
+  orc[k] = el.value;
+  gravarRascunho();
   renderOrcamento();
 }
 
 function trocarModo(modo) {
+  if (travado()) return;
   orc.modo = modo;
-  gravarStorage(CHAVE_ORCAMENTO, orc);
+  gravarRascunho();
   renderOrcamento();
   $(modo === 'horas' ? 'orc-horas' : 'orc-valor').focus();
 }
 
 function trocarModoPecas(modo) {
+  if (travado()) return;
   orc.pecasModo = modo;
-  gravarStorage(CHAVE_ORCAMENTO, orc);
+  gravarRascunho();
   renderOrcamento();
   $(modo === 'acrescimo' ? 'btn-adicionar-peca' : 'orc-pecas-pagar').focus();
 }
 
-function novoOrcamento() {
-  if (desfazer.tipo === 'peca' && desfazer.item) finalizarRemocao(); // a peça removida não volta no orçamento novo
-  orc = orcamentoVazio();
-  apagarStorage(CHAVE_ORCAMENTO);
+/** Troca o rascunho (novo, reaberto ou cópia) e redesenha. */
+function carregarRascunho(r, manterAssinatura) {
+  if (desfazer.tipo === 'peca' && desfazer.item) finalizarRemocao(); // a peça removida não volta em outro orçamento
+  orc = r;
+  if (orc.vinculo && !manterAssinatura) orc.vinculo.assinatura = assinaturaDe(true);
+  gravarRascunho();
   preencherOrcamento();
   $('outras-formas').open = false;
   renderOrcamento();
+}
+
+function novoOrcamento() {
+  carregarRascunho(orcamentoVazio());
+  apagarStorage(CHAVE_ORCAMENTO);
   window.scrollTo(0, 0);
   $('orc-descricao').focus();
   mostrarAviso('Pronto para um novo orçamento.');
+}
+
+// ---------------- Orçamento salvo: vínculo, foto e trava ----------------
+var NOME_FORMA = { pix: 'Pix/dinheiro', debito: 'Débito', credito: 'Cartão' };
+
+function descreverForma(f) {
+  return f.forma === 'credito' ? 'Cartão em ' + f.parcelas + 'x' : NOME_FORMA[f.forma];
+}
+
+function classeSituacao(s) { return s === 'Fechado' ? 'sit-fechado' : s === 'Não fechou' ? 'sit-nao' : 'sit-aberto'; }
+
+function chipSituacao(s) { return '<span class="chip-situacao ' + classeSituacao(s) + '">' + esc(s) + '</span>'; }
+
+function renderVinculo() {
+  var v = orc.vinculo;
+  $('faixa-vinculo').hidden = !v;
+  $('btn-mudar-situacao').hidden = !v;
+  $('vinculo-foto').hidden = true;
+  $('faixa-travado').hidden = true;
+  if (!v) return;
+  var quem = String(orc.cliente || '').trim();
+  $('vinculo-texto').innerHTML = 'Salvo · ' + chipSituacao(v.situacao) + (quem ? ' · ' + esc(quem) : '');
+  if (v.recalcular) {
+    $('vinculo-foto').hidden = false;
+    $('vinculo-foto-texto').textContent = 'Valores de hoje (ainda não salvos). Toque em "Salvar orçamento" para guardar.';
+    $('btn-recalcular').hidden = true;
+  } else if (estado.dados && !fotosIguais(fotoDeHoje(estado.dados, ''), v.foto)) {
+    $('vinculo-foto').hidden = false;
+    $('vinculo-foto-texto').textContent = 'Valores de ' + (dataBR(v.foto.em) || 'quando foi salvo') + '.';
+    $('btn-recalcular').hidden = travado();
+  }
+  if (travado()) {
+    var f = v.fechamento;
+    $('faixa-travado').hidden = false;
+    $('faixa-travado').textContent = (v.situacao === 'Fechado' && f
+      ? 'Fechado em ' + dataBR(f.data, true) + ' por ' + formatarCentavos(f.valorCombinadoC) + ' (' + descreverForma(f) + ').'
+      : 'Não fechou' + (v.motivo ? ' (' + v.motivo + ')' : '') + '.') +
+      ' Para mudar valores: Voltar para Aberto ou Duplicar.';
+  }
+}
+
+/** Fechado/Não fechou: campos de valor desabilitados (cliente e telefone continuam). */
+function aplicarTrava() {
+  var t = travado();
+  document.body.classList.toggle('orc-travado', t);
+  document.querySelectorAll('#tela-orcamento [data-orc], #tela-orcamento [data-peca-campo]').forEach(function (el) {
+    if (el.dataset.orc === 'cliente' || el.dataset.orc === 'telefone') return;
+    el.disabled = t;
+  });
+  ['ir-fechado', 'ir-horas', 'ir-pecas-valor', 'ir-pecas-acrescimo', 'btn-adicionar-peca'].forEach(function (id) { $(id).disabled = t; });
+  document.querySelectorAll('#tela-orcamento [data-remover-peca], #tela-orcamento [data-bandeira-indice]').forEach(function (b) { b.disabled = t; });
+}
+
+/** "Recalcular com os valores de hoje": só troca a conta na tela; grava só se ele salvar. */
+function recalcularComHoje() {
+  if (!orc.vinculo || travado()) return;
+  orc.vinculo.recalcular = true;
+  gravarRascunho();
+  preencherOrcamento();
+  renderOrcamento();
+  mostrarAviso('Calculado com os valores de hoje. Toque em "Salvar orçamento" para guardar.');
+}
+
+// ---------------- Salvar orçamento ----------------
+function textoCampo(s, max) { return String(s === null || s === undefined ? '' : s).slice(0, max || MAX_TEXTO_CAMPO); }
+
+/** O rascunho no formato da coluna "Dados" → entrada (textos como foram digitados). */
+function entradaDoRascunho() {
+  return {
+    descricao: String(orc.descricao || '').trim().slice(0, MAX_SERVICO),
+    modo: orc.modo,
+    horasTexto: textoCampo(orc.horasTexto),
+    valorTexto: textoCampo(orc.valorTexto),
+    horasFechadoTexto: textoCampo(orc.horasFechadoTexto),
+    pecasModo: orc.pecasModo,
+    pecas: orc.pecas.slice(0, MAX_PECAS).map(function (p) {
+      return { descricao: textoCampo(p.descricao, 80), qtdTexto: textoCampo(p.qtdTexto), valorTexto: textoCampo(p.valorTexto) };
+    }),
+    pecasPagarTexto: textoCampo(orc.pecasPagarTexto),
+    pecasCobrarTexto: textoCampo(orc.pecasCobrarTexto),
+    acrescimoTexto: orc.acrescimoTexto === null ? null : textoCampo(orc.acrescimoTexto),
+    descontoTexto: orc.descontoTexto === null ? null : textoCampo(orc.descontoTexto),
+    extraTexto: textoCampo(orc.extraTexto),
+    bandeira: textoCampo(orc.bandeira, MAX_NOME_CARTAO)
+  };
+}
+
+/** Assinatura do que seria gravado. gravada = com a foto gravada (depois de salvar, é sempre assim). */
+function assinaturaDe(gravada) {
+  return JSON.stringify([entradaDoRascunho(), String(orc.cliente || '').trim(), String(orc.telefone || '').trim(),
+    gravada ? 'foto gravada' : (estado.dados ? JSON.stringify(fotoDeHoje(estado.dados, '')) : '')]);
+}
+
+function rascunhoTemConteudo() {
+  return [orc.descricao, orc.cliente, orc.telefone, orc.horasTexto, orc.valorTexto, orc.pecasPagarTexto].some(function (s) { return String(s || '').trim() !== ''; }) ||
+    orc.pecas.some(function (p) { return String(p.descricao || '').trim() !== '' || String(p.valorTexto || '').trim() !== ''; });
+}
+
+function temMudancaNaoSalva() {
+  if (!orc.vinculo) return rascunhoTemConteudo();
+  return assinaturaDe(usandoFotoGravada()) !== orc.vinculo.assinatura;
+}
+
+function novoId() {
+  if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+  var b = new Uint8Array(16);
+  window.crypto.getRandomValues(b);
+  b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
+  var h = Array.prototype.map.call(b, function (x) { return (x + 256).toString(16).slice(1); }).join('');
+  return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' + h.slice(16, 20) + '-' + h.slice(20);
+}
+
+function agoraLocal() {
+  var d = new Date();
+  return dataLocal(d) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
+/** '' = pode salvar; 'semConexao'; ou a mensagem do que falta. */
+function motivoNaoSalva() {
+  if (!estado.dados) return 'Carregando…';
+  if (!conexao || !estado.carregadoDoServidor || navigator.onLine === false) return 'semConexao';
+  if (!ultimoCalc || ultimoCalc.res.aVista.totalCentavos <= 0) return 'Preencha as horas (ou o valor) e as peças antes de salvar.';
+  if (Object.keys(ultimoCalc.lido.erros).length || validarTelefone(orc.telefone)) return 'Corrija o campo em vermelho antes de salvar.';
+  return '';
+}
+
+/**
+ * Salva (upsert) o orçamento da tela. op.comoNovo: ID novo, sem base (depois de conflito/excluído).
+ * @return Promise<{r: 'salvo'|'semMudanca'|'semConexao'|'invalido'|'conflito'|'excluido'|'erro', msg?}>
+ */
+function salvarOrcamento(op) {
+  op = op || {};
+  if (salvandoOrc) return salvandoOrc;
+  renderOrcamento();
+  var motivo = motivoNaoSalva();
+  if (motivo) return Promise.resolve({ r: motivo === 'semConexao' ? 'semConexao' : 'invalido', msg: motivo });
+  var novo = !orc.vinculo || !!op.comoNovo;
+  if (!novo && assinaturaDe(usandoFotoGravada()) === orc.vinculo.assinatura) return Promise.resolve({ r: 'semMudanca' });
+
+  var gravada = usandoFotoGravada();
+  var foto = clonar(fotoEmUso());
+  if (!gravada) foto.em = agoraLocal();
+  var pedido = {
+    id: novo ? novoId() : orc.vinculo.id,
+    atualizadoEmBase: novo ? null : orc.vinculo.atualizadoEm,
+    cliente: String(orc.cliente || '').trim(),
+    telefone: String(orc.telefone || '').trim(),
+    dados: { v: 1, entrada: entradaDoRascunho(), foto: foto, resultado: resultadoParaGravar(ultimoCalc) }
+  };
+  var assinatura = assinaturaDe(true);
+  var antigo = orc.vinculo;
+  var usada = conexao;
+  $('btn-salvar-orc').disabled = true;
+  salvandoOrc = PrecoCertoApi.pedir(conexao, 'salvarOrcamento', { orcamento: pedido }).then(function (r) {
+    salvandoOrc = null;
+    $('btn-salvar-orc').disabled = false;
+    if (conexao !== usada) return { r: 'erro', msg: 'O aparelho foi desconectado.' };
+    var manter = antigo && !novo && antigo.situacao !== 'Aberto'; // Fechado/Não fechou: só cliente e telefone mudaram
+    orc.vinculo = {
+      id: r.id, criadoEm: r.criadoEm, atualizadoEm: r.atualizadoEm, situacao: r.situacao,
+      motivo: manter ? antigo.motivo : '', fechamento: manter ? antigo.fechamento : null,
+      foto: manter ? antigo.foto : foto, recalcular: false, assinatura: assinatura
+    };
+    gravarRascunho();
+    renderOrcamento();
+    resultadosMudaram();
+    return { r: 'salvo' };
+  }, function (e) {
+    salvandoOrc = null;
+    $('btn-salvar-orc').disabled = false;
+    if (e && e.tipo === 'acesso') { perdeuAcesso(); return { r: 'erro', msg: mensagemDoErro(e) }; }
+    if (e && e.tipo === 'conflito') { avisarConflito(); return { r: 'conflito' }; }
+    if (e && e.tipo === 'excluido') { avisarExcluido(); return { r: 'excluido' }; }
+    if (e && e.tipo === 'rede') return { r: 'semConexao' };
+    return { r: 'erro', msg: mensagemDoErro(e) };
+  });
+  return salvandoOrc;
+}
+
+var MSG_NAO_SALVO_SEM_CONEXAO = 'Sem conexão: orçamento NÃO foi salvo.';
+
+/** Aviso depois de salvar (copiou = veio do "Copiar para WhatsApp"). */
+function avisarSalvamento(x, copiou) {
+  var antes = copiou ? 'Copiado ✓ · ' : '';
+  if (x.r === 'salvo') mostrarAviso(antes + 'Orçamento salvo ✓');
+  else if (x.r === 'semMudanca') mostrarAviso(copiou ? 'Copiado! Agora é só colar no WhatsApp.' : 'Orçamento salvo ✓');
+  else if (x.r === 'semConexao') mostrarAviso(antes + MSG_NAO_SALVO_SEM_CONEXAO, 'alerta');
+  else if (x.r === 'invalido') mostrarAviso(antes + 'Orçamento não salvo: ' + x.msg, 'alerta');
+  else if (x.r === 'erro') mostrarAviso(antes + 'Não salvou: ' + x.msg, 'alerta');
+  else if (copiou) mostrarAviso('Copiado ✓');
+}
+
+function aoClicarSalvar() {
+  salvarOrcamento({}).then(function (x) { avisarSalvamento(x, false); });
+}
+
+function avisarConflito() {
+  perguntar('Esse orçamento foi alterado em outro aparelho.', 'Suas mudanças não foram salvas.', [
+    { chave: 'ver', texto: 'Ver a versão nova', classe: 'btn-primario' },
+    { chave: 'novo', texto: 'Salvar as minhas como um novo orçamento' }
+  ]).then(function (k) {
+    if (k === 'ver' && orc.vinculo) buscarOrcamento(orc.vinculo.id).then(function (o) { if (o) { carregarRascunho(rascunhoDoSalvo(o)); mostrarAviso('Versão nova carregada.'); } });
+    if (k === 'novo') salvarOrcamento({ comoNovo: true }).then(function (x) { avisarSalvamento(x, false); });
+  });
+}
+
+function avisarExcluido() {
+  perguntar('Esse orçamento foi excluído em outro aparelho.', 'Suas mudanças não foram salvas, e ele não volta sozinho.', [
+    { chave: 'novo', texto: 'Salvar as minhas como novo', classe: 'btn-primario' },
+    { chave: 'descartar', texto: 'Descartar' }
+  ]).then(function (k) {
+    if (k === 'novo') salvarOrcamento({ comoNovo: true }).then(function (x) { avisarSalvamento(x, false); });
+    if (k === 'descartar') { carregarRascunho(orcamentoVazio()); apagarStorage(CHAVE_ORCAMENTO); mostrarAviso('Orçamento descartado.'); }
+  });
+}
+
+// ---------------- Reabrir, duplicar ----------------
+var CAMPOS_ENTRADA = ['descricao', 'modo', 'horasTexto', 'valorTexto', 'horasFechadoTexto', 'pecasModo', 'pecasPagarTexto',
+  'pecasCobrarTexto', 'acrescimoTexto', 'descontoTexto', 'extraTexto', 'bandeira'];
+
+/** Orçamento vindo do servidor (obterOrcamento) → rascunho da tela. comoCopia: sem vínculo (Duplicar), valores de hoje. */
+function rascunhoDoSalvo(o, comoCopia) {
+  var e = o.dados.entrada;
+  var r = orcamentoVazio();
+  CAMPOS_ENTRADA.forEach(function (k) { if (e[k] !== undefined) r[k] = e[k]; });
+  r.pecas = (e.pecas || []).map(function (p) { return { descricao: p.descricao || '', qtdTexto: p.qtdTexto || '', valorTexto: p.valorTexto || '' }; });
+  r.cliente = o.cliente || '';
+  r.telefone = o.telefone || '';
+  if (!comoCopia) {
+    r.vinculo = { id: o.id, criadoEm: o.criadoEm, atualizadoEm: o.atualizadoEm, situacao: o.situacao, motivo: o.motivo || '',
+      fechamento: o.dados.fechamento || null, foto: o.dados.foto, recalcular: false, assinatura: '' };
+  }
+  return r;
+}
+
+/** obterOrcamento com os avisos de sempre. @return Promise<orcamento|null> */
+function buscarOrcamento(id) {
+  if (!conexao) return Promise.resolve(null);
+  return PrecoCertoApi.pedir(conexao, 'obterOrcamento', { id: id }).then(function (r) { return r.orcamento; }, function (e) {
+    if (e && e.tipo === 'acesso') perdeuAcesso();
+    else if (e && e.tipo === 'excluido') { mostrarAviso('Esse orçamento foi excluído em outro aparelho.', 'alerta'); desvincularSe(id); resultadosMudaram(); }
+    else mostrarAviso(e && e.tipo === 'rede' ? 'Sem conexão: não deu para abrir o orçamento.' : 'Não abriu: ' + mensagemDoErro(e), 'alerta');
+    return null;
+  });
+}
+
+function desvincularSe(id) {
+  if (orc.vinculo && orc.vinculo.id === id) { orc.vinculo = null; gravarRascunho(); renderOrcamento(); }
+}
+
+/** Antes de trocar o rascunho: se houver orçamento não salvo, pergunta. fn roda depois (se ele quiser). */
+function trocarRascunhoCom(fn) {
+  if (!temMudancaNaoSalva()) { fn(); return; }
+  perguntar('Você tem um orçamento que não foi salvo.', 'O que fazer com ele antes de abrir o outro?', [
+    { chave: 'salvar', texto: 'Salvar e abrir', classe: 'btn-primario' },
+    { chave: 'descartar', texto: 'Descartar e abrir' }
+  ]).then(function (k) {
+    if (k === 'descartar') fn();
+    if (k === 'salvar') salvarOrcamento({}).then(function (x) {
+      if (x.r === 'salvo' || x.r === 'semMudanca') fn(); else avisarSalvamento(x, false);
+    });
+  });
+}
+
+function abrirSalvo(id) {
+  buscarOrcamento(id).then(function (o) {
+    if (!o) return;
+    trocarRascunhoCom(function () {
+      carregarRascunho(rascunhoDoSalvo(o));
+      irParaOrcamento();
+      mostrarAviso('Orçamento aberto.');
+    });
+  });
+}
+
+function duplicarSalvo(id) {
+  buscarOrcamento(id).then(function (o) {
+    if (!o) return;
+    trocarRascunhoCom(function () {
+      carregarRascunho(rascunhoDoSalvo(o, true));
+      irParaOrcamento();
+      mostrarAviso('Cópia pronta, com os valores de hoje. Confira e salve.');
+    });
+  });
+}
+
+/** Duplicar o orçamento da tela: o mesmo rascunho, sem vínculo, com os valores de hoje. */
+function duplicarRascunho() {
+  var copia = clonar(orc);
+  copia.vinculo = null;
+  carregarRascunho(copia);
+  window.scrollTo(0, 0);
+  mostrarAviso('Cópia pronta, com os valores de hoje. Confira e salve.');
+}
+
+// ---------------- Situação: Aberto · Fechado · Não fechou ----------------
+/** alvo = {id, atualizadoEm, situacao, cliente, servico, valorCombinadoC?, origem: 'orcamento'|'lista'} */
+function alvoDoRascunho() {
+  var v = orc.vinculo;
+  return { id: v.id, atualizadoEm: v.atualizadoEm, situacao: v.situacao, cliente: orc.cliente, servico: orc.descricao,
+    valorCombinadoC: v.fechamento ? v.fechamento.valorCombinadoC : null, origem: 'orcamento' };
+}
+
+function abrirMenuSituacao(alvo) {
+  menuSit.alvo = alvo;
+  $('menu-situacao-quem').innerHTML = esc([alvo.cliente, alvo.servico].filter(function (s) { return String(s || '').trim(); }).join(' · ') || 'Orçamento sem nome') +
+    ' · ' + chipSituacao(alvo.situacao);
+  var b = [];
+  if (alvo.situacao !== 'Fechado') b.push(['fechou', 'Fechou', 'btn-primario']);
+  if (alvo.situacao === 'Aberto') b.push(['nao', 'Não fechou', 'btn-fantasma']);
+  if (alvo.situacao !== 'Aberto') b.push(['aberto', 'Voltar para Aberto', 'btn-fantasma']);
+  if (alvo.origem === 'orcamento') {
+    b.push(['duplicar', 'Duplicar', 'btn-fantasma']);
+    b.push(['excluir', 'Excluir orçamento', 'btn-fantasma btn-texto-perigo']);
+  }
+  $('menu-situacao-botoes').innerHTML = b.map(function (x) {
+    return '<button type="button" class="btn ' + x[2] + '" data-sit="' + x[0] + '">' + esc(x[1]) + '</button>';
+  }).join('');
+  $('bloco-motivo').hidden = true;
+  $('motivo-texto').value = '';
+  $('menu-situacao').hidden = false;
+  var primeiro = $('menu-situacao-botoes').querySelector('button');
+  if (primeiro) primeiro.focus();
+}
+
+function fecharMenuSituacao() { $('menu-situacao').hidden = true; }
+
+function escolherNoMenuSituacao(acao) {
+  var alvo = menuSit.alvo;
+  if (!alvo) return;
+  if (acao === 'nao') { $('bloco-motivo').hidden = false; $('motivo-texto').focus(); return; }
+  fecharMenuSituacao();
+  if (acao === 'fechou') {
+    var abrir = function () {
+      buscarOrcamento(alvo.id).then(function (o) { if (o) abrirFechamento(o, alvo.origem === 'lista' ? 'resultados' : 'orcamento'); });
+    };
+    // Do orçamento da tela: salva antes o que estiver mudado (o fechamento usa o que está gravado).
+    if (alvo.origem === 'orcamento' && temMudancaNaoSalva()) {
+      salvarOrcamento({}).then(function (x) { if (x.r === 'salvo' || x.r === 'semMudanca') { alvo.atualizadoEm = orc.vinculo.atualizadoEm; abrir(); } else avisarSalvamento(x, false); });
+    } else abrir();
+    return;
+  }
+  if (acao === 'aberto') {
+    var texto = alvo.situacao === 'Fechado' && typeof alvo.valorCombinadoC === 'number'
+      ? 'O fechamento de ' + formatarCentavos(alvo.valorCombinadoC) + ' será desfeito.'
+      : 'O orçamento volta a ficar em aberto.';
+    perguntar('Voltar para Aberto?', texto, [{ chave: 'sim', texto: 'Sim, voltar para Aberto', classe: 'btn-primario' }]).then(function (k) {
+      if (k === 'sim') enviarSituacao(alvo, 'Aberto', {});
+    });
+    return;
+  }
+  if (acao === 'duplicar') { duplicarRascunho(); return; }
+  if (acao === 'excluir') excluirComDesfazer(alvo);
+}
+
+function confirmarNaoFechou() {
+  var alvo = menuSit.alvo;
+  fecharMenuSituacao();
+  enviarSituacao(alvo, 'Não fechou', { motivo: $('motivo-texto').value.trim().slice(0, MAX_MOTIVO) });
+}
+
+/** mudarSituacao no servidor + o que muda na tela. @return Promise<boolean> */
+function enviarSituacao(alvo, situacao, campos) {
+  if (!conexao || navigator.onLine === false) { mostrarAviso('Sem conexão: a situação NÃO foi mudada.', 'alerta'); return Promise.resolve(false); }
+  var pedido = { id: alvo.id, atualizadoEmBase: alvo.atualizadoEm, situacao: situacao };
+  Object.keys(campos).forEach(function (k) { pedido[k] = campos[k]; });
+  return PrecoCertoApi.pedir(conexao, 'mudarSituacao', pedido).then(function (r) {
+    if (orc.vinculo && orc.vinculo.id === alvo.id) {
+      var naoSalvo = temMudancaNaoSalva();
+      orc.vinculo.atualizadoEm = r.atualizadoEm;
+      orc.vinculo.situacao = situacao;
+      orc.vinculo.motivo = situacao === 'Não fechou' ? (campos.motivo || '') : '';
+      orc.vinculo.fechamento = situacao === 'Fechado' ? campos.fechamento : null;
+      if (!naoSalvo) orc.vinculo.assinatura = assinaturaDe(usandoFotoGravada());
+      gravarRascunho();
+      renderOrcamento();
+    }
+    mostrarAviso(situacao === 'Fechado' ? 'Orçamento fechado ✓' : situacao === 'Aberto' ? 'Voltou para Aberto ✓' : 'Marcado como "Não fechou" ✓');
+    resultadosMudaram();
+    return true;
+  }, function (e) {
+    if (e && e.tipo === 'acesso') perdeuAcesso();
+    else if (e && e.tipo === 'conflito') {
+      perguntar('Esse orçamento foi alterado em outro aparelho.', 'Nada foi mudado. Veja a versão nova e tente de novo.', []);
+      if (orc.vinculo && orc.vinculo.id === alvo.id) buscarOrcamento(alvo.id).then(function (o) { if (o && !temMudancaNaoSalva()) carregarRascunho(rascunhoDoSalvo(o)); });
+      resultadosMudaram();
+    } else if (e && e.tipo === 'excluido') {
+      perguntar('Esse orçamento foi excluído em outro aparelho.', 'A situação não foi mudada.', []);
+      desvincularSe(alvo.id);
+      resultadosMudaram();
+    } else mostrarAviso(e && e.tipo === 'rede' ? 'Sem conexão: a situação NÃO foi mudada.' : 'Não mudou: ' + mensagemDoErro(e), 'alerta');
+    return false;
+  });
+}
+
+// ---------------- Excluir (com DESFAZER) ----------------
+/** Some na hora; o pedido só vai ao servidor quando a barra "DESFAZER" some (6 s). */
+function excluirComDesfazer(alvo) {
+  if (desfazer.timer !== null) finalizarRemocao(); // a remoção anterior vira definitiva
+  var item = { id: alvo.id, atualizadoEm: alvo.atualizadoEm, rascunho: null };
+  if (alvo.origem === 'orcamento') { item.rascunho = clonar(orc); carregarRascunho(orcamentoVazio()); }
+  resul.ocultos[alvo.id] = true;
+  resul.aberto = null; // com DESFAZER, o item volta fechado
+  if (nav.tela === 'resultados') renderResultados();
+  desfazer.tipo = 'orcamento';
+  desfazer.item = item;
+  desfazer.indice = -1;
+  $('aviso').hidden = true;
+  $('texto-desfazer').textContent = 'Orçamento excluído';
+  $('barra-desfazer').hidden = false;
+  desfazer.timer = setTimeout(finalizarRemocao, TEMPO_DESFAZER_MS);
+}
+
+function excluirNoServidor(item) {
+  if (!conexao) { delete resul.ocultos[item.id]; return; }
+  PrecoCertoApi.pedir(conexao, 'excluirOrcamento', { id: item.id, atualizadoEmBase: item.atualizadoEm }).then(function () {
+    desvincularSe(item.id);
+    delete resul.ocultos[item.id];
+    resultadosMudaram();
+  }, function (e) {
+    delete resul.ocultos[item.id];
+    if (item.rascunho && !rascunhoTemConteudo()) carregarRascunho(item.rascunho, true); // não excluiu: o orçamento volta para a tela
+    if (e && e.tipo === 'acesso') perdeuAcesso();
+    else if (e && e.tipo === 'conflito') perguntar('Esse orçamento foi alterado em outro aparelho.', 'Ele NÃO foi excluído. Veja a versão nova.', []);
+    else mostrarAviso(e && e.tipo === 'rede' ? 'Sem conexão: o orçamento NÃO foi excluído.' : 'Não excluiu: ' + mensagemDoErro(e), 'alerta');
+    resultadosMudaram();
+  });
+}
+
+// ---------------- Tela de fechamento ----------------
+function abrirFechamento(o, voltarPara) {
+  var d = o.dados;
+  var cartao = cartaoEfetivo(d.foto.cartoes, d.entrada.bandeira || NAO_SEI);
+  var formas = formasDisponiveis(d.foto, cartao);
+  fech = {
+    o: o, voltarPara: voltarPara, forma: 'pix', cartao: cartao, valorEditado: false,
+    parcelas: d.resultado.ancora && formas.parcelas.indexOf(d.resultado.ancora.parcelas) >= 0 ? d.resultado.ancora.parcelas : (formas.parcelas[0] || null)
+  };
+  $('fechar-quem').textContent = [o.cliente, d.entrada.descricao].filter(function (s) { return String(s || '').trim(); }).join(' · ') || 'Orçamento sem nome';
+  var hoje = dataLocal(new Date());
+  $('fechar-data').value = hoje;
+  $('fechar-data').max = hoje;
+  sugerirValorFechamento();
+  nav.voltarFechar = voltarPara;
+  empilharHistorico('fechar');
+  mostrarTela('fechar');
+  window.scrollTo(0, 0);
+  renderFechamento();
+}
+
+function sugerirValorFechamento() {
+  var d = fech.o.dados;
+  var v = valorSugeridoFechamento(d.entrada, d.foto, d.resultado, fech.forma, fech.parcelas, fech.cartao);
+  $('fechar-valor').value = v === null ? '' : numeroParaCampo(v / 100, true);
+  mostrarErroCampo($('fechar-valor'), '');
+}
+
+function chipsHtml(itens, atributo, selecionado) {
+  return itens.map(function (x) {
+    return '<button type="button" class="chip" role="radio" ' + atributo + '="' + esc(x[0]) + '" aria-checked="' + (x[0] === selecionado) + '">' + esc(x[1]) + '</button>';
+  }).join('');
+}
+
+/** Lê a tela de fechamento e calcula. @return {f, erroValor, erroData} */
+function lerFechamento() {
+  var d = fech.o.dados;
+  var rv = validarNumeroCampo($('fechar-valor').value, LIMITE_VALOR_ORCAMENTO, { vazioPermitido: false, mensagem: MSG_VALOR_ORCAMENTO });
+  var erroValor = rv.erro || (rv.valor <= 0 ? 'O valor combinado precisa ser maior que zero.' : '');
+  var data = $('fechar-data').value;
+  var erroData = !/^\d{4}-\d{2}-\d{2}$/.test(data) ? 'Escolha a data do fechamento.'
+    : data > dataLocal(new Date()) ? 'A data do fechamento não pode ser no futuro.'
+    : data < '2000-01-01' ? 'Data inválida.' : '';
+  var f = erroValor ? null : calcularFechamento(d.foto, d.resultado, fech.forma, fech.parcelas, fech.cartao, centavos(rv.valor));
+  return { f: f, erroValor: erroValor, erroData: erroData, data: data };
+}
+
+function renderFechamento() {
+  if (!fech) return;
+  var d = fech.o.dados;
+  var foto = d.foto;
+  var formas = formasDisponiveis(foto, fech.cartao);
+  var opcoes = [['pix', 'Pix/dinheiro']];
+  if (formas.debito) opcoes.push(['debito', 'Débito']);
+  if (formas.parcelas.length) opcoes.push(['credito', 'Cartão']);
+  if (opcoes.every(function (x) { return x[0] !== fech.forma; })) fech.forma = 'pix';
+  $('fechar-formas').innerHTML = chipsHtml(opcoes, 'data-fech-forma', fech.forma);
+  $('fechar-bloco-parcelas').hidden = fech.forma !== 'credito';
+  if (fech.forma === 'credito' && formas.parcelas.indexOf(fech.parcelas) < 0) fech.parcelas = formas.parcelas[0];
+  $('fechar-parcelas').innerHTML = chipsHtml(formas.parcelas.map(function (n) { return [String(n), n + 'x']; }), 'data-fech-parcelas', String(fech.parcelas));
+  $('fechar-bloco-cartao').hidden = fech.forma === 'pix' || foto.cartoes.length <= 1;
+  $('fechar-cartoes').innerHTML = foto.cartoes.length > 1
+    ? chipsHtml([[NAO_SEI, 'Não sei']].concat(foto.cartoes.map(function (c) { return [c.nome, c.nome]; })), 'data-fech-cartao', fech.cartao)
+    : '';
+  var desc = d.resultado.descontoTotal;
+  $('fechar-valor-ajuda').textContent = (fech.forma === 'pix'
+    ? (desc > 0 ? 'À vista com ' + formatarPercentual(desc) + ' de desconto, como no orçamento.' : 'À vista, como no orçamento.')
+    : fech.forma === 'debito' ? 'Total no débito.' : 'Total no cartão em ' + fech.parcelas + 'x.') +
+    ' Pode mudar (ex.: desconto dado na hora).';
+
+  var l = lerFechamento();
+  mostrarErroCampo($('fechar-valor'), l.erroValor);
+  mostrarErroCampo($('fechar-data'), l.erroData);
+  var f = l.f;
+  $('btn-confirmar-fechamento').disabled = !f || !!l.erroData;
+  $('card-fechamento').hidden = !f;
+  if (!f) return;
+  var cor = { verde: 'positivo', ambar: 'ambar', vermelho: 'negativo' }[f.estado];
+  $('fech-sobra').innerHTML = dinheiroComSinalHtml(f.sobraC);
+  $('fech-sobra-linha').className = 'valor-grande ' + cor;
+  $('card-fechamento').className = 'card' + (f.estado === 'vermelho' ? ' card-negativo' : f.estado === 'ambar' ? ' card-ambar' : '');
+  $('fech-total-seu').hidden = f.totalSeuC === null;
+  $('fech-total-seu').innerHTML = f.totalSeuC === null ? '' : 'Total que é seu (casa + sobra): <span class="sem-quebra">' + esc(comSinal(f.totalSeuC)) + '</span>';
+  var alerta = $('fech-alerta');
+  alerta.hidden = f.estado === 'verde';
+  alerta.className = 'alerta' + (f.estado === 'ambar' ? ' alerta-ambar' : '');
+  alerta.textContent = f.estado === 'ambar' ? 'Paga a oficina, mas não cobre toda a sua casa.'
+    : f.estado === 'vermelho' ? 'Com esse valor a oficina não se paga.' : '';
+  var linhas = [
+    ['Valor combinado', formatarCentavos(f.valorCombinadoC)],
+    ['Taxa da maquininha', menos(f.taxaC)],
+    ['Imposto', menos(f.impostoC)],
+    ['Peças (o que você pagou)', menos(f.pecasPagarC)],
+    ['Paga os gastos da oficina', menos(f.pagaOficinaC)]
+  ];
+  if (f.vaiParaCasaC !== null) linhas.push(['Vai para a sua casa', menos(f.vaiParaCasaC), 'é o seu salário']);
+  linhas.push(['Sobra extra', comSinal(f.sobraC), null, 'total']);
+  $('fech-detalhes').innerHTML = htmlDetalhes(linhas);
+}
+
+function confirmarFechamento() {
+  if (!fech) return;
+  var l = lerFechamento();
+  if (!l.f || l.erroData) { renderFechamento(); return; }
+  var fechamento = l.f;
+  fechamento.data = l.data;
+  var o = fech.o;
+  $('btn-confirmar-fechamento').disabled = true;
+  enviarSituacao({ id: o.id, atualizadoEm: o.atualizadoEm }, 'Fechado', { fechamento: fechamento }).then(function (ok) {
+    $('btn-confirmar-fechamento').disabled = false;
+    if (ok) sairDoFechamento();
+  });
+}
+
+/** Sai da tela de fechamento para onde veio (Orçamento ou Resultados). */
+function sairDoFechamento() {
+  var destino = nav.voltarFechar;
+  fech = null;
+  if (destino === 'resultados') {
+    empilharHistorico('resultados');
+    mostrarTela('resultados');
+    renderResultados();
+    carregarMes();
+  } else {
+    voltarAoOrcamento(true);
+  }
+  window.scrollTo(0, 0);
+}
+
+// ---------------- Aba Resultados ----------------
+function mesAtualLocal() { return dataLocal(new Date()).slice(0, 7); }
+
+/** Tocar em "Resultados" (topo) ou "Ver em Resultados": pede o PIN se ligado e ainda bloqueado. */
+function abrirResultados(peloUsuario, mes) {
+  if (peloUsuario) usuarioEscolheuTela = true;
+  if (mes) resul.mes = mes;
+  if (nav.tela === 'resultados') { renderResultados(); carregarMes(); return; }
+  if (lerPin() && !desbloqueio.ok) { abrirPin('resultados'); return; }
+  empilharHistorico('resultados');
+  mostrarResultados();
+}
+
+function mostrarResultados() {
+  if (!resul.mes) resul.mes = mesAtualLocal();
+  mostrarTela('resultados');
+  window.scrollTo(0, 0);
+  renderResultados();
+  carregarMes();
+}
+
+/** Algo mudou nos orçamentos: recarrega a lista se a aba estiver aberta. */
+function resultadosMudaram() {
+  if (nav.tela === 'resultados') carregarMes();
+}
+
+function carregarMes() {
+  var mes = resul.mes;
+  var status = $('res-status');
+  if (!conexao) { status.textContent = 'Este aparelho não está ligado a uma planilha.'; return; }
+  if (navigator.onLine === false) { status.textContent = 'Sem conexão: Resultados precisa da internet.'; return; }
+  var pedido = ++resul.pedido;
+  var usada = conexao;
+  status.textContent = 'Carregando…';
+  PrecoCertoApi.pedir(conexao, 'listarOrcamentos', { mes: mes }).then(function (r) {
+    if (pedido !== resul.pedido || conexao !== usada) return; // resposta velha
+    resul.dados = r;
+    status.textContent = '';
+    renderResultados();
+  }, function (e) {
+    if (pedido !== resul.pedido || conexao !== usada) return;
+    if (e && e.tipo === 'acesso') { perdeuAcesso(); status.textContent = 'Este aparelho perdeu o acesso à planilha.'; return; }
+    status.innerHTML = esc(e && e.tipo === 'rede' ? 'Sem conexão: Resultados precisa da internet.' : 'Não carregou: ' + mensagemDoErro(e)) +
+      ' <button type="button" class="link link-inline" id="btn-res-tentar">Tentar de novo</button>';
+  });
+}
+
+function trocarMes(delta) {
+  var novo = deslocarMes(resul.mes, delta);
+  if (novo > mesAtualLocal()) return;
+  resul.mes = novo;
+  resul.aberto = null;
+  renderResultados();
+  carregarMes();
+}
+
+/** Valor em reais que nunca quebra no meio ("R$" numa linha e o número na outra). */
+function dinheiroHtml(c) { return '<span class="sem-quebra">' + esc(formatarCentavos(c)) + '</span>'; }
+function dinheiroComSinalHtml(c) { return '<span class="sem-quebra">' + esc(comSinal(c)) + '</span>'; }
+
+function plural(n, um, varios) { return n + ' ' + (n === 1 ? um : varios); }
+
+function horasTexto(h) { return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(h); }
+
+function renderResultados() {
+  var mes = resul.mes || mesAtualLocal();
+  var atual = mesAtualLocal();
+  $('mes-titulo').textContent = nomeDoMes(mes);
+  $('mes-seguinte').disabled = mes >= atual;
+  var r = resul.dados && resul.dados.mes === mes ? resul.dados : null;
+  $('mes-anterior').disabled = !r || !r.primeiroMes || mes <= r.primeiroMes;
+  if (!r) { $('res-conteudo').hidden = true; $('res-vazio').hidden = true; return; }
+
+  var lista = r.orcamentos.filter(function (o) { return !resul.ocultos[o.id]; });
+  var doMes = lista.filter(function (o) { return mesDe(o.criadoEm) === mes || (o.situacao === 'Fechado' && mesDe(o.dataFechamento) === mes); });
+  if (!doMes.length) {
+    $('res-conteudo').hidden = true;
+    $('res-vazio').hidden = false;
+    $('res-vazio').textContent = 'Nenhum orçamento em ' + nomeDoMes(mes, true) + '. Os orçamentos que você salvar aparecem aqui.';
+    return;
+  }
+  $('res-vazio').hidden = true;
+  $('res-conteudo').hidden = false;
+
+  var gravada = r.meses[mes] || null;
+  var usandoHoje = !gravada && mes === atual;
+  var fotoMes = gravada || (usandoHoje ? r.gastosHoje : null);
+  var resumo = resumoDoMes(lista, mes, fotoMes);
+  var anterior = resumoDoMes(lista, r.mesAnterior, r.meses[r.mesAnterior] || null);
+  var curto = nomeDoMes(mes, true);
+
+  // Resultado real do mês
+  var rr = resumo.resultado;
+  $('mes-sem-foto').hidden = !!rr;
+  $('mes-com-foto').hidden = !rr;
+  if (rr) {
+    $('mes-oficina').innerHTML = rr.oficinaSePagou ? 'Sim. Sobraram ' + dinheiroHtml(rr.depoisDaOficinaC) : 'Não. Faltaram ' + dinheiroHtml(-rr.depoisDaOficinaC);
+    $('mes-oficina').className = rr.oficinaSePagou ? 'positivo' : 'negativo';
+    $('mes-casa').innerHTML = rr.gastosCasaC === 0 ? 'Sem gastos de casa.'
+      : rr.casa === 'toda' ? 'Sim, toda: ' + dinheiroHtml(rr.gastosCasaC)
+      : rr.casa === 'parte' ? 'Em parte: ' + dinheiroHtml(rr.casaCobertaC) + ' de ' + dinheiroHtml(rr.gastosCasaC) + ' (' + porcentoInteiro(rr.pctCasa) + ')'
+      : 'Não. Nada sobrou para a casa.';
+    $('mes-casa').className = rr.casa === 'toda' || rr.gastosCasaC === 0 ? 'positivo' : rr.casa === 'parte' ? 'ambar' : 'negativo';
+    var cor = { verde: 'positivo', ambar: 'ambar', vermelho: 'negativo' }[rr.estado];
+    $('mes-sobra').innerHTML = dinheiroComSinalHtml(rr.sobraDoMesC);
+    $('mes-sobra-linha').className = 'valor-grande ' + cor;
+    $('mes-total-seu').innerHTML = 'Total que é seu no mês: <span class="sem-quebra">' + esc(formatarCentavos(rr.totalSeuNoMesC)) + '</span>';
+    var cmp = compararMeses(resumo, anterior);
+    $('mes-comparacao').hidden = !cmp;
+    if (cmp) {
+      var seta = function (c) { return c >= 0 ? '↑ ' : '↓ '; };
+      $('mes-comparacao').innerHTML = 'Comparado com ' + esc(nomeDoMes(r.mesAnterior, true)) + ': faturamento <span class="sem-quebra">' + seta(cmp.faturamentoDifC) +
+        esc(formatarCentavos(Math.abs(cmp.faturamentoDifC))) + '</span>' + (cmp.faturamentoPct !== null ? ' (' + porcentoInteiro(Math.abs(cmp.faturamentoPct)) + ')' : '') +
+        (cmp.sobraDifC !== null ? ' · sobra <span class="sem-quebra">' + seta(cmp.sobraDifC) + esc(formatarCentavos(Math.abs(cmp.sobraDifC))) + '</span>' : '');
+    }
+  }
+  $('card-mes').className = 'card' + (rr && rr.estado === 'vermelho' ? ' card-negativo' : rr && rr.estado === 'ambar' ? ' card-ambar' : '');
+  $('mes-gastos').innerHTML = gravada
+    ? 'Gastos do mês: oficina ' + dinheiroHtml(gravada.oficinaC) + ' · casa ' + dinheiroHtml(gravada.casaC) + ' · ' + horasTexto(gravada.horas) + ' h (gravados em ' + dataBR(gravada.gravadoEm, true) + ').'
+    : usandoHoje
+      ? 'Usando seus gastos de hoje (oficina ' + dinheiroHtml(r.gastosHoje.oficinaC) + ' · casa ' + dinheiroHtml(r.gastosHoje.casaC) + '). O mês fica gravado no primeiro fechamento.'
+      : '';
+
+  // Orçamentos feitos no mês (pelo mês de criação)
+  $('titulo-contagem').textContent = 'Orçamentos feitos em ' + curto;
+  $('mes-contagem').textContent = resumo.feitos + ' · ' + plural(resumo.fecharam, 'fechou', 'fecharam') + ' · ' +
+    plural(resumo.naoFecharam, 'não fechou', 'não fecharam') + ' · ' + resumo.emAberto + ' em aberto';
+  $('mes-taxa-fechamento').textContent = resumo.taxaFechamento === null ? 'Nenhum orçamento feito neste mês.' : 'Fecharam: ' + porcentoInteiro(resumo.taxaFechamento);
+
+  // Dinheiro (pela data do fechamento)
+  $('titulo-dinheiro').textContent = 'Dinheiro que entrou em ' + curto;
+  $('mes-dinheiro').innerHTML = htmlDetalhes([
+    ['Faturamento', formatarCentavos(resumo.faturamentoC), null, 'total'],
+    ['Peças (você pagou)', formatarCentavos(resumo.pecasC)],
+    ['Taxas da maquininha', formatarCentavos(resumo.taxasC)],
+    ['Imposto', formatarCentavos(resumo.impostoC)]
+  ]);
+
+  // Horas
+  $('mes-horas').textContent = resumo.horasPossiveis
+    ? horasTexto(resumo.horasVendidas) + ' de ' + horasTexto(resumo.horasPossiveis) + ' horas — ' + porcentoInteiro(resumo.pctHoras)
+    : horasTexto(resumo.horasVendidas) + ' horas vendidas';
+  $('mes-horas-barra').style.width = Math.min(100, Math.round((resumo.pctHoras || 0) * 100)) + '%';
+
+  renderListaResultados(doMes, mes);
+}
+
+function renderListaResultados(doMes, mes) {
+  var lista = doMes.filter(function (o) {
+    return (resul.filtro === 'todos' || o.situacao === resul.filtro) && combinaBusca(o, resul.busca);
+  });
+  function dataDe(o) { return o.situacao === 'Fechado' && mesDe(o.dataFechamento) === mes ? o.dataFechamento : o.criadoEm; }
+  lista.sort(function (a, b) { return dataDe(b) < dataDe(a) ? -1 : dataDe(b) > dataDe(a) ? 1 : 0; });
+  document.querySelectorAll('#res-filtros [data-filtro]').forEach(function (b) { b.setAttribute('aria-checked', String(b.dataset.filtro === resul.filtro)); });
+  $('res-lista-vazia').hidden = lista.length > 0;
+  $('res-lista').innerHTML = lista.map(function (o) {
+    var fechado = o.situacao === 'Fechado';
+    var valor = fechado ? o.valorCombinadoC : o.valorOrcadoC;
+    var aberto = resul.aberto === o.id;
+    var outroMes = mesDe(o.criadoEm) !== mes ? ' · orçado em ' + dataBR(o.criadoEm, true) : '';
+    return '<div class="item-orc' + (aberto ? ' aberto' : '') + '">' +
+      '<button type="button" class="item-orc-topo" data-item="' + esc(o.id) + '" aria-expanded="' + aberto + '">' +
+        '<span class="item-linha1"><span class="item-cliente">' + esc(o.cliente || 'Sem nome') + '</span>' + chipSituacao(o.situacao) + '</span>' +
+        '<span class="item-linha2">' + esc([o.servico || 'Serviço sem descrição', dataBR(dataDe(o), true), typeof valor === 'number' ? formatarCentavos(valor) : ''].filter(Boolean).join(' · ')) + esc(outroMes) + '</span>' +
+      '</button>' +
+      (aberto ? '<div class="item-acoes">' +
+        '<button type="button" class="btn btn-fantasma btn-curto" data-item-acao="abrir" data-id="' + esc(o.id) + '">Abrir</button>' +
+        '<button type="button" class="btn btn-fantasma btn-curto" data-item-acao="situacao" data-id="' + esc(o.id) + '">Mudar situação</button>' +
+        '<button type="button" class="btn btn-fantasma btn-curto" data-item-acao="duplicar" data-id="' + esc(o.id) + '">Duplicar</button>' +
+        '<button type="button" class="btn btn-fantasma btn-curto btn-texto-perigo" data-item-acao="excluir" data-id="' + esc(o.id) + '">Excluir</button>' +
+      '</div>' : '') +
+      '</div>';
+  }).join('');
+}
+
+function itemDaLista(id) {
+  var r = resul.dados;
+  return r ? r.orcamentos.filter(function (o) { return o.id === id; })[0] || null : null;
+}
+
+function acaoDoItem(acao, id) {
+  var o = itemDaLista(id);
+  if (!o) return;
+  resul.aberto = null; // depois de qualquer ação, o card volta fechado
+  if (acao === 'abrir') abrirSalvo(id);
+  else if (acao === 'duplicar') duplicarSalvo(id);
+  else if (acao === 'situacao') abrirMenuSituacao({ id: o.id, atualizadoEm: o.atualizadoEm, situacao: o.situacao, cliente: o.cliente, servico: o.servico, valorCombinadoC: o.valorCombinadoC, origem: 'lista' });
+  else if (acao === 'excluir') excluirComDesfazer({ id: o.id, atualizadoEm: o.atualizadoEm, origem: 'lista' });
+}
+
+function usarGastosDeHojeNoMes() {
+  var r = resul.dados;
+  if (!r || !conexao) return;
+  var mes = resul.mes;
+  var g = r.gastosHoje;
+  perguntar('Usar seus gastos de hoje em ' + nomeDoMes(mes, true) + '?',
+    'Os gastos de ' + nomeDoMes(mes, true) + ' passam a ser oficina ' + formatarCentavos(g.oficinaC) + ' e casa ' + formatarCentavos(g.casaC) + '.',
+    [{ chave: 'sim', texto: 'Sim, usar', classe: 'btn-primario' }]).then(function (k) {
+    if (k !== 'sim') return;
+    PrecoCertoApi.pedir(conexao, 'usarGastosDeHojeNoMes', { mes: mes }).then(function () {
+      mostrarAviso('Gastos de ' + nomeDoMes(mes, true) + ' atualizados ✓');
+      carregarMes();
+    }, function (e) {
+      if (e && e.tipo === 'acesso') perdeuAcesso();
+      else mostrarAviso(e && e.tipo === 'rede' ? 'Sem conexão: nada foi mudado.' : 'Não mudou: ' + mensagemDoErro(e), 'alerta');
+    });
+  });
+}
+
+// ---------------- Pergunta com botões ----------------
+/**
+ * Mostra a pergunta e resolve com a chave do botão escolhido (ou null em "Agora não"/Esc).
+ * botoes: [{chave, texto, classe?}]; sempre ganha um último "Agora não" (ou "Entendi", se não houver botões).
+ */
+function perguntar(titulo, texto, botoes) {
+  return new Promise(function (resolver) {
+    if (dialogo.resolver) dialogo.resolver(null);
+    dialogo.resolver = resolver;
+    $('dialogo-titulo').textContent = titulo;
+    $('dialogo-texto').textContent = texto || '';
+    $('dialogo-texto').hidden = !texto;
+    var todos = botoes.concat([{ chave: null, texto: botoes.length ? 'Agora não' : 'Entendi' }]);
+    $('dialogo-botoes').innerHTML = todos.map(function (b, i) {
+      return '<button type="button" class="btn ' + (b.classe || 'btn-fantasma') + '" data-dialogo="' + i + '">' + esc(b.texto) + '</button>';
+    }).join('');
+    dialogo.botoes = todos;
+    $('dialogo').hidden = false;
+    $('dialogo-botoes').querySelector('button').focus();
+  });
+}
+
+function responderDialogo(i) {
+  var b = dialogo.botoes[i];
+  var resolver = dialogo.resolver;
+  dialogo.resolver = null;
+  $('dialogo').hidden = true;
+  if (resolver) resolver(b ? b.chave : null);
 }
 
 // ---------------- Copiar e compartilhar ----------------
@@ -833,6 +1714,7 @@ function compartilhar() {
     mostrarAviso('Não deu para compartilhar. Use "Copiar para WhatsApp".');
   }
   try { navigator.share({ text: texto }).catch(falhou); } catch (e) { falhou(e); }
+  salvarOrcamento({}).then(function (x) { if (x.r !== 'semMudanca') avisarSalvamento(x, false); });
 }
 
 // ---------------- Meus gastos ----------------
@@ -937,8 +1819,10 @@ function removerComDesfazer(tipo, indice) {
 
 function finalizarRemocao() {
   if (desfazer.timer !== null) { clearTimeout(desfazer.timer); desfazer.timer = null; }
+  var tipo = desfazer.tipo, item = desfazer.item;
   desfazer.item = null;
   $('barra-desfazer').hidden = true;
+  if (tipo === 'orcamento') { if (item) excluirNoServidor(item); return; } // só agora o pedido vai ao servidor
   if (remocoesNaoSalvas > 0) alterou();
 }
 
@@ -946,6 +1830,16 @@ function desfazerRemocao() {
   if (!desfazer.item) return;
   if (desfazer.timer !== null) { clearTimeout(desfazer.timer); desfazer.timer = null; }
   var tipo = desfazer.tipo;
+  if (tipo === 'orcamento') { // nada foi enviado: só volta a aparecer
+    var item = desfazer.item;
+    desfazer.item = null;
+    $('barra-desfazer').hidden = true;
+    delete resul.ocultos[item.id];
+    if (item.rascunho) carregarRascunho(item.rascunho, true);
+    if (nav.tela === 'resultados') renderResultados();
+    mostrarAviso('Orçamento de volta.');
+    return;
+  }
   var lista = listaDoTipo(tipo);
   var posicao = Math.min(desfazer.indice, lista.length);
   lista.splice(posicao, 0, desfazer.item);
@@ -1201,7 +2095,8 @@ function preencherTaxasPadrao() {
 // ------------------------------------------------------------------
 function mostrarTelaConectar(mensagemErro) {
   document.body.classList.add('sem-conexao');
-  ['orcamento', 'pin', 'config', 'gastos', 'ajustes'].forEach(function (t) { $('tela-' + t).hidden = true; });
+  ['orcamento', 'resultados', 'fechar', 'pin', 'config', 'gastos', 'ajustes'].forEach(function (t) { $('tela-' + t).hidden = true; });
+  desbloqueio.ok = false;
   nav.tela = 'orcamento';
   usuarioEscolheuTela = false; // ao ligar de novo, a tela inicial é escolhida outra vez
   document.body.classList.remove('em-config');
@@ -1226,7 +2121,12 @@ function esconderTelaConectar() {
 function conectar(nova) {
   return PrecoCertoApi.chamar(nova, 'obterDados').then(function (r) {
     var anterior = PrecoCertoConfig.ler();
-    if (anterior && anterior.api !== nova.api) apagarStorage(CHAVE_CACHE);
+    if (anterior && anterior.api !== nova.api) {
+      apagarStorage(CHAVE_CACHE);
+      orc.vinculo = null; // o orçamento salvo era da outra planilha
+      gravarRascunho();
+      resul.dados = null;
+    }
     if (!PrecoCertoConfig.salvar(nova)) return 'Este navegador não deixou guardar a configuração (modo anônimo?).';
     apagarStorage(CHAVE_PIN); // abrir o link de configuração de novo apaga o PIN ("Esqueci o PIN")
     conexao = nova;
@@ -1303,28 +2203,14 @@ function renderAparelho() {
   var pwa = PrecoCertoPwa.estado;
   $('aparelho-versao').textContent = pwa.versao || '—';
   $('btn-instalar').hidden = !pwa.podeInstalar;
-  var campo = $('desconto-padrao');
-  if (document.activeElement !== campo) {
-    campo.value = numeroParaCampo(lerDescontoPadrao(), false);
-    mostrarErroCampo(campo, '');
-  }
   renderPin();
-}
-
-/** Desconto à vista padrão (Ajustes → Este aparelho): grava só quando válido (0 a 99). */
-function onDescontoPadraoInput(el) {
-  var r = validarNumeroCampo(el.value, LIMITE_DESCONTO, { vazioPermitido: false, mensagem: 'Use um número de 0 a 99.' });
-  mostrarErroCampo(el, r.erro);
-  if (r.erro) return;
-  gravarTexto(CHAVE_DESCONTO_PADRAO, numeroParaCampo(r.valor, false));
-  if (orc.descontoTexto === null) renderOrcamento(); // orçamento que ainda segue o padrão
 }
 
 // ---------------- PIN (opcional; só deste aparelho) ----------------
 function renderPin() {
   var ligado = !!lerPin();
   $('pin-situacao').textContent = ligado
-    ? 'Ligado: a engrenagem pede o PIN.'
+    ? 'Ligado: Resultados e a engrenagem pedem o PIN.'
     : 'Desligado: qualquer pessoa com o aparelho abre as configurações.';
   $('btn-pin-ligar').hidden = ligado || !$('pin-novo').hidden;
   $('btn-pin-desligar').hidden = !ligado;
@@ -1351,6 +2237,7 @@ function salvarNovoPin() {
   $('pin-novo-erro').textContent = erro;
   if (erro) return;
   if (!gravarTexto(CHAVE_PIN, a)) { $('pin-novo-erro').textContent = 'Este navegador não deixou guardar o PIN.'; return; }
+  desbloqueio.ok = true; // quem acabou de criar o PIN já está dentro
   fecharNovoPin();
   mostrarAviso('PIN ligado neste aparelho.');
 }
@@ -1385,16 +2272,26 @@ var DICAS = {
       ? 'Neste orçamento, até ' + formatarPercentual(Math.round(ultimoPreco.maximo * 100) / 100) + ' você não perde nada'
       : 'Até a taxa do cartão em destaque você não perde nada';
     return 'Desconto para quem paga no Pix ou dinheiro, em cima do preço do cartão. ' + ate +
-      ', porque não paga a maquininha. Já vem com o seu número de sempre (Ajustes → Este aparelho).';
+      ', porque não paga a maquininha. Já vem com o seu número de sempre (Ajustes → Outros ajustes).';
   } },
   extra: { alvo: 'label[for="orc-extra"]', nome: 'Desconto extra',
     texto: 'Se o cliente pedir um pouco mais. Soma com o desconto à vista (5% + 2% = 7%). O app mostra até onde dá para ir sem perder nada e avisa em vermelho se passar disso.' },
   cartoes: { alvo: '#titulo-cartoes', nome: 'Seus cartões',
     texto: 'As taxas que a maquininha cobra em cada parcela (Débito, 1x … 12x). Copie da calculadora de taxas do app da maquininha, um cartão de cada vez. Campo vazio = essa parcela não aparece no orçamento. Vazio é diferente de 0: 0 quer dizer "sem taxa".' },
-  descontoPadrao: { alvo: 'label[for="desconto-padrao"]', nome: 'Desconto à vista padrão',
-    texto: 'O desconto que todo orçamento novo já traz para Pix ou dinheiro. Ex.: 5. Vale só para este aparelho: outro celular pode usar outro número. Em cada orçamento dá para mudar só naquele.' },
+  descontoPadrao: { alvo: 'label[for="p-descontoAVistaPadrao"]', nome: 'Desconto à vista padrão',
+    texto: 'O desconto que todo orçamento novo já traz para Pix ou dinheiro. Ex.: 5. Vale para todos os aparelhos ligados a esta planilha. Em cada orçamento dá para mudar só naquele.' },
   pin: { alvo: '#rotulo-pin', nome: 'Proteger com PIN',
-    texto: 'Pede 4 números para abrir Meus gastos e Ajustes neste aparelho. Serve para ninguém mexer sem querer: não é uma senha forte. Esqueceu? Na tela do PIN, toque em "Esqueci o PIN".' }
+    texto: 'Pede 4 números para abrir Resultados, Meus gastos e Ajustes neste aparelho. Depois de digitar, fica liberado enquanto o app estiver aberto; se ficar mais de 5 minutos fora do app, pede de novo. Serve para ninguém mexer sem querer: não é uma senha forte. Esqueceu? Na tela do PIN, toque em "Esqueci o PIN".' },
+  mesReal: { alvo: '#titulo-mes-real', nome: 'Resultado real do mês',
+    texto: 'Cada orçamento supõe que você vendeu todas as horas do mês. Aqui é o que aconteceu de verdade: o que entrou nos fechamentos menos peças, taxas, imposto e os gastos do mês.' },
+  contagem: { alvo: '#titulo-contagem', nome: 'Orçamentos feitos',
+    texto: 'Dos orçamentos feitos neste mês, quantos o cliente aceitou. Um orçamento feito em outubro e fechado em novembro conta como feito em outubro, mas o dinheiro entra em novembro.' },
+  dinheiro: { alvo: '#titulo-dinheiro', nome: 'Dinheiro que entrou',
+    texto: 'Soma dos orçamentos fechados com data de fechamento neste mês. Um orçamento feito em outubro e fechado em novembro conta como feito em outubro, mas o dinheiro entra em novembro.' },
+  horas: { alvo: '#titulo-horas', nome: 'Horas',
+    texto: 'Horas dos serviços fechados neste mês, comparadas com as horas que você pode cobrar no mês (Meus gastos → Sua rotina).' },
+  fechamento: { alvo: '#titulo-fechamento', nome: 'Neste fechamento',
+    texto: 'Valor combinado menos a taxa da maquininha da forma escolhida, o imposto, as peças e a parte da oficina e da sua casa.' }
 };
 
 function textoDaDica(chave) {
@@ -1519,6 +2416,16 @@ function ligarEventos() {
     if (ds.adicionar) { adicionarGasto(ds.adicionar, ''); return; }
     if (ds.sugestao) { adicionarGasto(ds.tipo, ds.sugestao); return; }
     if (ds.dica) { alternarDica(ds.dica); return; }
+    if (ds.dialogo !== undefined) { responderDialogo(Number(ds.dialogo)); return; }
+    if (ds.sit) { escolherNoMenuSituacao(ds.sit); return; }
+    if (ds.motivo) { $('motivo-texto').value = ds.motivo; return; }
+    if (ds.item) { resul.aberto = resul.aberto === ds.item ? null : ds.item; renderResultados(); return; }
+    if (ds.itemAcao) { acaoDoItem(ds.itemAcao, ds.id); return; }
+    if (ds.filtro) { resul.filtro = ds.filtro; resul.aberto = null; renderResultados(); return; }
+    if (ds.fechForma && fech) { fech.forma = ds.fechForma; renderFechamento(); if (!fech.valorEditado) { sugerirValorFechamento(); renderFechamento(); } return; }
+    if (ds.fechParcelas && fech) { fech.parcelas = Number(ds.fechParcelas); if (!fech.valorEditado) sugerirValorFechamento(); renderFechamento(); return; }
+    if (ds.fechCartao !== undefined && fech) { fech.cartao = ds.fechCartao; if (!fech.valorEditado) sugerirValorFechamento(); renderFechamento(); return; }
+    if (alvo.id === 'btn-res-tentar') { carregarMes(); return; }
     if (ds.remover !== undefined) { removerComDesfazer('gasto', Number(ds.remover)); return; }
     if (ds.removerPeca !== undefined) { removerComDesfazer('peca', Number(ds.removerPeca)); return; }
     if (ds.editarCartao !== undefined) { editarCartao(Number(ds.editarCartao)); return; }
@@ -1535,7 +2442,8 @@ function ligarEventos() {
     }
     if (ds.bandeiraIndice !== undefined) {
       var i = Number(ds.bandeiraIndice);
-      orc.bandeira = i < 0 ? NAO_SEI : estado.dados.cartoes[i].nome;
+      if (travado() || !ultimoCalc) return;
+      orc.bandeira = i < 0 ? NAO_SEI : ultimoCalc.ctx.cartoes[i].nome;
       gravarStorage(CHAVE_ORCAMENTO, orc);
       renderOrcamento();
       var chip = document.querySelector('[data-bandeira-indice="' + i + '"]');
@@ -1549,13 +2457,30 @@ function ligarEventos() {
   $('ir-pecas-acrescimo').addEventListener('click', function () { trocarModoPecas('acrescimo'); });
   $('btn-novo').addEventListener('click', novoOrcamento);
 
+  // Copiar SEMPRE copia primeiro (não espera a rede); depois salva o orçamento (automático).
   $('btn-copiar').addEventListener('click', function () {
     var texto = textoAtual();
     if (!texto) return;
     copiarTexto(texto).then(function (r) {
-      if (r === 'ok') mostrarAviso('Copiado! Agora é só colar no WhatsApp.');
+      salvarOrcamento({}).then(function (x) { avisarSalvamento(x, r === 'ok'); });
     });
   });
+  $('btn-salvar-orc').addEventListener('click', aoClicarSalvar);
+  $('btn-mudar-situacao').addEventListener('click', function () { if (orc.vinculo) abrirMenuSituacao(alvoDoRascunho()); });
+  $('btn-recalcular').addEventListener('click', recalcularComHoje);
+  $('btn-ver-resultados').addEventListener('click', function () { if (orc.vinculo) abrirResultados(true, mesDe(orc.vinculo.criadoEm)); });
+  $('aba-orcamento').addEventListener('click', irParaOrcamento);
+  $('aba-resultados').addEventListener('click', function () { abrirResultados(true); });
+  $('mes-anterior').addEventListener('click', function () { trocarMes(-1); });
+  $('mes-seguinte').addEventListener('click', function () { trocarMes(1); });
+  $('res-busca').addEventListener('input', function (e) { resul.busca = e.target.value; resul.aberto = null; renderResultados(); });
+  $('btn-usar-gastos-hoje').addEventListener('click', usarGastosDeHojeNoMes);
+  $('btn-fechar-menu-situacao').addEventListener('click', fecharMenuSituacao);
+  $('btn-confirmar-nao-fechou').addEventListener('click', confirmarNaoFechou);
+  $('btn-voltar-fechar').addEventListener('click', sairDoFechamento);
+  $('btn-confirmar-fechamento').addEventListener('click', confirmarFechamento);
+  $('fechar-valor').addEventListener('input', function () { if (fech) { fech.valorEditado = true; renderFechamento(); } });
+  $('fechar-data').addEventListener('input', function () { if (fech) renderFechamento(); });
   $('btn-compartilhar').addEventListener('click', compartilhar);
   $('btn-fechar-copia').addEventListener('click', function () { $('caixa-copia').hidden = true; });
 
@@ -1631,7 +2556,10 @@ function ligarEventos() {
     fecharDicas(false);
   });
   document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !$('dialogo').hidden) { responderDialogo(-1); return; }
+    if (e.key === 'Escape' && !$('menu-situacao').hidden) { fecharMenuSituacao(); return; }
     if (e.key === 'Escape' && fecharDicas(true)) return; // Esc fecha primeiro a dica aberta
+    if (e.key === 'Escape' && nav.tela === 'fechar') { sairDoFechamento(); return; }
     if (e.key !== 'Escape' || nav.tela === 'orcamento' || document.body.classList.contains('sem-conexao')) return;
     if (!$('caixa-copia').hidden) return; // Esc fecha primeiro a caixa de copiar, se aberta
     voltarAoOrcamento(true);
@@ -1660,7 +2588,6 @@ function ligarEventos() {
   $('btn-pin-cancelar-novo').addEventListener('click', fecharNovoPin);
   $('btn-pin-salvar').addEventListener('click', salvarNovoPin);
   $('btn-pin-desligar').addEventListener('click', desligarPin);
-  $('desconto-padrao').addEventListener('input', function (e) { onDescontoPadraoInput(e.target); });
 
   document.addEventListener('visibilitychange', aoMudarVisibilidade);
   window.addEventListener('pagehide', salvarAoSair);

@@ -28,7 +28,7 @@ O Preço Certo mostra **quanto cobrar** em cada serviço, **já com a taxa da ma
 
 ## Onde fica cada coisa
 
-- A tela do app é o **Orçamento**.
+- No topo há duas abas: **Orçamento** (onde você faz o preço) e **Resultados** (como foi o mês de verdade).
 - **Meus gastos** e **Ajustes** ficam atrás da **engrenagem (⚙)**, no canto de cima. Ela abre **Configurações**, com as duas abas.
 - Para voltar, toque em **"← Voltar ao orçamento"**, use o **voltar** do celular ou aperte **Esc** no computador.
 
@@ -80,7 +80,7 @@ O à vista é o preço do cartão **com um desconto**. Assim o cliente vê que p
 - Embaixo aparece, **só para você**: **"Se o cliente pedir mais: ainda pode dar até X% (R$ Y) sem perder nada — é só a taxa da maquininha que você não vai pagar."** Até esse ponto, o desconto sai da taxa que você não vai pagar, e não do seu bolso.
 - Passou desse ponto? Aparece em **vermelho**: **"Com esse desconto você abre mão de R$ X da sua sobra extra."**. Você ainda pode dar, mas sabendo quanto perde.
 - Em **Ver detalhes** aparecem os limites: **"Abaixo de R$ X a oficina não se paga."** e **"Abaixo de R$ Y não sobra nada para a sua casa."**
-- Quer mudar o seu número de sempre? **Engrenagem (⚙) → Ajustes → Este aparelho → "Desconto à vista padrão"**. Vale só para este aparelho.
+- Quer mudar o seu número de sempre? **Engrenagem (⚙) → Ajustes → Outros ajustes → "Desconto à vista padrão"**. Vale para todos os aparelhos ligados à sua planilha.
 
 ---
 
@@ -91,7 +91,39 @@ O à vista é o preço do cartão **com um desconto**. Assim o cliente vê que p
 
 O texto mostra só o que o cliente precisa ver: as **peças inclusas** (só nome e quantidade, ex.: "2× Pastilha de freio", **sem preço**), depois o **cartão** (5x, 10x) e o **à vista** com o desconto (ex.: "— 5% de desconto"). **Nunca** mostra a sua sobra extra, seus custos, a taxa, o preço de cada peça nem quanto você ainda pode dar.
 
+Ao copiar, o app **guarda o orçamento sozinho** (aparece **"Copiado ✓ · Orçamento salvo ✓"**). Sem internet, o texto é copiado do mesmo jeito, mas aparece em vermelho **"Sem conexão: orçamento NÃO foi salvo."**: toque em **Salvar orçamento** quando a internet voltar.
+
 Para começar outro, toque em **Novo orçamento**.
+
+---
+
+## 4.1 Guardar orçamentos e ver o resultado do mês
+
+**Guardar**
+- No card **Serviço** você pode pôr o **Cliente** e o **Telefone** (os dois são opcionais e **nunca** vão para o WhatsApp).
+- Toque em **Salvar orçamento** (ou só em **Copiar para WhatsApp**, que já salva). Aparece **"Orçamento salvo ✓"** e, no topo do card, **"Salvo · Aberto · nome do cliente"**.
+- Mexeu no orçamento depois? Salve de novo: ele **atualiza o mesmo** orçamento, não cria outro. **Novo orçamento** começa um do zero.
+- O orçamento guarda os **valores daquele dia** (seus gastos, taxas e ajustes). Se você mudar os gastos depois, ele não muda sozinho: aparece **"Valores de 03/11/2026"** e o link **"Recalcular com os valores de hoje"**. Recalcular só muda na tela; para guardar, toque em **Salvar orçamento**.
+
+**O cliente fechou? Não fechou?**
+- Num orçamento salvo, toque em **Mudar situação**:
+  - **Fechou:** escolha **como o cliente vai pagar** (Pix/dinheiro, Débito ou Cartão em Nx), confira o **valor combinado** (dá para mudar, se você deu um desconto na hora) e a **data**. O app mostra a **sobra extra** daquele fechamento, já tirando a taxa da maquininha e o imposto. Toque em **Confirmar fechamento**.
+  - **Não fechou:** se quiser, escolha o motivo ("Achou caro", "Vai pensar"…).
+  - **Voltar para Aberto:** desfaz o fechamento.
+- Orçamento fechado (ou que não fechou) fica **só para ver**. Para mudar valores: **Voltar para Aberto** ou **Duplicar**.
+- **Excluir** some na hora e mostra **DESFAZER** por 6 segundos.
+
+**Aba Resultados**
+- Toque em **Resultados**, no topo. Use **‹ ›** para trocar de mês.
+- **Resultado real do mês:** cada orçamento supõe que você vendeu **todas** as horas do mês; aqui é o que aconteceu de verdade. O app responde:
+  - **A oficina se pagou?** (o que entrou nos fechamentos, menos peças, taxas, imposto e os gastos da oficina);
+  - **Sua casa foi coberta?** (o que sobrou, comparado com os gastos de casa);
+  - **Sobra extra do mês** e **Total que é seu no mês**.
+- **Orçamentos feitos** contam pelo mês em que você fez o orçamento; o **dinheiro que entrou** conta pela **data do fechamento**. Um orçamento feito em outubro e fechado em novembro conta como feito em outubro, mas o dinheiro entra em novembro.
+- Os **gastos de cada mês** ficam guardados no primeiro fechamento daquele mês. Mudou os gastos e quer usar os novos no mês? Toque em **"Usar meus gastos de hoje neste mês"**.
+- Embaixo, a **lista** do mês: busque por cliente, telefone ou serviço e filtre por situação. Toque num orçamento para **Abrir**, **Mudar situação**, **Duplicar** ou **Excluir**.
+- **Não edite as abas "Orçamentos" e "Meses" na planilha.** A planilha avisa se você tentar. Apagar uma linha lá = excluir o orçamento.
+- **Dois aparelhos** (você no celular, alguém no computador): se os dois mexerem no **mesmo** orçamento, quem salvar depois vê **"Esse orçamento foi alterado em outro aparelho."** e escolhe entre **"Ver a versão nova"** ou **"Salvar as minhas como um novo orçamento"**. Nada se perde sem aviso.
 
 ---
 
@@ -127,11 +159,11 @@ Cada cartão (Visa, Master, Elo, Amex…) tem uma taxa diferente na maquininha. 
 - Quer ver os dados? Em **Ajustes**, toque em **"Abrir minha planilha"**.
 - Apareceu **"Este aparelho perdeu o acesso à planilha"**? Peça um **link de configuração novo** e abra no aparelho.
 - Vai trocar de celular ou emprestar o aparelho? Em **Ajustes → Este aparelho → "Desconectar este aparelho"**. Seus dados continuam na planilha.
-- **Vários aparelhos:** orçamentos podem ser feitos em vários aparelhos ao mesmo tempo. Já **Meus gastos** e **Ajustes**: só uma pessoa mexe por vez (o último a salvar vale).
+- **Vários aparelhos:** cada orçamento salvo é independente (veja 4.1). Já **Meus gastos** e **Ajustes**: só uma pessoa mexe por vez (o último a salvar vale).
 
 ### PIN (opcional)
 
-Não quer que alguém mexa nos seus gastos e ajustes sem querer? Em **Ajustes → Este aparelho → "Proteger configurações com PIN"**, toque em **Ligar** e escolha 4 números. Aí a engrenagem pede o PIN.
+Não quer que alguém mexa nos seus gastos e ajustes, ou veja os seus resultados, sem querer? Em **Ajustes → Este aparelho → "Proteger configurações com PIN"**, toque em **Ligar** e escolha 4 números. Aí **Resultados** e a **engrenagem** pedem o PIN. Depois de digitar, fica liberado enquanto o app estiver aberto; se o app ficar mais de 5 minutos em segundo plano, pede de novo.
 
 - **Não é uma senha forte.** Serve só para evitar mexida sem querer, e vale só para este aparelho.
-- **Esqueceu o PIN?** Na tela do PIN, toque em **"Esqueci o PIN"** → **"Desconectar este aparelho"** e abra de novo o **link de configuração**. Isso apaga o PIN. Seus dados continuam na planilha, e o seu desconto padrão continua no aparelho.
+- **Esqueceu o PIN?** Na tela do PIN, toque em **"Esqueci o PIN"** → **"Desconectar este aparelho"** e abra de novo o **link de configuração**. Isso apaga o PIN. Seus dados e orçamentos continuam na planilha.

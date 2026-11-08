@@ -372,3 +372,72 @@ input.pin { letter-spacing: 0.4em; }
 .detalhes .nota-casa { display: block; font-size: 12px; color: var(--texto-3); font-weight: 400; }
 .detalhes dt.total, .detalhes dd.total { padding-top: 8px; border-top: 1px solid var(--borda-suave); font-weight: 600; color: var(--texto); }
 .sem-quebra { white-space: nowrap; }
+
+/* ---------- Fase 10: abas do topo, orçamento salvo, fechamento e Resultados ---------- */
+.topo-linha { flex-wrap: wrap; }
+.abas-topo { order: 3; flex: 1 1 100%; display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: rgba(255, 255, 255, 0.08); }
+.aba-topo {
+  flex: 1; min-height: 44px; border: 0; border-radius: 10px; background: none; cursor: pointer;
+  color: var(--prata); font-size: 15px; font-weight: 600; transition: background var(--transicao), color var(--transicao);
+}
+.aba-topo:hover { color: #fff; }
+.aba-topo[aria-selected="true"] { background: #fff; color: var(--texto); box-shadow: inset 0 -3px 0 var(--laranja); }
+@media (min-width: 900px) {
+  .topo-linha { flex-wrap: nowrap; }
+  .abas-topo { order: 0; flex: 0 1 340px; }
+}
+body.sem-conexao .abas-topo, body.em-config .abas-topo { display: none; }
+
+.faixa-vinculo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin: 0 0 12px; font-size: 14px; color: var(--texto-2); }
+.vinculo-foto { margin: -4px 0 12px; }
+.chip-situacao { display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 1.5; vertical-align: 1px; white-space: nowrap; }
+.chip-situacao.sit-aberto { background: #eceef1; color: var(--texto-2); }
+.chip-situacao.sit-fechado { background: #e6f4ea; color: var(--verde-escuro); }
+.chip-situacao.sit-nao { background: #fbeaea; color: #8a1c1c; }
+body.orc-travado #tela-orcamento .btn-remover, body.orc-travado #tela-orcamento .btn-adicionar,
+body.orc-travado #tela-orcamento #ir-fechado, body.orc-travado #tela-orcamento #ir-horas,
+body.orc-travado #tela-orcamento #ir-pecas-valor, body.orc-travado #tela-orcamento #ir-pecas-acrescimo { display: none; }
+.entrada input:disabled { background: #f3f4f6; color: var(--texto-2); }
+
+.toast.toast-alerta { background: var(--vermelho); font-weight: 600; }
+.btn-texto-perigo { color: var(--vermelho); }
+.dialogo-titulo { margin: 0 0 6px; font-size: 17px; font-weight: 700; }
+.dialogo-botoes .btn + .btn { margin-top: 10px; }
+#menu-situacao .dialogo-botoes + #bloco-motivo, #menu-situacao #btn-fechar-menu-situacao { margin-top: 12px; }
+#bloco-motivo .chips { margin: 8px 0 12px; }
+
+.centro { text-align: center; }
+.nav-mes { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 12px; }
+.mes-titulo { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; text-align: center; }
+.btn-mes {
+  width: 48px; height: 48px; border: 1px solid var(--borda); border-radius: 12px; background: #fff; cursor: pointer;
+  font-size: 26px; line-height: 1; color: var(--texto); transition: border-color var(--transicao);
+}
+.btn-mes:hover:not(:disabled) { border-color: #b9bec6; }
+.btn-mes:disabled { opacity: 0.35; cursor: default; }
+.mes-pergunta { display: block; margin-top: 10px; }
+.mes-pergunta > span:first-child { display: block; font-size: 13px; color: var(--texto-3); }
+.mes-pergunta strong { display: block; margin-top: 2px; font-size: 17px; text-align: left; }
+.mes-pergunta strong.ambar { color: #9a5b00; }
+#mes-sobra-linha { margin-top: 12px; }
+.contagem { margin: 4px 0 0; font-size: 17px; font-weight: 600; color: var(--texto); }
+.barra { height: 10px; margin-top: 10px; border-radius: 999px; background: #eceef1; overflow: hidden; }
+.barra-cheia { height: 100%; width: 0; border-radius: 999px; background: var(--laranja); transition: width var(--transicao); }
+.busca .prefixo { display: flex; align-items: center; }
+.busca input { padding-left: 40px; }
+#res-filtros { margin-top: 12px; }
+.lista-orc { display: flex; flex-direction: column; gap: 10px; }
+.item-orc { border-radius: 16px; background: var(--card); box-shadow: var(--sombra); }
+.item-orc-topo {
+  display: flex; flex-direction: column; align-items: stretch; gap: 4px; width: 100%; min-height: 64px; padding: 14px 16px;
+  border: 0; border-radius: 16px; background: none; text-align: left; cursor: pointer; font: inherit; color: var(--texto);
+}
+.item-orc-topo:hover { background: #fafbfc; }
+.item-linha1 { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.item-cliente { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item-linha2 { font-size: 13px; color: var(--texto-3); }
+.item-acoes { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 14px; }
+.item-acoes .btn { margin-top: 0; flex: 1 1 auto; }
+.item-orc.aberto { outline: 2px solid var(--laranja-claro); }
+#tela-fechar .config-topo .ajuda { flex: 1 1 100%; margin: 0; }
+#btn-confirmar-fechamento { margin-top: 10px; }

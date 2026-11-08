@@ -131,10 +131,14 @@ Colunas `Chave` | `Valor`. A coluna `Valor` fica em **texto (`@`)**. Os números
 | valorHoraCobrado | 150 | ≥ 0 |
 | impostoPercentual | 0 | 0 a 99 |
 | acrescimoPecasPadrao | 47 | 0 a 1000. É o acréscimo (%) que cada orçamento novo traz em cima do que ele paga pelas peças |
+| descontoAVistaPadrao | 5 | 0 a 99. Desconto à vista que cada orçamento novo traz (fase 10: saiu do aparelho e veio para a planilha). Ausente no `salvarDados` da tela antiga → mantém o valor da aba |
 | parcelasDestaque | "5,10" | inteiros de 1 a 12, separados por vírgula. Vazio = nenhum card de destaque, só "Ver outras formas de pagamento" |
 | nomeOficina | "CliniCar Motors Tech" | texto (até 60 caracteres) |
 
 O `atualizadoEm` fica em `PropertiesService.getDocumentProperties()`, fora da planilha.
+
+### 3.2.1 Abas `Orçamentos` e `Meses` (fase 10)
+Colunas, regras e conflito na seção 11.4. As duas abas ganham, uma vez só, uma **proteção "somente aviso"** e uma **nota em A1** com o texto "Use o app para alterar orçamentos. Editar aqui pode deixar a lista diferente do orçamento." (`protegerComAviso_`, idempotente: marca `protecaoAvisoV1` nas Propriedades do documento + busca pela descrição; funciona com o escopo `spreadsheets.currentonly`). O app continua gravando normalmente. Se a proteção for removida de propósito, ela não volta sozinha.
 
 ### 3.3 Aba `Taxas`: um cartão por linha
 Colunas: `Cartão` | `Débito (%)` | `1x (%)` | `2x (%)` | … | `12x (%)`. As taxas ficam em formato numérico `0.00`.
@@ -214,7 +218,7 @@ Colunas: `Cartão` | `Débito (%)` | `1x (%)` | `2x (%)` | … | `12x (%)`. As t
 - **Piso** = `(gasto das horas + peças pagas) ÷ (1 − imposto%)` (`preco.piso`). Na tela, ele virou o "piso da casa" (veja "Neste serviço" abaixo).
 - As **outras** parcelas em destaque e "Ver outras formas" continuam calculadas sobre a **base** (regra B). Nenhuma fica abaixo do à vista oferecido (D12).
 - Com desconto 0, o à vista é igual à âncora.
-- **Desconto à vista padrão:** fica **por aparelho**, no `localStorage` (`precoCerto.descontoPadrao.v1`, texto "7,5"), de 0 a 99, e é 5 de fábrica. Valor ausente ou inválido vale 5 (`descontoPadraoDoAparelho`). "Desconectar este aparelho" **não** apaga. Cada orçamento novo começa com ele, e dá para mudar só naquele orçamento.
+- **Desconto à vista padrão:** fica na **aba Parâmetros** (`descontoAVistaPadrao`, 0 a 99, padrão 5) e vale para **todos os aparelhos** da planilha (`descontoPadraoDosParametros`; ausente ou inválido → 5). Cada orçamento novo começa com ele, e dá para mudar só naquele orçamento. **Migração (fase 10):** a chave antiga do aparelho (`precoCerto.descontoPadrao.v1`) é gravada na planilha se a aba ainda não tem a linha (e apagada depois do "Salvo ✓"); se a aba já tem, a planilha vence, o app avisa "O desconto padrão agora vem da planilha: X%." e apaga a chave (11.9).
 
 **Lucro (= "Sobra extra" na tela):**
 - `imposto = total × impostoPercentual/100`, sobre o **total arredondado** (o que o cliente paga);
@@ -261,6 +265,8 @@ POST <URL /exec>   corpo como texto (text/plain): {"token":"…","action":"…",
   action "obterDados"                → {ok:true, gastos, parametros, cartoes, atualizadoEm, urlPlanilha}
   action "salvarDados", dados:{…}    → {ok:true, atualizadoEm}
   action "obterTaxasPadraoVisa"      → {ok:true, taxas:{debito, p1 … p12}}
+  ações de orçamento (fase 10)       → listarOrcamentos, obterOrcamento, salvarOrcamento, mudarSituacao,
+                                       excluirOrcamento, usarGastosDeHojeNoMes (protocolo e conflito: seção 11.8)
   qualquer erro                      → {ok:false, erro:"mensagem em PT-BR"}
 GET <URL /exec>                      → {ok:false, erro:"Acesso não autorizado"}   (nunca HTML)
 ```
@@ -292,7 +298,7 @@ Erros de validação voltam com a própria mensagem ("Dias de trabalho por seman
 |---|---|
 | `doGet()` | Sempre `{ok:false, erro:"Acesso não autorizado"}` |
 | `doPost(e)` | Roteador da API (ordem acima) |
-| `ACOES_` | `obterDados`, `salvarDados`, `obterTaxasPadraoVisa` — as únicas ações |
+| `ACOES_` | `obterDados`, `salvarDados`, `obterTaxasPadraoVisa` + as 6 de orçamento (seção 11.8) — as únicas ações |
 | `gerarLinkDeConfiguracao()` | **Manual.** Confere `URL_DO_APP` e `URL_DA_API` e, se faltar algo ou o formato estiver errado, para com uma mensagem clara no Logger. Cria o token se não existir e imprime o link com instruções |
 | `trocarToken()` | **Manual.** Gera um token novo (todos os aparelhos perdem o acesso) |
 | `testarApi()` | **Manual.** Teste de ponta a ponta do `doPost` no editor, sem alterar os dados |
@@ -338,15 +344,15 @@ Erros de validação voltam com a própria mensagem ("Dias de trabalho por seman
 - **Copiar:** fora do iframe do Apps Script, a área de transferência funciona em HTTPS. São 2 níveis: área de transferência e, se falhar, a caixa com o texto selecionado. O botão "Compartilhar" aparece sempre que o navegador tiver `navigator.share`.
 - **Autoteste:** `?teste=1`, lido direto de `location.search`.
 - **Navegação:** abrir Configurações (ou a tela do PIN) empilha uma entrada no histórico (`history.pushState`). O "voltar" do celular (`popstate`), o **Esc** e "← Voltar ao orçamento" levam ao orçamento. O "avançar" do navegador nunca reabre Configurações, para não pular o PIN.
-- **PIN (opcional):** 4 números no `localStorage` (`precoCerto.pin.v1`), só deste aparelho e desligado de fábrica. **Não é segurança forte:** serve para evitar mexida sem querer. "Desconectar este aparelho" e abrir de novo o link de configuração apagam o PIN.
+- **PIN (opcional):** 4 números no `localStorage` (`precoCerto.pin.v1`), só deste aparelho e desligado de fábrica. Protege **Resultados e Configurações**. Um desbloqueio vale para os dois **enquanto o app estiver aberto**; depois de **mais de 5 min em segundo plano**, pede de novo (e sai de Resultados/Configurações). **Não é segurança forte:** serve para evitar mexida sem querer. "Desconectar este aparelho" e abrir de novo o link de configuração apagam o PIN.
 - **Link `#cfg=` com o app já aberto na mesma aba:** o navegador só troca o `#` e não recarrega. O app escuta `hashchange` e processa o link do mesmo jeito.
 - **Resposta velha da planilha:** se o aparelho foi desconectado (ou ligado a outra planilha) enquanto esperava, a resposta é ignorada.
 - **Google Tradutor:** `<html lang="pt-BR" translate="no">` e `<meta name="google" content="notranslate">`. Assim o Chrome não oferece traduzir a página nem troca números e palavras.
-- **Vários aparelhos:** orçamentos podem ser feitos em vários aparelhos ao mesmo tempo. Já "Meus gastos" e "Ajustes": só uma pessoa mexe por vez (o último a salvar vale). Sincronização entre aparelhos e histórico de orçamentos ficam para a v2.
+- **Vários aparelhos:** cada orçamento salvo é um registro independente, com conflito por `atualizadoEm` (seção 11.8). Já "Meus gastos" e "Ajustes": só uma pessoa mexe por vez (o último a salvar vale); o sincronismo por registro deles continua em "Próximas fases".
 
 ## 6. Telas
 
-Topo preto: logo e "Preço Certo" à esquerda; status e **engrenagem** (SVG, área de toque de 44 px, `aria-label="Configurações"`) à direita. **Não há barra de abas:** a tela principal é **só o Orçamento**.
+Topo preto: logo e "Preço Certo" à esquerda; status e **engrenagem** (SVG, área de toque de 44 px, `aria-label="Configurações"`) à direita. **Fase 10:** duas abas simples **"Orçamento | Resultados"** (`role="tab"`, 44 px): no celular numa linha embaixo da marca, no notebook no meio do topo. Resultados respeita o PIN (seção 11.7). Meus gastos e Ajustes continuam atrás da engrenagem.
 
 - **Engrenagem:** abre a área **"Configurações"** em tela cheia, com o título, o botão visível "← Voltar ao orçamento" e as abas internas **Meus gastos | Ajustes** (o conteúdo é o mesmo de antes). Reabre na última aba usada.
 - **Voltar:** Esc (notebook) e o "voltar" do celular voltam ao orçamento.
@@ -414,12 +420,17 @@ Botão redondo "?" ao lado do rótulo (área de toque de 44 px; `aria-label` "O 
 | Ajustes → Outros ajustes | Nome da oficina | Aparece no título do texto do WhatsApp: "*Orçamento – CliniCar Motors Tech*". Se ficar vazio, o título fica só "*Orçamento*". |
 | Meus gastos → Sua rotina | Horas que você cobra por dia | Das horas que você trabalha, quantas viram serviço cobrado do cliente? O resto vai em orçamento, busca de peça, espera… Normalmente 6 de 8. Quanto menor esse número, mais a sua hora precisa valer. |
 | Meus gastos | Quanto você vai cobrar por hora | Quanto você cobra por hora de serviço. Precisa ser maior que "Sua hora precisa valer no mínimo", logo acima: a diferença é a sua sobra extra em cada hora. Ex.: mínimo R$ 33,08 e você cobra R$ 165, sobram R$ 131,92 por hora. |
-| Orçamento | Desconto à vista | Desconto para quem paga no Pix ou dinheiro, em cima do preço do cartão. Neste orçamento, até {máximo}% você não perde nada, porque não paga a maquininha. Já vem com o seu número de sempre (Ajustes → Este aparelho). *(o máximo é o deste orçamento; sem âncora: "Até a taxa do cartão em destaque…")* |
+| Orçamento | Desconto à vista | Desconto para quem paga no Pix ou dinheiro, em cima do preço do cartão. Neste orçamento, até {máximo}% você não perde nada, porque não paga a maquininha. Já vem com o seu número de sempre (Ajustes → Outros ajustes). *(o máximo é o deste orçamento; sem âncora: "Até a taxa do cartão em destaque…")* |
 | Orçamento | Desconto extra | Se o cliente pedir um pouco mais. Soma com o desconto à vista (5% + 2% = 7%). O app mostra até onde dá para ir sem perder nada e avisa em vermelho se passar disso. |
 | Ajustes → Seus cartões (título) | Seus cartões | As taxas que a maquininha cobra em cada parcela (Débito, 1x … 12x). Copie da calculadora de taxas do app da maquininha, um cartão de cada vez. Campo vazio = essa parcela não aparece no orçamento. Vazio é diferente de 0: 0 quer dizer "sem taxa". |
-| Ajustes → Este aparelho | Desconto à vista padrão | O desconto que todo orçamento novo já traz para Pix ou dinheiro. Ex.: 5. Vale só para este aparelho: outro celular pode usar outro número. Em cada orçamento dá para mudar só naquele. |
+| Ajustes → Outros ajustes | Desconto à vista padrão | O desconto que todo orçamento novo já traz para Pix ou dinheiro. Ex.: 5. Vale para todos os aparelhos ligados a esta planilha. Em cada orçamento dá para mudar só naquele. |
 | Orçamento (título do card) | Neste serviço | Sua hora já inclui os gastos da oficina e os da sua casa. "Vai para a sua casa" é o seu salário; a "Sobra extra" é o que ficou além disso. O que é seu de verdade é a soma das duas. |
-| Ajustes → Este aparelho | Proteger com PIN | Pede 4 números para abrir Meus gastos e Ajustes neste aparelho. Serve para ninguém mexer sem querer: não é uma senha forte. Esqueceu? Na tela do PIN, toque em "Esqueci o PIN". |
+| Ajustes → Este aparelho | Proteger com PIN | Pede 4 números para abrir Resultados, Meus gastos e Ajustes neste aparelho. Depois de digitar, fica liberado enquanto o app estiver aberto; se ficar mais de 5 minutos fora do app, pede de novo. Serve para ninguém mexer sem querer: não é uma senha forte. Esqueceu? Na tela do PIN, toque em "Esqueci o PIN". |
+| Resultados (card) | Resultado real do mês | Cada orçamento supõe que você vendeu todas as horas do mês. Aqui é o que aconteceu de verdade: o que entrou nos fechamentos menos peças, taxas, imposto e os gastos do mês. |
+| Resultados (card) | Orçamentos feitos | Dos orçamentos feitos neste mês, quantos o cliente aceitou. Um orçamento feito em outubro e fechado em novembro conta como feito em outubro, mas o dinheiro entra em novembro. |
+| Resultados (card) | Dinheiro que entrou | Soma dos orçamentos fechados com data de fechamento neste mês. Um orçamento feito em outubro e fechado em novembro conta como feito em outubro, mas o dinheiro entra em novembro. |
+| Resultados (card) | Horas | Horas dos serviços fechados neste mês, comparadas com as horas que você pode cobrar no mês (Meus gastos → Sua rotina). |
+| Fechar orçamento (card) | Neste fechamento | Valor combinado menos a taxa da maquininha da forma escolhida, o imposto, as peças e a parte da oficina e da sua casa. |
 
 ### 6.2 Meus gastos
 - **Cards "Gastos da oficina" e "Gastos de casa":**
@@ -447,13 +458,12 @@ Botão redondo "?" ao lado do rótulo (área de toque de 44 px; `aria-label` "O 
     - "Preencher com as taxas padrão Visa/Master da InfinitePay", com confirmação na própria página;
     - "Remover cartão", com Desfazer.
   - Renomear o cartão escolhido no orçamento mantém a escolha.
-- **Card "Outros ajustes":** acréscimo padrão nas peças (%), imposto (%), parcelas em destaque e nome da oficina.
+- **Card "Outros ajustes":** acréscimo padrão nas peças (%), **desconto à vista padrão (%)** (fase 10: vai para a planilha, "Vale para todos os aparelhos ligados a esta planilha."), imposto (%), parcelas em destaque e nome da oficina.
 - "Abrir minha planilha" e "Última alteração salva: …".
 - **Card "Este aparelho"** (fora do bloqueio de edição, funciona sem conexão):
   - "Planilha conectada: …/s/…a1B2c3/exec", só o final da URL;
   - "Versão do app";
   - "Instalar app", quando o navegador oferece;
-  - **"Desconto à vista padrão"** (%), com a ajuda "Vale só para este aparelho. Cada orçamento novo começa com este número."; inválido mostra erro e não grava;
   - **"Proteger configurações com PIN"**: Ligar (PIN de 4 números, digitado 2 vezes) ou Desligar, com a ajuda "Não é uma senha forte: serve só para evitar que alguém mexa nos gastos e ajustes sem querer. Vale só para este aparelho.";
   - "Desconectar este aparelho", com confirmação na página. Apaga a conexão, o cache de dados e o PIN (ficam o rascunho do orçamento e o desconto padrão) e volta para a tela de conexão.
 
@@ -503,10 +513,21 @@ Ficam em `js/calculo.js` (`casosDeTeste()`). Rodam no app com `?teste=1` e em No
 | D7 | Piso de prejuízo | (936,92 + 100) ÷ 0,9 = 1.152,13 |
 | D8 | Nenhuma parcela em destaque com taxa | âncora = base, sem desconto, sem erro |
 | D9 | WhatsApp | sem "ainda/lucro/taxa/piso/prejuízo"; desconto 0 → sem "de desconto" |
-| D10 | `apps-script/` | `git diff` e `git status` vazios |
+| D10 | `apps-script/` | até a fase 9: `git diff` e `git status` vazios. **Fase 10b:** `Codigo.gs` = versão aprovada na 10a (sha256 conferido) e `appsscript.json` sem mudança |
 | D11 | 10x Visa 11,06% sobre a base | 2.127 ÷ 0,8894 = 2.391,4999 → Total 2.391,50 · 10× 239,15 (também no WhatsApp) |
 | D12 | Parcelas em destaque × à vista oferecido (0%, 5%, 7%, 10%) | nenhum total abaixo do à vista |
-| L1 | Desconto padrão do aparelho | nada salvo → 5; "7" → 7; "7,5" → 7,5; "0" → 0; inválido → 5 |
+| L1 | Desconto padrão do aparelho (só para a migração) | nada salvo → 5; "7" → 7; "7,5" → 7,5; "0" → 0; inválido → 5 |
+| L2 | Desconto padrão dos Ajustes (aba Parâmetros) | 7,5 → 7,5; 0 → 0; ausente, 100 ou texto → 5 |
+| FC1 | Fechamentos do cenário F (11.6) | Pix 1.747,27 → sobra 811,66 · Débito 1.723,61 → 765,81 · 5x 1.839,23 → 758,88 · 10x 1.911,40 → 754,55 · Pix alterado 1.700 → 767,23 (taxa, imposto, oficina, casa e total que é seu da tabela) |
+| FC2 | Coerência | Pix pelo oferecido = sobra de "Neste serviço" (811,66); 5x pelo total = sobra no cartão em 5x (758,88) |
+| FC3 | Soma no centavo | 20 valores × com casa / sem casa / sem horas × Pix, débito e 7x: V − taxa − imposto − peças − oficina − casa = sobra; nenhuma linha negativa |
+| FC4 | Estados | Pix 1.747,27 verde; 800 âmbar (−78,77); 600 vermelho (−266,77) |
+| FC5 | Foto × recalcular | gastos novos mudam a conta de hoje (oficina 307,69); refeita com a foto gravada = resultado gravado; forma sem taxa → sem fechamento |
+| M1 | Mês do exemplo 11.6 | 8.921,51 · 2.000 · 374,24 · 535,29 · depois da oficina 2.011,98 · casa em parte 67% · sobra −988,02 · total seu 2.011,98 · 40 de 130 h (31%) · 63% · ↑ R$ 1.421,51 (19%) · sobra ↑ R$ 511,98 |
+| M2 | Três estados do mês | casa 1.500 → casa toda, sobra 511,98 (verde); oficina 8.000 → −1.988,02, casa nada, total seu 0 (vermelho); sem foto → sem resultado |
+| M3 | Mês pela data do fechamento | feito em 28/10 e fechado em 03/11 → feito em outubro, dinheiro em novembro |
+| M4 | Navegação de meses | dez/2026 → jan/2027 e volta; nomes; `mesDe` |
+| M5 | Busca | cliente/serviço sem acento; telefone só pelos números |
 | R1 | Cenário S (oficina 4.000, casa 3.000, 130 h, serviço 8 h, peças 400 → 500, sem cartões, imposto 0): oficina e casa | 8 × 4.000/130 = 246,15 · 8 × 3.000/130 = 184,62 |
 | R2 | Sobra (preço 1.700) | 1.700 − 246,1538 − 184,6154 − 400 = 869,23 (= antigo "lucro") |
 | R3 | Total que é seu | 184,6154 + 869,2308 = 1.053,85 |
@@ -516,7 +537,7 @@ Ficam em `js/calculo.js` (`casosDeTeste()`). Rodam no app com `?teste=1` e em No
 | R7 | Sem gastos de casa | sem linha da casa e sem "total que é seu"; um só piso; oficina continua 246,15 |
 | R8 | Linhas do detalhe | fecham no centavo com a sobra exibida (S, S 700, S sem casa, cenário D com 5% e 10%) |
 
-Os casos C4 (leitura), C6 e C7 são testes do **backend** (Node, com a planilha simulada). Os demais estão em `js/calculo.js`.
+Os casos C4 (leitura), C6 e C7 são testes do **backend** (Node, com a planilha simulada). Os demais estão em `js/calculo.js`. Os testes da fase 10 que são de backend (O1–O16: upsert, conflito, excluído que não ressuscita, Meses, leitura tolerante, validação, proteção) e de tela (81 verificações com o `Codigo.gs` real rodando na página) estão em `docs/testes-calculo.md`.
 
 Se algum caso divergir, a fórmula **não** é ajustada para forçar o número: a divergência é reportada.
 
@@ -527,7 +548,7 @@ O clasp e o GitHub Actions foram **removidos** (`.github/workflows/deploy.yml`, 
 - **Tela:** `git push` na `main` → GitHub Pages ("Deploy from a branch", `main` / raiz), igual ao Pendências. A primeira publicação leva alguns minutos.
   - A cada mudança na tela, **subir a `VERSAO` em `sw.js`**. É isso que mostra "Nova versão · ATUALIZAR" nos aparelhos.
 - **API:** colar `apps-script/Codigo.gs` e `appsscript.json` em **cada planilha** (Extensões → Apps Script). Implantar como App da Web com **Eu** e **Qualquer pessoa**, preencher `URL_DA_API` e rodar `gerarLinkDeConfiguracao()`.
-  - Quando o backend mudar: colar de novo e usar "Gerenciar implantações → Nova versão", que mantém a mesma URL.
+  - Quando o backend mudar: colar de novo e usar "Gerenciar implantações → Nova versão", que mantém a mesma URL. **Se a tela também mudou (como na fase 10): primeiro o backend em cada planilha + `testarApi`, depois o `git push`.**
 - **Primeira vez em uma planilha que já usava o app antigo:** apagar o `Index.html` do projeto Apps Script e substituir o "Código.gs". As abas e os dados não mudam, e a migração da aba Taxas continua valendo.
 - Passo a passo: `docs/DEPLOY.md`.
 
@@ -536,9 +557,9 @@ O clasp e o GitHub Actions foram **removidos** (`.github/workflows/deploy.yml`, 
 1. **Imposto "por dentro" ou "por fora"**, escolhido em Ajustes:
    - "por dentro" é o atual: o imposto é **descontado do lucro**;
    - "por fora": o imposto é **somado ao preço** para preservar o lucro.
-2. **Histórico de orçamentos:** aba "Orçamentos", com a situação de cada um e as ações reabrir e duplicar.
-3. **Sincronismo por registro entre aparelhos**, no padrão do Pendências.
-4. **Desconto à vista padrão salvo na planilha.** Hoje ele é guardado por aparelho, no `localStorage`.
+2. ~~Histórico de orçamentos~~ → desenhado na **fase 10** (seção 11).
+3. **Sincronismo por registro entre aparelhos** de gastos, ajustes e cartões, no padrão do Pendências. Os orçamentos já ficam por registro na fase 10.
+4. ~~Desconto à vista padrão salvo na planilha~~ → desenhado na **fase 10** (seção 11.9).
 
 ## 10. Fatias
 1. Desenho ✅
@@ -549,6 +570,510 @@ O clasp e o GitHub Actions foram **removidos** (`.github/workflows/deploy.yml`, 
 6. Documentação final (`GUIA-DO-USUARIO.md` já existe; o `DEPLOY.md` cobre a instalação)
 7. **Desconto à vista negociável + engrenagem/Configurações + PIN opcional** (só frontend; `apps-script/` sem mudança; `sw.js` v2) ✅
 8. **Dicas "?" + peças discriminadas** (só frontend; `apps-script/` sem mudança; `sw.js` v3) ✅
-9. **Neste serviço: oficina, casa e sobra** (só frontend; `apps-script/` sem mudança; `sw.js` v4) (aguardando aprovação)
+9. **Neste serviço: oficina, casa e sobra** (só frontend; `apps-script/` sem mudança; `sw.js` v4) ✅
+10. **Orçamentos salvos + situação + aba "Resultados"** (**muda o backend**; `sw.js` v5), desenho na seção 11 ✅
+    - 10a **backend** (`Codigo.gs` + testes do backend/API + proteção "somente aviso") ✅ aprovada
+    - 10b **tela + docs** (`sw.js` v5): feita, aguardando aprovação do commit
 
 Cada fatia termina com uma parada para revisão. O commit local só é feito depois da aprovação.
+
+## 11. Fase 10 — Orçamentos salvos, situação e aba "Resultados" (desenho **aprovado**; fatia 10a = backend, fatia 10b = tela)
+
+> Base: commit "Neste serviço: oficina, casa e sobra extra; linguagem sem 'lucro'". Reaproveita `calcularOrcamento`, `calcularPrecoComDesconto`, `separarGanho` e `linhasDetalheServico`, além da linguagem "Sobra extra", "Total que é seu", "Paga os gastos da oficina" e "Vai para a sua casa" (= o salário do mecânico). A interface continua **sem "lucro"** (exceção: "Lucro nas peças").
+>
+> **Esta fase altera o backend.** Ordem de publicação na 11.12: primeiro o `Codigo.gs` em cada planilha + "Nova versão", **depois** o `git push` da tela.
+
+### 11.1 Decisões (A–H **aprovadas**, com os ajustes em D, E, H e B)
+| # | Decisão proposta | Alternativa |
+|---|---|---|
+| A | Topo com **duas abas simples "Orçamento \| Resultados"** dentro da faixa preta, e a engrenagem à direita, como hoje | Ícone de gráfico ao lado da engrenagem (mais escondido) |
+| B | **Resultados respeita o PIN** (o mesmo de Configurações). O PIN continua **desligado de fábrica**; ligado, um desbloqueio vale para Resultados **e** Configurações **enquanto o app estiver aberto**, e depois de **5 min em segundo plano** pede de novo | Pedir o PIN toda vez que entra (como hoje em Configurações): mais chato, porque ele vai e volta entre a lista e o orçamento |
+| C | Orçamento **Fechado** ou **Não fechou** abre **só para ver**. Para mudar valores: "Voltar para Aberto" (desfaz o fechamento) ou "Duplicar". Cliente e telefone podem ser corrigidos sempre | Permitir editar um Fechado (o fechamento ficaria desencontrado do orçamento) |
+| D | **Excluir apaga a linha** da aba (planilha limpa). O DESFAZER (6 s) é feito no app: o pedido só vai ao servidor quando a barra some | Exclusão "marcada" (coluna `excluido`, como no Pendências): a aba fica com linhas mortas |
+| D (ajuste) | **Excluído não "ressuscita":** salvar ou mudar a situação de um ID que **não existe mais** na planilha, mas que o aparelho já tinha recebido do servidor (manda `atualizadoEmBase`), é **recusado** com "Esse orçamento foi excluído em outro aparelho." e as saídas [Salvar as minhas como novo] (ID novo) ou [Descartar]. **Só um ID inédito, sem `atualizadoEmBase`, vira linha nova** | — |
+| E | **Contagem** pelo **mês em que o orçamento foi feito**, com rótulo explícito: "Orçamentos feitos em novembro: 8 · 5 fecharam · 2 não fecharam · 1 em aberto". **Dinheiro** pela **data do fechamento**: "Dinheiro que entrou em novembro" (e os cards do resultado real). Taxa de fechamento = fecharam ÷ feitos. "?": "Um orçamento feito em outubro e fechado em novembro conta como feito em outubro, mas o dinheiro entra em novembro." | Contar tudo pela data do fechamento (aí "feitos" e "fechados" ficam em bases diferentes) |
+| F | No resumo, o card **"Resultado real do mês" vem primeiro** (é a pergunta que importa), depois Orçamentos, Dinheiro do mês e Horas | Manter a ordem da sua lista (Orçamentos primeiro) |
+| G | **Situação só muda pela tela do orçamento salvo** (botão "Mudar situação") e pela lista de Resultados. A tela de fechamento **não pede PIN**: ela mostra o mesmo tipo de informação do card "Neste serviço", que já fica aberto | Pedir o PIN para fechar |
+| H | **Sem conexão: não salva.** No "Copiar para WhatsApp" o texto é copiado e aparece, bem visível, "Sem conexão: orçamento NÃO foi salvo.". Sem fila offline, como já é regra do app | Fila offline (IndexedDB + reenvio), como no Pendências: bem mais complexo |
+
+### 11.2 Salvar orçamentos (tela Orçamento)
+- **Card "Serviço"** ganha, acima de "Qual serviço / veículo?", dois campos **opcionais**:
+  - **"Cliente"** (até 60 letras);
+  - **"Telefone"** (até 20 caracteres: números, espaço, `( ) + - .`; `inputmode="tel"`).
+  - Nenhum dos dois vai para o WhatsApp.
+- **Botões**, abaixo dos resultados, nesta ordem:
+  - "Copiar para WhatsApp" (verde);
+  - "Compartilhar";
+  - **"Salvar orçamento"** (fantasma, novo);
+  - "Novo orçamento".
+- **Salvamento automático** ao tocar em "Copiar para WhatsApp" (e em "Compartilhar"): copia **primeiro** (não espera a rede) e salva em seguida. Aviso: "Copiado ✓ · Orçamento salvo ✓".
+- **Sem mudanças desde o último salvamento:** não chama o servidor e mostra só "Copiado ✓".
+- **Vínculo:**
+  - o rascunho (`localStorage`) guarda `vinculo = {id, atualizadoEm, criadoEm, situacao}`;
+  - salvar de novo um orçamento reaberto **atualiza o mesmo registro** (mesmo ID);
+  - **"Novo orçamento"** desvincula.
+- **Faixa no topo do card Serviço** quando o orçamento está salvo: "Salvo · Aberto · João" e o link "Ver em Resultados".
+- **Foto do momento:** cada salvamento grava junto a entrada **e** tudo o que entrou na conta (11.4, campo `Dados`). Orçamento salvo **não muda** quando os gastos, as taxas ou os ajustes mudarem.
+- **Ao reabrir:**
+  - a tela calcula **com a foto** e mostra a faixa discreta "Valores de 03/11/2026" + o link **"Recalcular com os valores de hoje"**;
+  - recalcular só troca a conta na tela;
+  - **só grava se ele tocar em "Salvar orçamento"** (ou copiar), e aí a foto passa a ser a de hoje.
+- **Rascunho não salvo e ele abre outro orçamento:** a página pergunta "Você tem um orçamento que não foi salvo." e oferece:
+  - [Salvar e abrir];
+  - [Descartar e abrir];
+  - [Cancelar].
+
+### 11.3 Situação do orçamento
+- **Aberto** (padrão ao salvar) · **Fechado** (cliente aceitou) · **Não fechou**.
+- **"Mudar situação"** (no orçamento salvo e na lista) abre um menu pequeno:
+  - "Fechou" → **tela de fechamento**;
+  - "Não fechou" → campo "Motivo (opcional)", até 80 letras, com sugestões em chips "Achou caro", "Vai pensar" e "Fez em outro lugar";
+  - "Voltar para Aberto" (só quando Fechado ou Não fechou). Desfaz o fechamento, com a confirmação "O fechamento de R$ X será desfeito.".
+- **Tela de fechamento** (tela cheia, empilha no histórico, "← Voltar"; detalhes na 11.7):
+  - **"Como o cliente vai pagar?"** — chips:
+    - Pix/dinheiro · Débito · Cartão;
+    - com Cartão: chips das parcelas **que têm taxa** na foto (1x … 12x);
+    - com mais de um cartão na foto: chips "Não sei · Visa/Master · Elo…". Começa no cartão do orçamento; "Não sei" = maior taxa, como no orçamento.
+  - **"Valor combinado"** (R$), editável. Começa com:
+    - Pix → **à vista oferecido** (com desconto);
+    - Débito / Nx → **total daquela forma** (regra B sobre a base, igual a "Ver outras formas");
+    - trocar a forma repõe o valor, **a não ser que ele já tenha digitado** um valor.
+  - **"Data do fechamento"**: `<input type="date">`, hoje por padrão, sem datas futuras.
+  - **Card "Neste fechamento"**: a mesma linguagem e as mesmas cores (verde, âmbar, vermelho) de "Neste serviço" (fórmulas na 11.5).
+  - Botão **"Confirmar fechamento"**.
+- **Excluir:**
+  - "Excluir orçamento" (na lista e no orçamento salvo) mostra "Orçamento excluído · DESFAZER" por 6 s;
+  - só depois disso vai o pedido `excluirOrcamento`.
+
+### 11.4 Planilha: abas novas (criadas por `configurarPlanilha_`)
+
+**Aba `Orçamentos`** — uma linha por orçamento, legível. As colunas A–U são **escritas pelo servidor a partir do `Dados` já validado**. A lista de Resultados lê as colunas A–U (rápido); o orçamento aberto lê o `Dados`. Por isso **não edite as colunas à mão** (a lista ficaria diferente do orçamento); apagar a linha = excluir. Datas e IDs ficam em formato **texto** (`@`) para a planilha não convertê-los.
+
+| Col | Cabeçalho | Conteúdo |
+|---|---|---|
+| A | ID | UUID gerado no aparelho (como no Pendências) |
+| B | Criado em | texto `aaaa-mm-dd hh:mm:ss` (servidor, fuso do script `America/Sao_Paulo`) |
+| C | Atualizado em | **texto** `aaaa-mm-dd hh:mm:ss.SSS`, carimbado pelo servidor. É o controle de conflito (11.6) |
+| D | Cliente | texto |
+| E | Telefone | texto (`@`, para não perder o zero nem virar número) |
+| F | Serviço / veículo | texto |
+| G | Situação | Aberto · Fechado · Não fechou |
+| H | Valor orçado (à vista) | R$ — o à vista oferecido |
+| I | Data do fechamento | texto `aaaa-mm-dd` (vazio se não fechado) |
+| J | Forma de pagamento | Pix/dinheiro · Débito · Cartão |
+| K | Parcelas | 1 a 12 (vazio no Pix) |
+| L | Cartão | nome ou "Não sei" (vazio no Pix) |
+| M | Valor combinado | R$ |
+| N | Horas | número |
+| O | Peças pagas | R$ (o que ele pagou nas peças) |
+| P | Taxa da maquininha | R$ |
+| Q | Imposto | R$ |
+| R | Paga a oficina | R$ |
+| S | Vai para a casa | R$ |
+| T | Sobra extra | R$ (pode ser negativa) |
+| U | Motivo | texto (Não fechou) |
+| V | Dados (JSON) | a foto completa (abaixo) |
+
+As colunas M–T só são preenchidas quando a situação é Fechado. Os valores em R$ são os **exibidos** (centavos, depois do ajuste de arredondamento da 11.5), então a linha fecha no centavo.
+
+**`Dados` (JSON, versão 1, no máximo 30.000 caracteres; o limite da célula é 50.000):**
+```
+{ v: 1,
+  entrada:   { descricao, modo, horasTexto, valorTexto, horasFechadoTexto, pecasModo,
+               pecas:[{descricao, qtdTexto, valorTexto}], pecasPagarTexto, pecasCobrarTexto,
+               acrescimoTexto, descontoTexto, extraTexto, bandeira },          // exatamente o rascunho da tela
+  foto:      { em: 'aaaa-mm-dd hh:mm', parametros:{…todos de Parâmetros…},
+               gastosOficina, gastosCasa, horasCobradasMes, minimoHoraOficina, minimoHoraCasa,
+               cartoes:[{nome, debito, p1 … p12}] },                            // o que entrou na conta
+  resultado: { horas, pecasPagarC, pecasCobrarC, aVistaBaseC, ancora:{parcelas,totalC,parcelaC}|null,
+               descontoTotal, oferecidoC, destaques:[{parcelas,totalC,parcelaC}],
+               pagaOficinaC, vaiParaCasaC|null, sobraC, totalSeuC|null, pisoOficinaC, pisoCasaC, estado },
+  fechamento: null | { forma:'pix'|'debito'|'credito', parcelas, cartao, taxaPct, valorCombinadoC, data:'aaaa-mm-dd',
+                       taxaC, impostoC, pecasPagarC, pagaOficinaC, vaiParaCasaC|null, sobraC, totalSeuC|null, estado },
+  motivo: '' }
+```
+(`…C` = centavos inteiros.) A **conta pode ser refeita** a partir de `entrada` + `foto` com as funções puras. Um teste confere que o resultado refeito é igual ao gravado.
+
+**Aba `Meses`** — a foto dos gastos de cada mês:
+
+| Mês | Gastos da oficina (R$) | Gastos da casa (R$) | Horas que você pode cobrar | Gravado em | Origem |
+|---|---|---|---|---|---|
+| `2026-11` (texto) | 4.000,00 | 3.000,00 | 130 | 05/11/2026 14:02 | Primeiro fechamento · ou · "Usar meus gastos de hoje" |
+
+- **Gravação automática** no **primeiro fechamento de cada mês** (o mês da **data do fechamento**). O servidor lê as abas Gastos e Parâmetros **naquele momento**.
+- Depois disso, mudar os gastos **não muda** aquele mês. Para trocar: botão **"Usar meus gastos de hoje neste mês"** em Resultados, com a confirmação "Os gastos de novembro passam a ser oficina R$ X e casa R$ Y.".
+- **Mês sem linha:**
+  - se for o atual, usa os gastos de hoje, com o aviso "Usando seus gastos de hoje. O mês fica gravado no primeiro fechamento.";
+  - se for passado, mostra "Sem gastos gravados para este mês" e o botão para gravar.
+
+**Aba `Parâmetros`** ganha a chave `descontoAVistaPadrao` (11.9).
+
+`salvarDados` continua regravando **só** Gastos, Parâmetros e Taxas. **Nunca** toca em Orçamentos e Meses (tem teste).
+
+### 11.5 Fórmulas
+**Fechamento** (função pura nova `calcularFechamento(fotoResultado, foto, forma, parcelas, cartao, valorCombinadoC)` em `calculo.js`; sem arredondar no meio):
+- `taxaPct`:
+  - Pix = 0;
+  - Débito / Nx = `taxaDaForma(foto.cartoes, campo, cartaoEfetivo)`, igual ao orçamento.
+- `V = valorCombinadoC / 100`.
+- `taxa = V × taxaPct/100` — o que a maquininha fica.
+- `imposto = V × impostoPercentual/100` — por dentro, sobre o valor combinado.
+- `pagaOficina = horas × minimoHoraOficina` e `vaiParaCasa = horas × minimoHoraCasa` (da foto).
+- `sobra = V − taxa − imposto − peças pagas − pagaOficina − vaiParaCasa`.
+- `totalSeu = vaiParaCasa + sobra`.
+- `estado`:
+  - verde: sobra ≥ 0;
+  - âmbar: sobra < 0, mas a oficina se paga;
+  - vermelho: a oficina não se paga.
+- **Arredondamento (regra do R8):**
+  - cada linha é arredondada sozinha;
+  - "Vai para a sua casa" absorve a diferença (sem casa: "Paga os gastos da oficina"; sem horas: a própria "Sobra extra", porque as peças pagas têm de ser iguais às do orçamento — o servidor confere);
+  - assim, **valor combinado − taxa − imposto − peças − oficina − casa = sobra**, exato em centavos;
+  - é isso que vai para a planilha.
+- **Coerência com o orçamento:** fechar em **Pix pelo à vista oferecido** dá **a mesma sobra** do card "Neste serviço". Fechar no **Nx pelo total** dá a mesma "sobra extra no cartão em Nx". Os dois casos entram como testes.
+
+**Resultado real do mês** (só Fechados com data do fechamento no mês; somas em centavos dos valores gravados):
+- `F` = Σ valor combinado (faturamento)
+- `P` = Σ peças pagas
+- `T` = Σ taxa da maquininha
+- `I` = Σ imposto
+- `GO`, `GC` = gastos da oficina e da casa **da aba Meses** (ou de hoje, no mês atual sem foto)
+- `depoisDaOficina = F − P − T − I − GO` → **"A oficina se pagou?"**
+  - ≥ 0: "Sim. Sobraram R$ X depois dos gastos da oficina." (verde)
+  - < 0: "Não. Faltaram R$ X para os gastos da oficina." (vermelho)
+- **"Sua casa foi coberta?"**, com `casaCoberta = mín(máx(depoisDaOficina, 0), GC)`:
+  - `depoisDaOficina ≥ GC`: "Sim, toda: R$ GC."
+  - `0 < depoisDaOficina < GC`: "Em parte: R$ casaCoberta de R$ GC (N%)."
+  - `≤ 0`: "Não. Nada sobrou para a casa."
+- `sobraDoMes = depoisDaOficina − GC` → **"Sobra extra do mês"**. Negativa aparece como "− R$ X", em âmbar ou vermelho, com a mesma regra de cores do card "Neste serviço".
+- `totalSeuNoMes = casaCoberta + máx(sobraDoMes, 0)` (= máx(depoisDaOficina, 0)) → **"Total que é seu no mês"**.
+- **Horas:**
+  - `horasVendidas` = Σ horas dos Fechados;
+  - `horasPossiveis` = horas da aba Meses;
+  - "40 de 130 horas — 31%".
+- "?" do card: "Cada orçamento supõe que você vendeu todas as horas do mês. Aqui é o que aconteceu de verdade: o que entrou nos fechamentos menos peças, taxas, imposto e os gastos do mês."
+- **Comparação com o mês anterior** (só se o anterior tiver fechamentos):
+  - faturamento: "↑ R$ 1.421,51 (19%)" ou "↓ …";
+  - sobra do mês: só a diferença em R$ (porcentagem de número negativo não faz sentido).
+
+### 11.6 Exemplo numérico completo (feito à mão e conferido em Node com as funções atuais)
+**Cenário F:**
+- gastos: oficina R$ 4.000 e casa R$ 3.000; 5 dias × 6 h × 52/12 = **130 h**;
+- mínimo por hora: oficina 30,769231 e casa 23,076923;
+- hora R$ 150; imposto **6%**; parcelas "5,10"; Visa/Master padrão (débito 1,37 · 5x 7,57 · 10x 11,06); desconto à vista 5%;
+- serviço: **8 h** (mão de obra 1.200); peças pagas **400**, +25% = 500 → base **1.700,00**;
+- âncora 5x = 1.700 ÷ 0,9243 = 1.839,2297 → **1.839,23**;
+- à vista oferecido = 1.839,2297 × 0,95 = 1.747,268 → **1.747,27**;
+- parte de cada serviço: oficina 8 × 30,769231 = **246,15**; casa 8 × 23,076923 = **184,62**.
+
+**Fechamentos** (V = valor combinado):
+
+| Forma | V | Taxa | Imposto 6% | Peças | Oficina | Casa | **Sobra** | Total seu |
+|---|---|---|---|---|---|---|---|---|
+| Pix (oferecido) | 1.747,27 | 0,00 | 104,84 | 400,00 | 246,15 | 184,62 | **811,66** (= "Neste serviço") | 996,28 |
+| Débito 1,37% (1.700 ÷ 0,9863) | 1.723,61 | 23,61 | 103,42 | 400,00 | 246,15 | 184,62 | **765,81** | 950,43 |
+| 5x 7,57% (total) | 1.839,23 | 139,23 | 110,35 | 400,00 | 246,15 | 184,62 | **758,88** (= sobra no cartão 5x) | 943,50 |
+| 10x 11,06% (1.700 ÷ 0,8894) | 1.911,40 | 211,40 | 114,68 | 400,00 | 246,15 | 184,62 | **754,55** | 939,17 |
+| Pix, **valor alterado** para 1.700,00 | 1.700,00 | 0,00 | 102,00 | 400,00 | 246,15 | 184,62 | **767,23** | 951,85 |
+
+Conta de uma linha: 1.723,61 − 23,61 − 103,42 − 400 − 246,15 − 184,62 = 765,81 ✓. Neste cenário, todas as linhas fecham sem precisar de ajuste; o caso com ajuste fica nos testes.
+
+**Mês (novembro/2026):**
+- 8 orçamentos feitos: os 5 fechamentos acima, mais 2 "Não fechou" e 1 Aberto;
+- foto em Meses: 4.000 · 3.000 · 130 h.
+
+| Linha | Conta | Valor |
+|---|---|---|
+| Faturamento F | 1.747,27 + 1.723,61 + 1.839,23 + 1.911,40 + 1.700,00 | **8.921,51** |
+| Peças P | 5 × 400 | 2.000,00 |
+| Taxas T | 0 + 23,61 + 139,23 + 211,40 + 0 | 374,24 |
+| Imposto I | 104,84 + 103,42 + 110,35 + 114,68 + 102,00 | 535,29 |
+| Depois da oficina | 8.921,51 − 2.000 − 374,24 − 535,29 − 4.000 | **2.011,98** → "A oficina se pagou? **Sim**. Sobraram R$ 2.011,98." |
+| Casa | 2.011,98 de 3.000,00 | "Sua casa foi coberta? **Em parte**: R$ 2.011,98 de R$ 3.000,00 (67%)." |
+| Sobra extra do mês | 2.011,98 − 3.000 | **− R$ 988,02** (âmbar) |
+| Total que é seu no mês | 2.011,98 + 0 | **R$ 2.011,98** |
+| Horas | 5 × 8 = 40 de 130 | "40 de 130 horas — 31%" |
+| Orçamentos | 8 feitos · 5 fechados · 2 não fecharam · 1 em aberto | fecharam **63%** (5 ÷ 8 = 62,5%) |
+| vs. outubro (ex.: faturamento 7.500,00, sobra − 1.500,00) | 8.921,51 − 7.500 = 1.421,51 (18,95%) | "↑ R$ 1.421,51 (19%)" · sobra "↑ R$ 511,98" |
+
+Leitura para o mecânico: **cada orçamento** mostrava sobra positiva (~R$ 750 a 810), porque supõe as 130 h vendidas. **No mês**, ele vendeu só 40 h. A oficina se pagou, mas a casa ficou R$ 988,02 descoberta. É exatamente essa diferença que a aba mostra.
+
+### 11.7 Telas (layout em texto)
+
+**Topo (decisão A):**
+```
+celular (390 px)                                   notebook (≥ 900 px)
+┌──────────────────────────────────────┐          ┌──────────────────────────────────────────────────────────┐
+│ [logo] Preço Certo        Salvo ✓  ⚙ │          │ [logo] Preço Certo   [ Orçamento | Resultados ]  Salvo ✓ ⚙│
+│ [   Orçamento   |   Resultados    ]  │          └──────────────────────────────────────────────────────────┘
+└──────────────────────────────────────┘
+```
+- Aba ativa sublinhada em laranja, como as abas de Configurações.
+- **Com PIN ligado:** tocar em "Resultados" pede o PIN (decisão B). Cancelar volta ao Orçamento.
+
+**Orçamento salvo (celular):**
+```
+┌ Serviço ─────────────────────────────┐
+│ Salvo · [Aberto] · João   Ver em Resultados │
+│ Valores de 03/11/2026 · Recalcular com os valores de hoje │
+│ Cliente (opcional)    [João Silva         ] │
+│ Telefone (opcional)   [(11) 98888-7777    ] │
+│ Qual serviço / veículo? [Pastilhas Gol 2015] │
+│ …                                    │
+└──────────────────────────────────────┘
+ … resultados como hoje …
+[ Copiar para WhatsApp ]  [ Compartilhar ]
+[ Salvar orçamento ]      [ Mudar situação ]   (só quando salvo)
+[ Novo orçamento ]
+```
+- Fechado ou Não fechou (decisão C): os campos de valor ficam desabilitados, com a faixa "Fechado em 07/11 por R$ 1.747,27 (Pix). Para mudar valores: Voltar para Aberto ou Duplicar.".
+
+**Tela de fechamento (celular; no notebook, as duas colunas do orçamento: perguntas à esquerda e o card à direita):**
+```
+← Voltar
+Fechar orçamento
+João Silva · Pastilhas Gol 2015
+
+Como o cliente vai pagar?
+( Pix/dinheiro ) ( Débito ) ( Cartão )
+  Parcelas: (1x)(2x)…(5x)…(12x)          ← só com Cartão; só parcelas com taxa
+  Cartão:   (Não sei)(Visa/Master)(Elo)  ← só se houver 2+ cartões na foto
+Valor combinado   [R$ 1.747,27]
+  À vista com 5% de desconto. Pode mudar (ex.: desconto dado na hora).
+Data do fechamento [07/11/2026]
+
+┌ Neste fechamento ? ──────────────────┐
+│ Sobra extra: R$ 811,66               │  (verde/âmbar/vermelho)
+│ Total que é seu (casa + sobra): R$ 996,28 │
+│ ▸ Ver detalhes                       │
+│   Valor combinado          R$ 1.747,27 │
+│   Taxa da maquininha       − R$ 0,00  │
+│   Imposto                  − R$ 104,84 │
+│   Peças (o que você pagou) − R$ 400,00 │
+│   Paga os gastos da oficina − R$ 246,15 │
+│   Vai para a sua casa      − R$ 184,62 │
+│   Sobra extra                R$ 811,66 │
+└──────────────────────────────────────┘
+[ Confirmar fechamento ]
+```
+
+**Aba Resultados (celular; uma coluna):**
+```
+‹   Novembro 2026   ›                      (› desabilitado no mês atual)
+┌ Resultado real do mês ? ─────────────┐
+│ A oficina se pagou?  Sim. Sobraram R$ 2.011,98 │
+│ Sua casa foi coberta? Em parte: R$ 2.011,98 de R$ 3.000,00 (67%) │
+│ Sobra extra do mês:  − R$ 988,02     │  (grande, âmbar)
+│ Total que é seu no mês: R$ 2.011,98  │
+│ vs. outubro: faturamento ↑ R$ 1.421,51 (19%) · sobra ↑ R$ 511,98 │
+│ Gastos do mês: oficina R$ 4.000 · casa R$ 3.000 · 130 h │
+│   gravados em 05/11 · Usar meus gastos de hoje neste mês │
+└──────────────────────────────────────┘
+┌ Orçamentos ──────────────────────────┐
+│ Feitos em novembro: 8 · 5 fecharam ·  │
+│ 2 não fecharam · 1 em aberto  ?      │
+│ Fecharam: 63%                        │
+└──────────────────────────────────────┘
+┌ Dinheiro que entrou em novembro ? ───┐
+│ Faturamento          R$ 8.921,51     │
+│ Peças (você pagou)   R$ 2.000,00     │
+│ Taxas da maquininha  R$ 374,24       │
+│ Imposto              R$ 535,29       │
+└──────────────────────────────────────┘
+┌ Horas ? ─────────────────────────────┐
+│ 40 de 130 horas — 31%  [████░░░░░░]  │
+└──────────────────────────────────────┘
+[ Buscar cliente, telefone ou serviço ]
+(Todos)(Aberto)(Fechado)(Não fechou)
+┌──────────────────────────────────────┐
+│ João Silva                [Fechado]  │
+│ Pastilhas Gol 2015 · 07/11 · R$ 1.747,27 │
+└──────────────────────────────────────┘
+ … (tocar abre o menu: Abrir · Mudar situação · Duplicar · Excluir)
+```
+- **Notebook:** resumo à esquerda (cards) e lista à direita (busca, filtros e cards), até 1040 px.
+- **Mês sem nada:** "Nenhum orçamento em novembro. Os orçamentos que você salvar aparecem aqui." Sem cards de resumo.
+- **Lista do mês:** orçamentos **feitos** no mês **ou fechados** no mês. Um orçamento de outubro fechado em novembro aparece em novembro com "orçado em 28/10".
+- **Valor no card da lista:** Fechado = valor combinado; os outros = valor orçado (à vista).
+- **Busca e filtro:** no aparelho, sobre o mês carregado. O telefone é comparado só pelos números.
+- **Atualiza:**
+  - ao abrir a aba;
+  - ao trocar de mês;
+  - ao voltar para o app (`visibilitychange`), se a aba estiver aberta;
+  - depois de cada ação.
+
+**Dicas "?" novas (`DICAS`):**
+- **Resultado real do mês:** o texto da 11.5.
+- **Fecharam:** "Dos orçamentos feitos neste mês, quantos o cliente aceitou."
+- **Dinheiro do mês:** "Soma dos orçamentos fechados com data de fechamento neste mês."
+- **Horas:** "Horas dos serviços fechados neste mês, comparadas com as horas que você pode cobrar no mês (Meus gastos → Sua rotina)."
+- **Neste fechamento:** "Valor combinado menos a taxa da maquininha da forma escolhida, o imposto, as peças e a parte da oficina e da sua casa."
+
+### 11.8 API (ações novas, registro a registro)
+O roteador continua aceitando **só** as ações de `ACOES_`. Ordem no `doPost` igual à de hoje: JSON → **token** → ação na lista → lock → `configurarPlanilha_` → ação.
+
+```
+listarOrcamentos  {mes:'aaaa-mm'}
+  → {ok, mes, primeiroMes, orcamentos:[resumo…], meses:{'aaaa-mm': foto|null (mês e anterior)}, gastosHoje:{oficina, casa, horas}}
+    resumo = colunas A–U (sem o JSON), dos orçamentos feitos OU fechados no mês pedido e no anterior (para a comparação).
+obterOrcamento    {id} → {ok, orcamento:{id, criadoEm, atualizadoEm, cliente, telefone, situacao, dados}}
+                          | {ok:false, naoEncontrado:true, erro:'Esse orçamento foi excluído em outro aparelho.'}
+salvarOrcamento   {orcamento:{id, atualizadoEmBase|null, cliente, telefone, dados:{v, entrada, foto, resultado}}}
+                  → {ok, id, criadoEm, atualizadoEm, situacao}
+                    (upsert: ID novo → linha nova com situação "Aberto"; ID existente → atualiza A–V da MESMA linha;
+                     situação, fechamento e motivo NÃO mudam por aqui; em Fechado/Não fechou só aceita cliente e telefone)
+mudarSituacao     {id, atualizadoEmBase, situacao:'Fechado'|'Aberto'|'Não fechou', fechamento?:{…}, motivo?}
+                  → {ok, atualizadoEm, mesGravado?:'aaaa-mm'}   (Fechado grava a aba Meses se o mês ainda não tiver linha)
+excluirOrcamento  {id, atualizadoEmBase} → {ok}                  (apaga a linha)
+usarGastosDeHojeNoMes {mes:'aaaa-mm'} → {ok, foto}               (grava ou sobrescreve a linha do mês)
+obterDados / salvarDados / obterTaxasPadraoVisa                  (como hoje + descontoAVistaPadrao em parametros)
+conflito (salvar, mudar situação ou excluir)
+  → {ok:false, conflito:true, erro:'Esse orçamento foi alterado em outro aparelho.', atual:{resumo}}
+```
+
+**Regra de conflito (dois aparelhos ao mesmo tempo):**
+- Cada orçamento é **uma linha independente**. Dois aparelhos salvando orçamentos **diferentes** nunca se atrapalham.
+- O lock serializa as gravações, e cada uma escreve **só a sua linha**: `setValues` de 1 linha, achada pelo ID na coluna A.
+- O servidor **carimba** `atualizadoEm` (texto com milissegundos; se coincidir com o anterior, soma 1 ms). O relógio do aparelho não importa.
+- O aparelho manda o `atualizadoEmBase` que ele leu:
+  - **igual** ao da linha → grava;
+  - **diferente** → recusa com "Esse orçamento foi alterado em outro aparelho.";
+  - **ID que sumiu** (com `atualizadoEmBase`) → **recusa** "Esse orçamento foi excluído em outro aparelho." (`excluido:true`). O orçamento **não volta** sozinho: o app oferece [Salvar as minhas como novo] (ID novo, sem base) ou [Descartar];
+  - **ID que já existe sem `atualizadoEmBase`** (seria "novo") → conflito;
+  - **excluir um ID que já não existe** → ok (`jaExcluido:true`), nada a fazer.
+- **No app, depois de um conflito:**
+  - aviso "Esse orçamento foi alterado em outro aparelho. Suas mudanças não foram salvas.";
+  - [Ver a versão nova] recarrega com `obterOrcamento`;
+  - [Salvar as minhas como um novo orçamento] cria um ID novo, com as mesmas entradas e a foto de agora;
+  - nenhuma das duas opções perde nada sem aviso.
+- **O que foi copiado do Pendências** (`apps-script/Code.gs`: `push_`/`pull_`; `js/store.js`) e o que mudou:
+
+  | Copiado | Diferente, e por quê |
+  |---|---|
+  | ID gerado no aparelho (UUID) e upsert por ID | Pendências: "o último vence" (grava se `atualizadoEm` do aparelho ≥ o da planilha; o mais velho é ignorado em silêncio). **Aqui: recusa** a gravação feita sobre uma versão desatualizada, com aviso, porque você pediu que nada se perca em silêncio |
+  | `atualizadoEm` por registro; gravar só a linha afetada, sem regravar a aba | Pendências usa o relógio do aparelho (com carimbo que só cresce). Aqui **o servidor carimba** e a comparação é por **igualdade**: sem problema de relógio |
+  | Lock no servidor; validação por campo; teste de ponta a ponta no `testarApi` com registro de teste | Pendências marca `excluido` e tem `servidorEm`/`pull since`. Aqui **apaga a linha** (decisão D) e lista **por mês**: o volume é pequeno e não precisa de sincronização incremental |
+  | — | **Sem fila offline (IndexedDB/outbox)** (decisão H) |
+
+**Validação rígida (salvar e mudar situação):**
+- `id`: UUID (36 caracteres `[0-9a-f-]`).
+- Cliente: até 60; telefone: até 20 e `[0-9 ()+.-]`; motivo: até 80.
+- `entrada`:
+  - cada texto até 40 caracteres (descrição até 100);
+  - peças: no máximo 30, descrição até 80.
+- `foto`:
+  - `parametros` passa por `validarParametros_`;
+  - `cartoes` passa por `validarCartoes_`;
+  - os números passam pelos limites de sempre.
+- `resultado` e `fechamento`:
+  - centavos inteiros entre −MAX e MAX;
+  - forma na lista; parcelas de 1 a 12;
+  - data `aaaa-mm-dd` válida, até amanhã (folga de fuso);
+  - **conferência de soma:** `valorCombinado − taxa − imposto − peças − oficina − casa = sobra` exato.
+- JSON acima de 30.000 caracteres → "Orçamento grande demais.".
+- **Limites únicos** (`MAX_CLIENTE_`, `MAX_TELEFONE_`, `MAX_MOTIVO_`, `MAX_JSON_ORCAMENTO_`…), com paridade testada entre o frontend e o backend, como hoje.
+
+**Leitura tolerante:**
+- linha sem ID ou com JSON corrompido → **ignorada**, com `console.warn('Orçamentos: linha N ignorada (JSON inválido), ID …')` no registro de execução;
+- situação desconhecida → "Aberto";
+- número inválido numa coluna → 0 no resumo;
+- linha de `Meses` inválida → tratada como mês sem foto.
+
+### 11.9 Desconto à vista padrão vai para a planilha
+- **Nova chave** `descontoAVistaPadrao` em `Parâmetros`, de 0 a 99, padrão 5, entrando em `LIMITES_PARAMETROS_` e `ORDEM_PARAMETROS_`.
+- **O campo muda de lugar:** sai de "Este aparelho" e vai para **Ajustes → Outros ajustes** (atrás do PIN), com a ajuda "Vale para todos os aparelhos ligados a esta planilha." A dica "?" é ajustada.
+- **Migração (uma vez):**
+  - na leitura, se a chave **não existir** na aba, `obterDados` devolve `parametrosAusentes:['descontoAVistaPadrao']`;
+  - se o aparelho tiver `precoCerto.descontoPadrao.v1` válido, o app grava esse valor (`salvarDados`) e, **depois do "Salvo ✓"**, apaga a chave local;
+  - sem valor local, grava 5;
+  - o primeiro aparelho a abrir vence: um segundo aparelho com valor diferente perde o dele, com o aviso "O desconto padrão agora vem da planilha: X%.".
+- **Compatibilidade com a tela antiga** (o celular ainda não tocou em ATUALIZAR): `validarParametros_` aceita `descontoAVistaPadrao` **ausente** e, nesse caso, **mantém o valor que já está na aba**. Sem isso, a tela antiga não conseguiria salvar os gastos depois da troca do backend. Tem teste.
+
+### 11.10 Frontend: o que muda (resumo)
+- **`calculo.js`** (puras, testadas):
+  - `calcularFechamento`, `linhasDetalheFechamento`, `resumoDoMes(fechados, fotoMes)`;
+  - `mesDe(data)` e `navegarMes`;
+  - `fotoDoOrcamento(dados, entrada)` e `refazerDaFoto(entrada, foto)`;
+  - `normalizarTelefone`.
+- **`app.js`:**
+  - aba Resultados (com PIN);
+  - tela de fechamento;
+  - vínculo do rascunho;
+  - salvar/copiar;
+  - conflito;
+  - DESFAZER da exclusão;
+  - dicas novas;
+  - migração do desconto.
+- **`api.js`:** sem mudança. As ações novas usam o mesmo `chamar`; a resposta de conflito vira o erro com tipo `conflito`.
+- **`sw.js`:** v5.
+- **Linguagem:** nenhum texto novo com "lucro". O WhatsApp **não** muda (sem cliente, sem telefone, sem situação).
+
+### 11.11 Testes (implementar depois do OK)
+**Backend (Node, planilha simulada) e API:**
+1. Upsert: salvar 2× o mesmo ID → **1 linha**, `Criado em` mantido, `Atualizado em` novo; ID novo → linha nova "Aberto".
+2. Conflito: aparelho A e B leem; A salva; B salva com a base velha → `conflito:true` e a linha fica com os dados de A. Excluir e mudar situação com base velha → conflito. **Excluído não ressuscita:** A abre, B exclui, A salva → recusado ("excluído em outro aparelho"), nenhuma linha criada; A "salva como novo" (ID novo, sem base) → linha nova. Mudar situação de um excluído → recusado.
+3. Orçamentos **diferentes** salvos em sequência intercalada por A e B → os dois gravados, nenhum tocado pelo outro.
+4. `salvarDados` não altera Orçamentos nem Meses (conteúdo idêntico antes e depois).
+5. Roteador: só as ações da lista (`apagarTudo`, `trocarToken`… → "Ação desconhecida."); sem token → "Acesso não autorizado" **antes** de tocar na planilha, para todas as ações novas.
+6. Validação: cada limite (cliente 61, telefone com letra, 31 peças, JSON > 30.000, data inválida ou futura, soma do fechamento que não fecha, parcelas 13) → mensagem clara.
+7. Leitura tolerante: linha com JSON quebrado é ignorada e registrada no log; as outras aparecem.
+8. Meses: 1º fechamento de novembro grava a linha; 2º não muda; mudar Gastos e fechar de novo → novembro **igual**; "Usar meus gastos de hoje" → muda; outubro intacto.
+9. `descontoAVistaPadrao`: ausente → `parametrosAusentes`; `salvarDados` da tela antiga (sem a chave) mantém o valor da aba; fora de 0–99 → erro.
+
+**Cálculo (`calculo.js`, igualdade exata em centavos):**
+
+10. Fechamentos do cenário F (11.6): Pix, Débito, 5x, 10x e Pix alterado (1.700) → os números da tabela (taxa, imposto, oficina, casa, sobra, total seu).
+11. Coerência: Pix pelo oferecido = sobra de "Neste serviço" (811,66); 5x pelo total = sobra no cartão em 5x (758,88).
+12. Soma no centavo (R8) em 20 valores combinados variados, com e sem casa, com e sem horas e com imposto: `V − taxa − imposto − peças − oficina − casa = sobra` sempre.
+13. Estados do fechamento: verde, âmbar e vermelho.
+14. Resumo do mês do exemplo (11.6): faturamento 8.921,51 · peças 2.000 · taxas 374,24 · imposto 535,29 · depois da oficina 2.011,98 · casa em parte 67% · sobra − 988,02 · total seu 2.011,98 · 40 de 130 h (31%) · 5 de 8 = 63% · ↑ R$ 1.421,51 (19%).
+15. Mais dois meses, para os três estados: um em que a casa é coberta inteira (verde) e um em que a oficina não se paga (vermelho).
+16. Mês pela **data do fechamento**: orçamento de 28/10 fechado em 03/11 conta no dinheiro de novembro e na contagem "feitos" de outubro.
+17. Navegação de meses: dez/2026 → jan/2027 e volta; não passa do mês atual; mês vazio.
+18. Foto × recalcular: reabrir com gastos alterados mostra os valores antigos; "Recalcular" mostra os de hoje e **não grava** até salvar; refazer a partir da foto = resultado gravado.
+
+**Tela (puppeteer, 390 e 1280, prints):**
+
+19. Salvar → "Orçamento salvo ✓"; copiar salva automaticamente; copiar de novo sem mudança não chama o servidor; sem conexão → aviso, e o texto foi copiado.
+20. Reabrir, mudar e salvar → mesma linha; "Novo orçamento" desvincula.
+21. Fechar com Pix, Débito, 5x e 10x pela tela; mudar o valor combinado → card recalculado; data futura recusada.
+22. Não fechou com motivo; voltar para Aberto; excluir + DESFAZER (nada enviado) e excluir sem desfazer (enviado depois de 6 s).
+23. Resultados: PIN pedido (decisão B); busca por cliente, telefone e serviço; filtros; mês vazio; `visibilitychange` atualiza.
+24. Conflito simulado no mock → aviso e as duas saídas.
+25. Varreduras de sempre:
+    - interface sem "lucro" (exceto "Lucro nas peças");
+    - WhatsApp sem termos internos (nem cliente, telefone ou situação);
+    - segredos;
+    - `sw.js` v5;
+    - PWA v5 → v6.
+
+Se alguma conta divergir do esperado acima: **parar e reportar** (não ajustar o esperado).
+
+### 11.12 Publicação (o que o DEPLOY.md vai dizer) e riscos
+**Ordem obrigatória:**
+1. **Em cada planilha** (a de teste e a do mecânico):
+   1. Extensões → Apps Script;
+   2. **copie a sua `URL_DA_API`**;
+   3. cole o `Codigo.gs` novo e recoloque a `URL_DA_API`;
+   4. salve;
+   5. **Implantar → Gerenciar implantações → lápis → Versão: Nova versão → Implantar** (a URL continua a mesma);
+   6. rode **`testarApi`**: deve criar e apagar um orçamento de teste e passar tudo.
+2. **Só depois:** subir `sw.js` para v5, fazer a conferência de segredos e o **`git push`** da tela.
+3. Em cada aparelho: "Nova versão disponível · ATUALIZAR".
+
+**Por que nessa ordem:** a tela nova chama ações que só o backend novo conhece. Ao contrário (tela antes), "Salvar orçamento" e "Resultados" dariam "Ação desconhecida.". Já a tela antiga continua funcionando com o backend novo (11.9).
+
+**Riscos e cotas do Apps Script (conta Google gratuita):**
+- **Lock:** todas as ações passam pelo mesmo lock (espera até 10 s). Com 2 aparelhos, a espera é rara; se estourar: "A planilha está ocupada. Tente de novo em alguns segundos.".
+- **Velocidade:**
+  - `listarOrcamentos` lê as colunas A–U da aba inteira (sem o JSON);
+  - com ~100 orçamentos/mês, 5 anos = 6.000 linhas: ainda abaixo de 2 s;
+  - o JSON só é lido em `obterOrcamento`.
+  - Se um dia ficar lento: arquivar anos antigos numa aba "Orçamentos 2026" (fora desta fase).
+- **Tamanho:** célula até 50.000 caracteres (limite nosso: 30.000); planilha até 10 milhões de células (22 colunas × 6.000 linhas = 132 mil).
+- **Execuções simultâneas:** limite de 30 por usuário. Não é problema com 2 aparelhos.
+- **Edição manual da aba Orçamentos:** apagar a linha = excluir. Mudar valores nas colunas deixa a lista diferente do orçamento aberto (que lê o JSON): o GUIA vai pedir para não editar.
+- **Orçamentos ficam na planilha do mecânico:** nome e telefone de clientes passam a ficar lá, protegidos pelo mesmo token; nada vai para o repositório público.
+- **Migração do desconto:** um segundo aparelho com valor diferente perde o dele (com aviso).
+
+**Fatias:** 10a = backend (`Codigo.gs`) + testes do backend/API, com parada; 10b = tela, docs (DEPLOY, GUIA, testes-calculo), `sw.js` v5, todos os testes e prints, com parada antes do commit.

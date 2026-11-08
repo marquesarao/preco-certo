@@ -12,6 +12,27 @@ Mesmo modelo do app **Pendências**:
 
 ---
 
+## ⚠️ Fase 10 (orçamentos salvos + Resultados): o backend MUDOU — ordem obrigatória
+
+Esta versão muda **as duas pontas**: o `apps-script/Codigo.gs` (ações novas de orçamento, abas `Orçamentos` e `Meses`, desconto padrão na aba `Parâmetros`) e a tela (`sw.js` v5).
+A tela nova chama ações que só o backend novo conhece. Por isso, **nesta ordem**:
+
+1. **Em cada planilha** (a sua de teste e a do mecânico):
+   1. Extensões → Apps Script;
+   2. **copie a sua `URL_DA_API`** (a linha do topo do `Codigo.gs`) para um lugar seguro;
+   3. apague o conteúdo do arquivo de código e cole o **`apps-script/Codigo.gs` novo**;
+   4. recoloque a sua `URL_DA_API` e **salve** (Ctrl+S);
+   5. **Implantar → Gerenciar implantações → lápis → Versão: Nova versão → Implantar** (a URL continua a mesma; os aparelhos não precisam de nada);
+   6. no seletor de funções, escolha **`testarApi`** e clique em **Executar**. O registro deve terminar com **"Todos os testes da API passaram (o orçamento de teste foi apagado)."** Ele cria um orçamento de teste (cliente "TESTE testarApi", fechado em 01/2000) e o apaga no fim, junto com a linha "2000-01" da aba Meses.
+   - Na primeira chamada, aparecem as abas **`Orçamentos`** e **`Meses`**, com um aviso ao editar à mão ("Use o app para alterar orçamentos…"). **Não edite essas abas à mão**: apagar uma linha = excluir o orçamento.
+   - O `appsscript.json` **não mudou** (o escopo continua só "esta planilha"). Não deve aparecer pedido de autorização novo.
+2. **Só depois**, publique a tela: conferência de segredos (abaixo) e **`git push`**. A `VERSAO` do `sw.js` já está em `v5`.
+3. Em cada aparelho: **"Nova versão disponível · ATUALIZAR"**. Na primeira abertura, o desconto à vista padrão que estava no aparelho vai para a planilha (o primeiro aparelho a abrir vence; o outro recebe o aviso "O desconto padrão agora vem da planilha: X%.").
+
+Se fizer ao contrário (tela antes do backend), "Salvar orçamento" e "Resultados" mostram "Ação desconhecida." até o backend ser atualizado. Já a tela antiga continua funcionando com o backend novo (inclusive salvando gastos e ajustes).
+
+---
+
 ## Antes de cada `git push`: nada sensível no repositório
 
 O repositório é **público**. Nunca podem ir para ele:
@@ -105,7 +126,7 @@ Faça isto **na sua planilha de teste** e depois **na planilha do mecânico** (n
    - no notebook: ícone de instalar na barra de endereço, ou ⋮ → **"Instalar Preço Certo"**.
    - O ícone é o logo da CliniCar.
 
-Para conferir a API sem o app: rode **`testarApi`** no editor. O registro mostra "✓" para cada verificação e não altera os dados (regrava os mesmos).
+Para conferir a API sem o app: rode **`testarApi`** no editor. O registro mostra "✓" para cada verificação e não altera os dados: regrava os mesmos gastos e ajustes e apaga o orçamento de teste que ele cria.
 
 ## e) Quando o backend mudar (`apps-script/Codigo.gs` ou `appsscript.json`)
 
@@ -134,8 +155,9 @@ Se trocar os ícones: rode `tools/gerar-icones.ps1` (veja `tools/LEIA-ME.md`) e 
   - nas **Propriedades do script** (⚙️ Configurações do projeto → Propriedades do script → `TOKEN`);
   - no armazenamento do navegador de cada aparelho.
 - A parte do link depois do `#` **não é enviada a nenhum servidor** (nem ao GitHub Pages, nem à prévia de link do WhatsApp).
-- No aparelho, **engrenagem (⚙) → Ajustes → Este aparelho → Desconectar este aparelho** apaga a ligação, os dados guardados e o PIN daquele aparelho (o desconto à vista padrão fica). A planilha não é afetada. Com PIN ligado e esquecido: **Esqueci o PIN → Desconectar este aparelho** e abrir o link de configuração de novo.
-- As funções `gerarLinkDeConfiguracao`, `trocarToken` e `testarApi` são públicas no editor, mas **não podem ser chamadas pela internet**: a única entrada externa é a API, que só aceita as ações `obterDados`, `salvarDados` e `obterTaxasPadraoVisa`.
+- No aparelho, **engrenagem (⚙) → Ajustes → Este aparelho → Desconectar este aparelho** apaga a ligação, os dados guardados e o PIN daquele aparelho. Os orçamentos salvos ficam na planilha. A planilha não é afetada. Com PIN ligado e esquecido: **Esqueci o PIN → Desconectar este aparelho** e abrir o link de configuração de novo.
+- As funções `gerarLinkDeConfiguracao`, `trocarToken` e `testarApi` são públicas no editor, mas **não podem ser chamadas pela internet**: a única entrada externa é a API, que só aceita as ações `obterDados`, `salvarDados`, `obterTaxasPadraoVisa`, `listarOrcamentos`, `obterOrcamento`, `salvarOrcamento`, `mudarSituacao`, `excluirOrcamento` e `usarGastosDeHojeNoMes`.
+- Os orçamentos salvos guardam **nome e telefone de clientes** na planilha do mecânico. Eles ficam protegidos pelo mesmo token; nada disso vai para o repositório.
 
 ## Problemas comuns
 
@@ -146,3 +168,5 @@ Se trocar os ícones: rode `tools/gerar-icones.ps1` (veja `tools/LEIA-ME.md`) e 
 | "O link de configuração está incompleto…" | O link foi cortado ao copiar. Copie a linha inteira do Registro de execução |
 | Endereço do Pages dá 404 | A primeira publicação ainda não terminou (espere alguns minutos) ou Pages não está ligado (item b) |
 | Versão nova não aparece | Esqueceu de subir a `VERSAO` no `sw.js` antes do push |
+| "Ação desconhecida." ao salvar orçamento ou abrir Resultados | A tela nova foi publicada antes do `Codigo.gs` novo. Faça a fase 10, passo 1, nesta planilha |
+| "Esse orçamento foi alterado em outro aparelho." | Outra pessoa salvou o mesmo orçamento antes. Escolha "Ver a versão nova" ou "Salvar as minhas como um novo orçamento" |
