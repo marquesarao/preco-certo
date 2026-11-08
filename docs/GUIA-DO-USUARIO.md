@@ -69,8 +69,9 @@ Na tela do **Orçamento**:
    - o app mostra **quanto o cliente paga pelas peças**.
 4. Veja o resultado:
    - **Cartão em 5x** (em cima): o preço cheio no cartão, já cobrindo a taxa da maquininha;
-   - **À vista (Pix ou dinheiro):** o preço do cartão **com desconto** (veja abaixo);
+   - **À vista (Pix, dinheiro ou débito):** o preço do cartão **com desconto** (veja abaixo);
    - **Cartão em 10x** e **"Ver outras formas"**: as outras opções no cartão;
+   - **No débito e no Pix o preço é o mesmo. No cartão, até 5x (a primeira parcela em destaque) o preço é o mesmo; acima disso fica mais caro.** Ex.: preço cheio 5x R$ 1.622,85 → em 3x também R$ 1.622,85 (3x de R$ 540,95); em 6x, R$ 1.635,41;
    - **Fica para você neste serviço:** sua hora já inclui os gastos da **oficina** e os da sua **casa**:
      - o **número grande** é o **total que é seu**: a parte da casa (o seu **salário**) mais a **sobra extra**. Embaixo, a conta em uma linha: "R$ 423,07 do seu salário + R$ 1.518,89 de sobra";
      - **"No cartão em 5x fica: R$ …"**: quanto fica para você se o cliente pagar no cartão;

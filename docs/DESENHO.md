@@ -214,6 +214,7 @@ Colunas: `Cartão` | `Débito (%)` | `1x (%)` | `2x (%)` | … | `12x (%)`. As t
 - **À vista oferecido** = `âncora.totalExato × (1 − (desconto + extra)/100)`, arredondado em centavos. Desconto e extra **somam**, e o total fica limitado a 99.
 - **Máximo sem perder lucro** = `(1 − base ÷ âncora) × 100` (é a taxa da âncora).
 - **Ainda pode dar** = máximo − total (mín. 0), em % e em R$ (= oferecido − base).
+- **Preço por forma de pagamento (seção 15):** com âncora, o débito paga o mesmo preço do Pix e o crédito de 1x até a parcela de referência paga o preço cheio (o da âncora); acima da referência, como antes.
 - **Acima do máximo:** faixa vermelha "Com esse desconto você cobra R$ X abaixo do seu preço.", com X = base − oferecido. (Até a fase 11 dizia "abre mão de R$ X da sua sobra extra", mas a sobra cai menos que X, porque o imposto também diminui: ex. 447 − 411,07 = 35,93 abaixo do preço, e a sobra cai 32,34.)
 - **Piso** = `(gasto das horas + peças pagas) ÷ (1 − imposto%)` (`preco.piso`). Na tela, ele virou o "piso da casa" (veja "Neste serviço" abaixo).
 - As **outras** parcelas em destaque e "Ver outras formas" continuam calculadas sobre a **base** (regra B). Nenhuma fica abaixo do à vista oferecido (D12).
@@ -582,7 +583,8 @@ O clasp e o GitHub Actions foram **removidos** (`.github/workflows/deploy.yml`, 
     - 10a **backend** (`Codigo.gs` + testes do backend/API + proteção "somente aviso") ✅ aprovada
     - 10b **tela + docs** (`sw.js` v5) ✅ (commit 22e71a4)
 11. **Tela mais simples + mês atual automático** (só frontend; `apps-script/` sem mudança; `sw.js` v6), desenho na seção 12 ✅ (commit 43c8e82); identidade do PWA ✅ (950b599); ajustes da seção 13 ✅ (895f51f)
-12. **Desempenho** (**muda o backend**; `sw.js` v9), desenho na seção 14 (aprovado): feita, aguardando aprovação do commit
+12. **Desempenho** (**muda o backend**; `sw.js` v9), desenho na seção 14 ✅ (commit f306a5d)
+13. **Preço por forma de pagamento** (só frontend; `apps-script/` sem mudança; `sw.js` v10), seção 15: feita, aguardando aprovação do commit
 
 Cada fatia termina com uma parada para revisão. O commit local só é feito depois da aprovação.
 
@@ -1373,3 +1375,28 @@ Fluxos: abrir ~4,0 s · Resultados ~4,0 s · salvar ~3,4 s · fechar ~6,8 s.
 - **Lista sem lock no meio de uma exclusão:** por um instante, a lista pode pular ou repetir uma linha (a próxima atualização corrige). Ela **nunca** mostra o mesmo ID duas vezes (deduplicação por ID).
 - **Edição à mão:** só o `onEdit` invalida o cache, e ele só reage a edições feitas à mão (as gravações do próprio script não disparam). **Nenhuma gravação do app depende do `onEdit`:** o `salvarDados` repõe o cache (e o mês corrente) dentro do lock. Apagar linhas à mão pode não disparar o `onEdit`: aparece em até 6 h, no próximo salvamento pelo app ou com "Recarregar da planilha".
 - **Orçamento antigo fechado neste mês:** o JSON dele é lido num trecho a mais (uma leitura a mais), não mais num bloco contínuo desde a primeira linha do mês.
+
+## 15. Preço por forma de pagamento (só frontend; `sw.js` v10)
+
+`apps-script/` sem mudança (D10). O que muda é só o **preço** que o cliente paga em cada forma; a sobra de cada forma continua = preço − taxa daquela forma − custos − imposto (por dentro).
+
+**Problema (achado no fechamento):** base 1.500, Pix com 5% = 1.541,71 (âncora 5x 1.622,85 × 0,95), mas o débito saía 1.520,84 (base ÷ (1 − 1,37%)): **mais barato que o Pix**. E o crédito 1x–4x saía abaixo do preço cheio, embora o WhatsApp diga "Cartão em até 5x: R$ 1.622,85".
+
+**Regra (com âncora = taxa na 1ª parcela em destaque):**
+- **Pix, dinheiro e débito:** o mesmo preço à vista oferecido (âncora × (1 − desconto − extra)).
+- **Crédito de 1x até a parcela de referência (a âncora, ex.: 5x):** o mesmo preço cheio (total da âncora); parcela = arredondar(total exato ÷ n) (regra B).
+- **Crédito acima da referência:** como antes (base ÷ (1 − taxa da parcela)).
+- **Sem âncora:** como antes (cada forma sobre a base).
+- Débito e 1x–4x: a sobra fica **maior ou igual** (taxa menor sobre o mesmo preço).
+- **Desconto grande:** se o à vista ficar abaixo de base ÷ (1 − taxa do débito), o débito continua com o preço à vista; no fechamento em débito aparece a faixa vermelha "Com esse valor no débito você cobra R$ X abaixo do seu preço." (X = arredondar(base ÷ (1 − taxa do débito)) − valor combinado).
+
+**Onde:**
+- funções puras em `js/calculo.js`: `precoNaForma` (preço de cada forma para "Ver outras formas"; `calcularComFoto` devolve `outras` já com a regra), `valorSugeridoFechamento` (débito = o à vista oferecido gravado; crédito até a referência = o total da âncora gravado) e `abaixoDoPrecoNoDebito` (a faixa);
+- tela de fechamento: valor sugerido, texto de ajuda ("No débito, o mesmo preço do Pix." / "Cartão em 3x: o mesmo preço do cartão em 5x.") e a faixa;
+- "Ver outras formas": Débito = à vista; 1x…(ref)x = preço cheio com a parcela de cada n; acima da referência como antes. Cards em destaque inalterados;
+- WhatsApp e o título do card à vista: "À vista (Pix, dinheiro ou débito)" (só com âncora; sem âncora o débito tem outro preço e fica "Pix/dinheiro"); a linha do cartão em destaque não muda;
+- "?" do desconto e das parcelas, e GUIA: "No débito e no Pix o preço é o mesmo. No cartão, até {ref}x o preço é o mesmo; acima disso fica mais caro."
+
+**Casos (exemplo do usuário; base 1.500 = mão de obra 1.000 + peças cobradas 500 (pagas 388,79), 8 h, oficina 4.000 e casa 3.000 em 130 h, imposto 0, Visa, desconto 5% → sobra Pix 722,15):** RP1–RP4 em `testes-calculo.md`.
+- O FC1 (cenário F) mudou na linha do débito: valor sugerido 1.723,61 → **1.747,27** (= Pix): taxa 23,94 · imposto 104,84 · oficina 246,15 · casa 184,61 (absorve o centavo) · sobra **787,73** · total que é seu 972,34.
+- O exemplo do mês da 11.6 (M1/M2 e a tela de Resultados) **não muda**: o débito daquele mês fica com o valor combinado 1.723,61 (o valor combinado é livre; o exemplo é de antes desta regra).

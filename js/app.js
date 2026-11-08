@@ -806,7 +806,7 @@ function renderOrcamento() {
   $('card-cartao').classList.toggle('card-so-link', soLink);
   $('card-cartao').hidden = res.semCartoes || (soLink && $('outras-formas').hidden);
   $('lista-outras').innerHTML = res.outras.length
-    ? res.outras.map(function (op) {
+    ? calc.outras.map(function (op) { // preço de cada forma pela regra da seção 15 (débito = à vista; até a âncora = preço cheio)
         var esquerda = op.forma === 'Débito' ? 'Débito' : op.parcelas + 'x de ' + formatarCentavos(op.parcelaCentavos);
         return '<li><span class="forma">' + esc(esquerda) + '</span><span class="total-li">total ' + esc(formatarCentavos(op.totalCentavos)) + '</span></li>';
       }).join('')
@@ -1583,7 +1583,9 @@ function renderFechamento() {
   var desc = d.resultado.descontoTotal;
   $('fechar-valor-ajuda').textContent = (fech.forma === 'pix'
     ? (desc > 0 ? 'À vista com ' + formatarPercentual(desc) + ' de desconto, como no orçamento.' : 'À vista, como no orçamento.')
-    : fech.forma === 'debito' ? 'Total no débito.' : 'Total no cartão em ' + fech.parcelas + 'x.') +
+    : fech.forma === 'debito' ? (d.resultado.ancora ? 'No débito, o mesmo preço do Pix.' : 'Total no débito.')
+    : d.resultado.ancora && fech.parcelas < d.resultado.ancora.parcelas ? 'Cartão em ' + fech.parcelas + 'x: o mesmo preço do cartão em ' + d.resultado.ancora.parcelas + 'x.'
+    : 'Total no cartão em ' + fech.parcelas + 'x.') +
     ' Pode mudar (ex.: desconto dado na hora).';
 
   var l = lerFechamento();
@@ -1594,6 +1596,10 @@ function renderFechamento() {
   $('card-fechamento').hidden = !f;
   if (!f) return;
   var cor = { verde: 'positivo', ambar: 'ambar', vermelho: 'negativo' }[f.estado];
+  // Débito com valor abaixo do preço que cobre a taxa do débito (desconto grande): a mesma faixa do orçamento (seção 15)
+  var abaixo = abaixoDoPrecoNoDebito(d.resultado, f);
+  $('fech-abaixo').hidden = !abaixo;
+  $('fech-abaixo').textContent = abaixo ? 'Com esse valor no débito você cobra ' + formatarCentavos(abaixo) + ' abaixo do seu preço.' : '';
   $('fech-sobra').innerHTML = dinheiroComSinalHtml(f.sobraC);
   $('fech-sobra-linha').className = 'valor-grande ' + cor;
   $('card-fechamento').className = 'card' + (f.estado === 'vermelho' ? ' card-negativo' : f.estado === 'ambar' ? ' card-ambar' : '');
@@ -2616,7 +2622,7 @@ var DICAS = {
   imposto: { alvo: 'label[for="p-impostoPercentual"]', nome: 'Imposto',
     texto: 'A porcentagem de imposto sobre o que o cliente paga (nota fiscal). O app tira esse imposto da sua sobra extra, no à vista e no cartão. É MEI? Deixe 0 e coloque o DAS em Meus gastos, porque o DAS é um valor fixo por mês.' },
   parcelas: { alvo: 'label[for="p-parcelasDestaque"]', nome: 'Parcelas que aparecem no orçamento',
-    texto: 'Quais parcelas do cartão aparecem em destaque no orçamento e no WhatsApp. Ex.: "5,10" mostra 5x e 10x. A primeira (5x) é o preço cheio do cartão, e o desconto à vista é calculado em cima dela. As demais formas ficam em "Ver outras formas de pagamento".' },
+    texto: 'Quais parcelas do cartão aparecem em destaque no orçamento e no WhatsApp. Ex.: "5,10" mostra 5x e 10x. A primeira (5x) é o preço cheio do cartão, e o desconto à vista é calculado em cima dela. No débito e no Pix o preço é o mesmo. No cartão, até 5x o preço é o mesmo; acima disso fica mais caro. As demais formas ficam em "Ver outras formas de pagamento".' },
   nomeOficina: { alvo: 'label[for="p-nomeOficina"]', nome: 'Nome da oficina',
     texto: 'Aparece no título do texto do WhatsApp: "*Orçamento – CliniCar Motors Tech*". Se ficar vazio, o título fica só "*Orçamento*".' },
   horasCobradas: { alvo: 'label[for="p-horasCobradasPorDia"]', nome: 'Horas que você cobra por dia',
@@ -2627,8 +2633,10 @@ var DICAS = {
     var ate = ultimoPreco && ultimoPreco.temAncora
       ? 'Neste orçamento, até ' + formatarPercentual(Math.round(ultimoPreco.maximo * 100) / 100) + ' você não perde nada'
       : 'Até a taxa do cartão em destaque você não perde nada';
-    return 'Desconto para quem paga no Pix ou dinheiro, em cima do preço do cartão. ' + ate +
-      ', porque não paga a maquininha. Já vem com o seu número de sempre (Ajustes → Outros ajustes). O cliente pediu mais? Toque em "O cliente pediu mais desconto?".';
+    var ref = ultimoPreco && ultimoPreco.temAncora ? ultimoPreco.ancora.parcelas : 5;
+    return 'Desconto para quem paga no Pix, dinheiro ou débito, em cima do preço do cartão. ' + ate +
+      ', porque não paga a maquininha. No débito e no Pix o preço é o mesmo. No cartão, até ' + ref + 'x o preço é o mesmo; acima disso fica mais caro. ' +
+      'Já vem com o seu número de sempre (Ajustes → Outros ajustes). O cliente pediu mais? Toque em "O cliente pediu mais desconto?".';
   } },
   extra: { alvo: 'label[for="orc-extra"]', nome: 'Desconto extra',
     texto: 'Se o cliente pedir um pouco mais. Soma com o desconto à vista (5% + 2% = 7%). O app mostra até onde dá para ir sem perder nada. Passou disso, avisa em vermelho: "Com esse desconto você cobra R$ X abaixo do seu preço."' },

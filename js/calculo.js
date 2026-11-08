@@ -656,7 +656,8 @@ function calcularComFoto(e, foto) {
   var res = calcularOrcamento(lido.entrada, ctx.parametros, ctx.cartoes, bandeira, ctx.precoMinimoHora);
   var preco = calcularPrecoComDesconto(res, ctx.parametros, lido.desconto, lido.extra);
   var ganho = separarGanho(res, preco, ctx.parametros, ctx.minimoOficina, ctx.minimoCasa);
-  return { ctx: ctx, lido: lido, bandeira: bandeira, res: res, preco: preco, ganho: ganho, det: linhasDetalheServico(res, preco, ganho) };
+  return { ctx: ctx, lido: lido, bandeira: bandeira, res: res, preco: preco, ganho: ganho, det: linhasDetalheServico(res, preco, ganho),
+    outras: res.outras.map(function (op) { return precoNaForma(preco, op); }) };
 }
 
 /** O que vai para a planilha como "resultado" (centavos inteiros, os valores EXIBIDOS). */
@@ -702,10 +703,43 @@ function formasDisponiveis(foto, cartao) {
  */
 function valorSugeridoFechamento(entrada, foto, resultado, forma, parcelas, cartao) {
   if (forma === 'pix') return resultado.oferecidoC;
+  // Regra do preço por forma (DESENHO 15): com âncora, débito = o à vista oferecido; crédito até a parcela de
+  // referência = o preço cheio (total da âncora). Acima da referência, ou sem âncora: como antes (sobre a base).
+  if (resultado.ancora) {
+    if (forma === 'debito') return resultado.oferecidoC;
+    if (forma === 'credito' && parcelas <= resultado.ancora.parcelas) return resultado.ancora.totalC;
+  }
   var c = calcularComFoto(Object.assign({}, entrada, { bandeira: cartao }), foto);
   var campo = campoDaFormaFechamento(forma, parcelas);
   var ops = c.res.opcoes.filter(function (o) { return (campo === 'debito' ? o.forma === 'Débito' : o.forma === 'Crédito' && o.parcelas === parcelas); });
   return ops.length ? ops[0].totalCentavos : null;
+}
+
+/**
+ * Preço que o cliente paga numa forma (DESENHO 15). Com âncora (taxa na 1ª parcela em destaque):
+ * - Débito: o à vista oferecido (o mesmo do Pix);
+ * - Crédito 1x até a parcela de referência (a âncora): o preço cheio (total da âncora); parcela = arredondar(total exato ÷ n);
+ * - Crédito acima da referência: como antes (base ÷ (1 − taxa da parcela)).
+ * Sem âncora: como antes. Só muda o PREÇO (a sobra de cada forma é a do preço, menos a taxa daquela forma).
+ * @return {forma, parcelas, taxa, totalCentavos, parcelaCentavos, regra: 'avista'|'cheio'|'base'}
+ */
+function precoNaForma(preco, op) {
+  var p = { forma: op.forma, parcelas: op.parcelas, taxa: op.taxa, totalCentavos: op.totalCentavos, parcelaCentavos: op.parcelaCentavos, regra: 'base' };
+  if (!preco || !preco.temAncora) return p;
+  var anc = preco.ancora;
+  if (op.forma === 'Débito') { p.totalCentavos = preco.precoCentavos; p.parcelaCentavos = preco.precoCentavos; p.regra = 'avista'; }
+  else if (op.forma === 'Crédito' && op.parcelas <= anc.parcelas) { p.totalCentavos = anc.totalCentavos; p.parcelaCentavos = centavos(anc.totalExato / op.parcelas); p.regra = 'cheio'; }
+  return p;
+}
+
+/**
+ * Fechamento em débito com valor abaixo do preço que cobre a taxa do débito (base ÷ (1 − taxa)), por causa de um
+ * desconto grande: quanto fica abaixo (centavos; 0 se não fica). Só para o aviso; a conta do fechamento não muda.
+ */
+function abaixoDoPrecoNoDebito(resultado, f) {
+  if (!f || f.forma !== 'debito' || !(f.taxaPct > 0)) return 0;
+  var precoDebito = centavos(resultado.aVistaBaseC / 100 / (1 - f.taxaPct / 100));
+  return Math.max(0, precoDebito - f.valorCombinadoC);
 }
 
 /**
@@ -1005,7 +1039,9 @@ function textoWhatsApp(res, parametros, descricao, preco, pecas) {
 
   var aVistaCentavos = preco ? preco.precoCentavos : res.aVista.totalCentavos;
   var comDesconto = preco && preco.temAncora && preco.descontoTotal > 0;
-  linhas.push('💵 À vista (Pix/dinheiro): *' + formatarCentavos(aVistaCentavos) + '*' +
+  // Com âncora, o débito paga o mesmo preço do Pix (DESENHO 15).
+  var rotulo = preco && preco.temAncora ? 'À vista (Pix, dinheiro ou débito)' : 'À vista (Pix/dinheiro)';
+  linhas.push('💵 ' + rotulo + ': *' + formatarCentavos(aVistaCentavos) + '*' +
     (comDesconto ? ' — ' + formatarPercentual(preco.descontoTotal) + ' de desconto' : ''));
   return linhas.join('\n');
 }
@@ -1223,7 +1259,7 @@ function casosDeTeste() {
         var zero = textoWhatsApp(c.res, { nomeOficina: '' }, '', calcularPrecoComDesconto(c.res, c.params, 0, 0));
         var proibido = /ainda|lucro|taxa|piso|preju|sobra|casa|salário|oficina não se paga/i;
         return { obtido: [proibido.test(com + acima + zero), com.split('\n').pop(), zero.split('\n').pop(), /de desconto/.test(zero)],
-                 esperado: [false, '💵 À vista (Pix/dinheiro): *R$ 2.186,14* — 5% de desconto', '💵 À vista (Pix/dinheiro): *R$ 2.301,20*', false] };
+                 esperado: [false, '💵 À vista (Pix, dinheiro ou débito): *R$ 2.186,14* — 5% de desconto', '💵 À vista (Pix, dinheiro ou débito): *R$ 2.301,20*', false] };
       } },
     { id: 'D11', descricao: '10x Visa 11,06% sobre a BASE: 2.127 ÷ 0,8894 = 2.391,4999 → Total 2.391,50 · 10× 239,15 (também no WhatsApp)',
       executar: function () {
@@ -1292,7 +1328,7 @@ function casosDeTeste() {
                  esperado: [7.5, 0, 5, 5, 5, 5] };
       } },
     // ---- Fase 10: fechamento (cenário F, DESENHO 11.6) ----
-    { id: 'FC1', descricao: 'Fechamentos do cenário F: Pix 1.747,27 · Débito 1.723,61 · 5x 1.839,23 · 10x 1.911,40 · Pix alterado 1.700 → taxa, imposto, oficina, casa, sobra e total que é seu',
+    { id: 'FC1', descricao: 'Fechamentos do cenário F: Pix 1.747,27 · Débito 1.747,27 (= Pix, regra da seção 15; antes 1.723,61) · 5x 1.839,23 · 10x 1.911,40 · Pix alterado 1.700 → taxa, imposto, oficina, casa, sobra e total que é seu',
       executar: function () {
         var f = cenarioFechamento();
         var linhas = [['pix', null], ['debito', 1], ['credito', 5], ['credito', 10]].map(function (x) {
@@ -1304,7 +1340,7 @@ function casosDeTeste() {
         linhas.push([p.valorCombinadoC, p.taxaC, p.impostoC, p.pecasPagarC, p.pagaOficinaC, p.vaiParaCasaC, p.sobraC, p.totalSeuC]);
         return { obtido: linhas, esperado: [
           [174727, 0, 10484, 40000, 24615, 18462, 81166, 99628],
-          [172361, 2361, 10342, 40000, 24615, 18462, 76581, 95043],
+          [174727, 2394, 10484, 40000, 24615, 18461, 78773, 97234], // débito = preço do Pix (seção 15); a casa absorve o centavo
           [183923, 13923, 11035, 40000, 24615, 18462, 75888, 94350],
           [191140, 21140, 11468, 40000, 24615, 18462, 75455, 93917],
           [170000, 0, 10200, 40000, 24615, 18462, 76723, 95185]] };
@@ -1399,6 +1435,43 @@ function casosDeTeste() {
                  esperado: ['(11) 98888-7777', '(11) 3333-4444', '(11) 98888-7777', '(11) 3333-4444', '(11) 98888-7777',
                             '(11) 9888-8', '(11) 98888-7777', '(1', '(11', '(11) 9', '(11) 9888-8', '', '(55) 98888-7777',
                             true, true, true, true, ''] };
+      } },
+    // ---- Seção 15: preço por forma de pagamento (base 1.500; Visa débito 1,37%, 5x 7,57%; desconto 5%) ----
+    { id: 'RP1', descricao: 'Âncora 5x 1.622,85 (1.500 ÷ 0,9243) · Pix 1.541,71 · Débito = Pix 1.541,71 · 1x/3x/4x/5x = 1.622,85 (3× 540,95; 5× 324,57) · 6x 1.635,41 (acima da âncora, sobre a base)',
+      executar: function () {
+        var c = cenarioRegraPreco().calc;
+        var outra = function (forma, n) { return c.outras.filter(function (o) { return o.forma === forma && o.parcelas === n; })[0]; };
+        var d = outra('Débito', 1), p1 = outra('Crédito', 1), p3 = outra('Crédito', 3), p4 = outra('Crédito', 4), p6 = outra('Crédito', 6);
+        var anc = c.preco.ancora;
+        return { obtido: [anc.totalCentavos, anc.parcelaCentavos, c.preco.precoCentavos, [d.totalCentavos, d.regra], [p1.totalCentavos, p1.parcelaCentavos], [p3.totalCentavos, p3.parcelaCentavos], [p4.totalCentavos, p4.parcelaCentavos], [p6.totalCentavos, p6.parcelaCentavos, p6.regra]],
+                 esperado: [162285, 32457, 154171, [154171, 'avista'], [162285, 162285], [162285, 54095], [162285, 40571], [163541, 27257, 'base']] };
+      } },
+    { id: 'RP2', descricao: 'Fechamento: valor sugerido por forma (Pix e Débito 1.541,71; 1x/3x/5x 1.622,85; 6x 1.635,41); sobra Pix 722,15; Débito 722,15 − 21,12 = 701,03 (mesmo preço, mesmo imposto)',
+      executar: function () {
+        var p = cenarioRegraPreco();
+        var sug = function (f, n) { return valorSugeridoFechamento(p.e, p.foto, p.resultado, f, n, NAO_SEI); };
+        var pix = calcularFechamento(p.foto, p.resultado, 'pix', null, NAO_SEI, sug('pix', null));
+        var deb = calcularFechamento(p.foto, p.resultado, 'debito', 1, NAO_SEI, sug('debito', 1));
+        return { obtido: [sug('pix', null), sug('debito', 1), sug('credito', 1), sug('credito', 3), sug('credito', 5), sug('credito', 6), pix.sobraC, [deb.taxaC, deb.impostoC === pix.impostoC, deb.sobraC]],
+                 esperado: [154171, 154171, 162285, 162285, 162285, 163541, 72215, [2112, true, 70103]] };
+      } },
+    { id: 'RP3', descricao: 'Nenhuma forma de cartão até a referência abaixo do Pix; débito = Pix (desconto 0, 5, 10, 20%); sem âncora → como antes (débito sobre a base 1.520,84)',
+      executar: function () {
+        var ok = [0, 5, 10, 20].every(function (d) {
+          var c = cenarioRegraPreco(String(d)).calc;
+          return c.outras.every(function (o) { return o.forma === 'Débito' ? o.totalCentavos === c.preco.precoCentavos : (o.parcelas > c.preco.ancora.parcelas || o.totalCentavos >= c.preco.precoCentavos); });
+        });
+        var sem = cenarioRegraPreco('5', '');
+        var dSem = sem.calc.outras.filter(function (o) { return o.forma === 'Débito'; })[0];
+        return { obtido: [ok, sem.calc.preco.temAncora, [dSem.totalCentavos, dSem.regra], valorSugeridoFechamento(sem.e, sem.foto, sem.resultado, 'debito', 1, NAO_SEI)], esperado: [true, false, [152084, 'base'], 152084] };
+      } },
+    { id: 'RP4', descricao: 'Débito com desconto grande (10%): Pix 1.460,56 fica abaixo de 1.500 ÷ 0,9863 = 1.520,84 → aviso de R$ 60,28 abaixo; com 5% (1.541,71) → sem aviso; Pix nunca',
+      executar: function () {
+        var p10 = cenarioRegraPreco('10'), p5 = cenarioRegraPreco('5');
+        var deb = function (p) { return calcularFechamento(p.foto, p.resultado, 'debito', 1, NAO_SEI, valorSugeridoFechamento(p.e, p.foto, p.resultado, 'debito', 1, NAO_SEI)); };
+        var f10 = deb(p10), f5 = deb(p5);
+        return { obtido: [f10.valorCombinadoC, abaixoDoPrecoNoDebito(p10.resultado, f10), abaixoDoPrecoNoDebito(p5.resultado, f5), abaixoDoPrecoNoDebito(p5.resultado, calcularFechamento(p5.foto, p5.resultado, 'pix', null, NAO_SEI, 100000))],
+                 esperado: [146056, 6028, 0, 0] };
       } },
     // ---- Fase 11: orçamento do print (dados reais) ----
     { id: 'PR1', descricao: 'Orçamento do print (aberto): 5x 6.648,27 (5× 1.329,65) · à vista 5% 6.315,86 · ainda pode 2,57% / 170,86 · imposto 631,59 · oficina 242,31 · casa 423,07 · sobra 1.518,89 · total seu 1.941,96 · pisos 4.158,12 / 4.628,21 · no cartão 5x: sobra 1.314,79, fica 1.737,86',
@@ -1502,6 +1575,22 @@ function cenarioPrint() {
   return { foto: foto, e: e, calc: calc, resultado: resultadoParaGravar(calc) };
 }
 
+/**
+ * Cenário da seção 15 (exemplo do usuário): base 1.500 = mão de obra fechada 1.000 (8 h) + peças cobradas 500 (pagas 388,79);
+ * oficina 4.000 e casa 3.000 em 130 h; imposto 0; Visa padrão; desconto 5% → sobra no Pix 722,15.
+ * desconto: texto do campo (padrão = o dos ajustes, 5); parcelasDestaque: '' = sem âncora.
+ */
+function cenarioRegraPreco(desconto, parcelasDestaque) {
+  var dados = { gastos: [{ tipo: 'Oficina', valor: 4000 }, { tipo: 'Casa', valor: 3000 }], cartoes: [cartaoDeTeste('Visa/Master', VISA_TESTE)],
+    parametros: { diasPorSemana: 5, horasPorDia: 8, horasCobradasPorDia: 6, valorHoraCobrado: 150, impostoPercentual: 0,
+      acrescimoPecasPadrao: 25, descontoAVistaPadrao: 5, parcelasDestaque: parcelasDestaque === undefined ? '5,10' : parcelasDestaque, nomeOficina: '' } };
+  var foto = fotoDeHoje(dados, '2026-11-08 10:00');
+  var e = { descricao: 'Serviço', modo: 'fechado', horasTexto: '', valorTexto: '1000', horasFechadoTexto: '8', pecasModo: 'valor', pecas: [],
+    pecasPagarTexto: '388,79', pecasCobrarTexto: '500', acrescimoTexto: null, descontoTexto: desconto === undefined ? null : desconto, extraTexto: '', bandeira: NAO_SEI };
+  var calc = calcularComFoto(e, foto);
+  return { foto: foto, e: e, calc: calc, resultado: resultadoParaGravar(calc) };
+}
+
 /** Mês do exemplo da fase 11: 3 fechados de 10 h; faturamento 9.126,93 · peças 3.780 · maquininha 503,27 · imposto 912,70. */
 function listaDoMesQ() {
   var v = [[304231, 126000, 16776, 30424], [304231, 126000, 16776, 30423], [304231, 126000, 16775, 30423]];
@@ -1559,7 +1648,8 @@ function cenarioFechamento(semCasa, horas) {
 /** Lista do mês da 11.6: os 5 fechamentos do cenário F (em novembro) + 2 "Não fechou" + 1 Aberto. */
 function listaDoMesF() {
   var f = cenarioFechamento();
-  var fechs = [['pix', null, null], ['debito', 1, null], ['credito', 5, null], ['credito', 10, null], ['pix', null, 170000]].map(function (x) {
+  // (débito com o valor da 11.6, 1.723,61: o exemplo do mês é de antes da regra da seção 15 e continua valendo como valor combinado)
+  var fechs = [['pix', null, null], ['debito', 1, 172361], ['credito', 5, null], ['credito', 10, null], ['pix', null, 170000]].map(function (x) {
     var v = x[2] || valorSugeridoFechamento(f.e, f.foto, f.resultado, x[0], x[1], NAO_SEI);
     return calcularFechamento(f.foto, f.resultado, x[0], x[1], NAO_SEI, v);
   });

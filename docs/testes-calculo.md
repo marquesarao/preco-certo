@@ -14,6 +14,15 @@
 
 ## Resultados (08/11/2026)
 
+**Preço por forma de pagamento (seção 15, `sw.js` v10):** 68 casos de cálculo (64 + RP1–RP4); FC1 (débito = Pix: 1.747,27 · taxa 23,94 · imposto 104,84 · casa 184,61 · sobra 787,73 · total 972,34) e D9 (WhatsApp "À vista (Pix, dinheiro ou débito)") atualizados pela regra; M1/M2 iguais.
+
+| # | Caso | Esperado | Resultado |
+|---|---|---|---|
+| RP1 | Preços (base 1.500; Visa; desconto 5%) | âncora 5x 1.622,85 (1.500 ÷ 0,9243 = 1.622,8497) · Pix 1.541,71 · débito 1.541,71 · 1x 1.622,85 · 3x 1.622,85 (3× 540,95) · 4x (4× 405,71) · 5x (5× 324,57) · 6x 1.635,41 (6× 272,57) | ✅ |
+| RP2 | Fechamento | sugerido: Pix e débito 1.541,71 · 1x/3x/5x 1.622,85 · 6x 1.635,41 · sobra Pix 722,15 · débito: taxa 21,12, mesmo imposto, sobra 701,03 | ✅ |
+| RP3 | Nunca abaixo do Pix | cartão até 5x ≥ Pix e débito = Pix com desconto 0/5/10/20%; sem âncora: débito 1.520,84 (sobre a base, como antes) | ✅ |
+| RP4 | Desconto grande no débito | 10%: débito 1.460,56 < 1.520,84 → faixa "R$ 60,28 abaixo do seu preço"; 5%: sem faixa; Pix: nunca | ✅ |
+
 **Desempenho (seção 14, `sw.js` v9; o backend mudou: o D10 confere o hash novo):** casos de cálculo iguais (64); backend novo `check-desempenho.js` 31/31 (esquema, cache hit/miss/invalidação/tamanho/falha, cache = leitura, lock só nas gravações, leituras sem lock nunca veem Gastos/Parâmetros/Taxas vazias, exclusão no meio do `obterOrcamento`, listar com 3 leituras e sem ID repetido, foto do mês dentro do listar e do salvarDados, conflito) — conferido também que ele **falha** com 3 erros plantados no código; tela nova `teste-desempenho.js` 19/19 (Resultados na hora, fechar com 1 chamada, "Fechando…"/"Salvando…" até a confirmação, falha volta o estado, conflito, "Recarregar da planilha"). Testes antigos mudaram só onde o desenho mudou (o `salvarDados` atualiza o mês corrente; edição à mão precisa do `onEdit`; `onEdit` é função pública nova). Bateria completa no relatório.
 
 **Ajustes pequenos (`sw.js` v8):** caso **TEL1** (máscara do telefone: celular, fixo, colar com +55/55 e símbolos, só números, no máximo 11, incompleto, busca com e sem máscara) ✅; faixa vermelha do desconto com o texto novo ("Com esse desconto você cobra R$ X abaixo do seu preço.", mesmo X); espaçamento de 16 px entre Cliente/Telefone e o próximo rótulo. Resultados completos no relatório da bateria.
