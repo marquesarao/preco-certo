@@ -214,7 +214,7 @@ Colunas: `Cartão` | `Débito (%)` | `1x (%)` | `2x (%)` | … | `12x (%)`. As t
 - **À vista oferecido** = `âncora.totalExato × (1 − (desconto + extra)/100)`, arredondado em centavos. Desconto e extra **somam**, e o total fica limitado a 99.
 - **Máximo sem perder lucro** = `(1 − base ÷ âncora) × 100` (é a taxa da âncora).
 - **Ainda pode dar** = máximo − total (mín. 0), em % e em R$ (= oferecido − base).
-- **Acima do máximo:** faixa vermelha "Com esse desconto você abre mão de R$ X da sua sobra extra.", com X = base − oferecido.
+- **Acima do máximo:** faixa vermelha "Com esse desconto você cobra R$ X abaixo do seu preço.", com X = base − oferecido. (Até a fase 11 dizia "abre mão de R$ X da sua sobra extra", mas a sobra cai menos que X, porque o imposto também diminui: ex. 447 − 411,07 = 35,93 abaixo do preço, e a sobra cai 32,34.)
 - **Piso** = `(gasto das horas + peças pagas) ÷ (1 − imposto%)` (`preco.piso`). Na tela, ele virou o "piso da casa" (veja "Neste serviço" abaixo).
 - As **outras** parcelas em destaque e "Ver outras formas" continuam calculadas sobre a **base** (regra B). Nenhuma fica abaixo do à vista oferecido (D12).
 - Com desconto 0, o à vista é igual à âncora.
@@ -386,7 +386,7 @@ No notebook, os campos ficam à esquerda e os resultados à direita.
 - **Resultados:**
   - **card do cartão (âncora)**, com detalhe laranja à esquerda: "Cartão em 5x", "5× de R$ 460,24" e "Total R$ 2.301,20", mais os chips "Não sei · Visa/Master · Elo…" (só com 2 ou mais cartões) e a ajuda "Não sabe o cartão do cliente? Deixe em 'Não sei': o preço cobre qualquer bandeira.";
   - **card à vista:** "R$ 2.186,14 · 5% de desconto", com os campos "Desconto à vista" (%) e "Desconto extra que vou dar (opcional)" (%), ambos de 0 a 99 e com erro na hora. Sem âncora, os campos somem e aparece "Cadastre a taxa do cartão em Ajustes para oferecer desconto à vista.";
-  - **só para o mecânico:** faixa verde "Se o cliente pedir mais: ainda pode dar até 2,57% (R$ 59,14) sem perder nada — é só a taxa da maquininha que você não vai pagar." ou, acima do máximo, faixa vermelha "Com esse desconto você abre mão de R$ 55,92 da sua sobra extra.";
+  - **só para o mecânico:** faixa verde "Se o cliente pedir mais: ainda pode dar até 2,57% (R$ 59,14) sem perder nada — é só a taxa da maquininha que você não vai pagar." ou, acima do máximo, faixa vermelha "Com esse desconto você cobra R$ 55,92 abaixo do seu preço.";
   - **demais parcelas em destaque** (sobre a base), em blocos leves, e "Ver outras formas de pagamento", sem repetir as parcelas em destaque. Quando **só a âncora** está em destaque (ex.: parcelas "5"), não há card vazio: aparece **só o link** "Ver outras formas de pagamento", com o espaçamento normal entre os blocos; aberto, a lista aparece num card normal. Sem outras formas, nem o link aparece;
   - **card "Neste serviço"** (sobre o à vista oferecido), com "?" no título:
     - valor grande "Sobra extra: R$ 869,23": verde, **âmbar** ("Paga a oficina, mas não cobre toda a sua casa.") ou vermelho ("Com esse preço a oficina não se paga."), com o fundo do card no mesmo tom; negativo aparece como "− R$ 130,77";
@@ -607,7 +607,7 @@ Cada fatia termina com uma parada para revisão. O commit local só é feito dep
 ### 11.2 Salvar orçamentos (tela Orçamento)
 - **Card "Serviço"** ganha, acima de "Qual serviço / veículo?", dois campos **opcionais**:
   - **"Cliente"** (até 60 letras);
-  - **"Telefone"** (até 20 caracteres: números, espaço, `( ) + - .`; `inputmode="tel"`).
+  - **"Telefone"** (até 20 caracteres: números, espaço, `( ) + - .`; `inputmode="tel"`). Desde os ajustes da seção 13: máscara brasileira enquanto digita.
   - Nenhum dos dois vai para o WhatsApp.
 - **Botões**, abaixo dos resultados, nesta ordem:
   - "Copiar para WhatsApp" (verde);
@@ -825,7 +825,7 @@ celular (390 px)                                   notebook (≥ 900 px)
 │ Salvo · [Aberto] · João   Ver em Resultados │
 │ Valores de 03/11/2026 · Recalcular com os valores de hoje │
 │ Cliente (opcional)    [João Silva         ] │
-│ Telefone (opcional)   [(11) 98888-7777    ] │
+│ Telefone (opcional)   [(DDD) número       ] │
 │ Qual serviço / veículo? [Pastilhas Gol 2015] │
 │ …                                    │
 └──────────────────────────────────────┘
@@ -1095,7 +1095,7 @@ Se alguma conta divergir do esperado acima: **parar e reportar** (não ajustar o
   - card do cartão (preço cheio) como hoje; chips de cartão só com 2+ cartões;
   - card à vista com o campo "Desconto à vista (%)";
   - link **"O cliente pediu mais desconto?"** → aparecem o campo "Desconto extra" e a faixa "ainda pode dar"; com extra > 0, já abre aberto;
-  - a faixa vermelha **"abre mão da sua sobra extra"** continua visível sem o link (é aviso; aparece também quando o próprio desconto à vista passa do máximo);
+  - a faixa vermelha **"cobra R$ X abaixo do seu preço"** (texto da seção 13; antes "abre mão da sua sobra extra") continua visível sem o link (é aviso; aparece também quando o próprio desconto à vista passa do máximo);
   - "Ver outras formas de pagamento" como hoje.
 - **Fica para você neste serviço:**
   - número GRANDE = total que é seu (casa + sobra) no à vista com o desconto atual; sem gastos de casa, o número grande é a sobra;
@@ -1206,3 +1206,23 @@ Usa a ação que já existe, `usarGastosDeHojeNoMes(mes)`: ela grava ou troca a 
 - "Quanto falta trabalhar": N = ⌈falta × horas ÷ livre⌉, sem arredondar o R$/h no meio (exemplo: 36,01 → 37 h; média 10 h → 4 serviços).
 - Tela de fechamento: links "O cliente não fechou" (Aberto) e "Voltar para Aberto" (Não fechou); depois de confirmar, sai da tela.
 - "Compartilhar": `navigator.share` **e** `(max-width: 899px)`; acompanha a mudança de largura.
+
+## 13. Ajustes pequenos: texto do desconto, máscara do telefone e espaçamento (só frontend; `sw.js` v8)
+
+`apps-script/` sem mudança (D10). Nenhuma conta muda.
+
+### 13.1 Texto da faixa vermelha do desconto
+- "Com esse desconto você cobra R$ X abaixo do seu preço." (o mesmo X = base − à vista oferecido). O texto antigo ("abre mão de R$ X da sua sobra extra") exagerava: a sobra cai menos que X, porque o imposto também diminui (ex.: 447 − 411,07 = 35,93; a sobra cai 102,69 − 70,35 = 32,34).
+- O "?" do desconto extra e o GUIA usam a mesma frase.
+
+### 13.2 Máscara do telefone
+- Funções puras em `js/calculo.js`: `digitosDoTelefone` (só números; tira o +55/55 do começo quando sobram 12 ou 13; no máximo 11) e `formatarTelefone` ("(11) 98888-7777" com 11 números, "(11) 3333-4444" com 10, parcial enquanto digita: "(1", "(11", "(11) 9888", "(11) 9888-8").
+- Na tela (`mascararTelefone`): só números (letras e símbolos digitados são ignorados); a 12ª tecla é ignorada; colar aceita qualquer formato; o cursor fica depois do mesmo número em que estava; apagar um símbolo da máscara ("-", ")", espaço) apaga o número ao lado (senão nada mudaria).
+- `type="tel"`, `inputmode="tel"`, `autocomplete="tel"`, placeholder "(DDD) número".
+- Grava na planilha já formatado. Telefone antigo sem máscara aparece formatado ao abrir e vai formatado no próximo salvamento. Número incompleto (menos de 10) é aceito como está, sem erro.
+- Busca em Resultados: compara só os números (já era assim: "98888" e "(11) 9888" acham "(11) 98888-7777" e "11988887777").
+- O backend não muda: o formato da máscara já passa na validação do `Codigo.gs` (até 20 caracteres, números, espaço, `( ) + - .`).
+
+### 13.3 Espaçamento
+- Cliente | Telefone usavam a grade dos campos de desconto, que zera a margem de baixo: o rótulo "Qual serviço / veículo?" ficava colado. Agora usam `.campos-lado` (2 colunas, 12 px entre elas, e os 16 px normais até o próximo rótulo); abaixo de 380 px, um embaixo do outro, com os mesmos 16 px.
+- Conferidos os cards Peças, Meus gastos (gastos, Sua rotina, valor da hora) e Ajustes (cartões, Outros ajustes, Este aparelho): já estavam com 16 px; nada a corrigir.

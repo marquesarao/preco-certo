@@ -86,7 +86,7 @@ O à vista é o preço do cartão **com um desconto**. Assim o cliente vê que p
 - **Desconto à vista:** já vem com o seu número de sempre (de fábrica, 5%). Mude só se quiser, naquele orçamento.
 - **O cliente pediu mais desconto?** Toque nesse link: aparece o campo **"Desconto extra que vou dar"**. Ele **soma** com o desconto à vista (5% + 2% = 7%).
 - Junto aparece, **só para você**: **"Se o cliente pedir mais: ainda pode dar até X% (R$ Y) sem perder nada — é só a taxa da maquininha que você não vai pagar."** Até esse ponto, o desconto sai da taxa que você não vai pagar, e não do seu bolso.
-- Passou desse ponto? Aparece em **vermelho** (sempre, mesmo sem tocar no link): **"Com esse desconto você abre mão de R$ X da sua sobra extra."**. Você ainda pode dar, mas sabendo quanto perde.
+- Passou desse ponto? Aparece em **vermelho** (sempre, mesmo sem tocar no link): **"Com esse desconto você cobra R$ X abaixo do seu preço."** (o seu preço é o à vista sem desconto; a sua sobra cai um pouco menos que isso, porque o imposto também diminui). Você ainda pode dar, mas sabendo quanto fica abaixo.
 - Em **Ver detalhes**: **"Ganho por ter desconto menor que a maquininha"** (ou **"Perda por desconto maior que a maquininha"**) e os limites: **"Abaixo de R$ X a oficina não se paga."** e **"Abaixo de R$ Y não sobra nada para a sua casa."**
 - Quer mudar o seu número de sempre? **Engrenagem (⚙) → Ajustes → Outros ajustes → "Desconto à vista padrão"**. Vale para todos os aparelhos ligados à sua planilha.
 
@@ -111,6 +111,7 @@ Para começar outro, toque em **"+ Novo orçamento"**, no topo do card **Serviç
 
 **Guardar**
 - No card **Serviço** você pode pôr o **Cliente** e o **Telefone** (os dois são opcionais e **nunca** vão para o WhatsApp).
+  - O telefone se arruma sozinho enquanto você digita: **(11) 98888-7777** (celular) ou **(11) 3333-4444** (fixo). Pode colar em qualquer formato (com +55, traços, parênteses). Só aceita números; número incompleto fica como está.
 - Toque em **Salvar** (ou só em **Copiar para WhatsApp**, que já salva). Aparece **"Orçamento salvo ✓"** e, no topo do card, **"Salvo · Aberto · nome do cliente"**.
 - Mexeu no orçamento depois? Salve de novo: ele **atualiza o mesmo** orçamento, não cria outro. **"+ Novo orçamento"** começa um do zero.
 - O orçamento guarda os **valores daquele dia** (seus gastos, taxas e ajustes). Se você mudar os gastos depois, ele não muda sozinho: aparece **"Valores de 03/11/2026"** e o link **"Recalcular com os valores de hoje"**. Recalcular só muda na tela; para guardar, toque em **Salvar**.

@@ -746,7 +746,7 @@ function renderOrcamento() {
   $('campo-extra').hidden = !maisAberto;
   $('btn-mais-desconto').hidden = !preco.temAncora || ui.maisDesconto;
 
-  // Só para o mecânico: quanto ainda pode dar (atrás do link) / quanto abre mão da sobra extra (aviso: sempre)
+  // Só para o mecânico: quanto ainda pode dar (atrás do link) / quanto cobra abaixo do seu preço (base − à vista; aviso: sempre)
   var faixaAinda = $('faixa-ainda-pode');
   var faixaAbre = $('faixa-abre-mao');
   faixaAinda.hidden = !maisAberto || preco.acimaDoMaximo;
@@ -758,7 +758,7 @@ function renderOrcamento() {
       : 'Esse é o máximo de desconto sem perder nada — é toda a taxa da maquininha que você não vai pagar.';
   }
   if (preco.temAncora && preco.acimaDoMaximo) {
-    faixaAbre.textContent = 'Com esse desconto você abre mão de ' + formatarCentavos(preco.abreMaoCentavos) + ' da sua sobra extra.';
+    faixaAbre.textContent = 'Com esse desconto você cobra ' + formatarCentavos(preco.abreMaoCentavos) + ' abaixo do seu preço.';
   }
 
   $('card-cartao').hidden = res.semCartoes;
@@ -922,6 +922,36 @@ function htmlDetalhes(linhas) {
     return '<dt' + classe + '>' + esc(l[0]) + (l[2] ? '<span class="nota-casa">' + esc(l[2]) + '</span>' : '') + '</dt>' +
       '<dd' + classe + '>' + esc(l[1]) + '</dd>';
   }).join('');
+}
+
+/**
+ * Máscara do telefone enquanto digita: só números (no máximo 11), "(11) 98888-7777" / "(11) 3333-4444".
+ * O cursor fica depois do mesmo número em que estava (não pula para o fim). Apagar um símbolo da máscara
+ * ("-", ")", espaço) apaga o número ao lado. Colar aceita qualquer formato (+55, símbolos).
+ */
+function mascararTelefone(el, tipo) {
+  var bruto = el.value;
+  var pos = typeof el.selectionStart === 'number' ? el.selectionStart : bruto.length;
+  var antes = soNumeros(orc.telefone);
+  var digitos = soNumeros(bruto);
+  var k = soNumeros(bruto.slice(0, pos)).length; // quantos números ficam antes do cursor
+  var colou = tipo === 'insertFromPaste' || tipo === 'insertReplacementText';
+  if (/^delete/.test(tipo) && digitos === antes && digitos.length) {
+    if (tipo === 'deleteContentBackward' && k > 0) { digitos = digitos.slice(0, k - 1) + digitos.slice(k); k--; }
+    else if (tipo === 'deleteContentForward') digitos = digitos.slice(0, k) + digitos.slice(k + 1);
+  }
+  if (!colou && digitos.length > MAX_DIGITOS_TELEFONE) { digitos = antes; k = Math.min(k - 1, antes.length); } // passou de 11: ignora a tecla
+  var limpos = colou ? digitosDoTelefone(digitos) : digitos.slice(0, MAX_DIGITOS_TELEFONE);
+  var novo = formatarTelefone(limpos);
+  if (colou || limpos.length !== digitos.length) k = limpos.length;
+  k = Math.max(0, Math.min(k, limpos.length));
+  el.value = novo;
+  if (document.activeElement !== el) return;
+  var c = 0;
+  if (k > 0) { var vistos = 0; for (var i = 0; i < novo.length; i++) { if (/\d/.test(novo[i]) && ++vistos === k) { c = i + 1; break; } } }
+  else c = novo.indexOf('(') === 0 ? 1 : 0;
+  if (tipo === 'deleteContentForward') while (c < novo.length && !/\d/.test(novo[c])) c++; // Delete: o cursor fica antes do próximo número
+  try { el.setSelectionRange(c, c); } catch (err) { /* ignora */ }
 }
 
 function onOrcamentoInput(el) {
@@ -1202,7 +1232,7 @@ function rascunhoDoSalvo(o, comoCopia) {
   CAMPOS_ENTRADA.forEach(function (k) { if (e[k] !== undefined) r[k] = e[k]; });
   r.pecas = (e.pecas || []).map(function (p) { return { descricao: p.descricao || '', qtdTexto: p.qtdTexto || '', valorTexto: p.valorTexto || '' }; });
   r.cliente = o.cliente || '';
-  r.telefone = o.telefone || '';
+  r.telefone = formatarTelefone(o.telefone || ''); // telefone antigo sem máscara: aparece formatado (e vai formatado no próximo salvamento)
   if (!comoCopia) {
     r.vinculo = { id: o.id, criadoEm: o.criadoEm, atualizadoEm: o.atualizadoEm, situacao: o.situacao, motivo: o.motivo || '',
       fechamento: o.dados.fechamento || null, foto: o.dados.foto, recalcular: false, assinatura: '' };
@@ -2554,7 +2584,7 @@ var DICAS = {
       ', porque não paga a maquininha. Já vem com o seu número de sempre (Ajustes → Outros ajustes). O cliente pediu mais? Toque em "O cliente pediu mais desconto?".';
   } },
   extra: { alvo: 'label[for="orc-extra"]', nome: 'Desconto extra',
-    texto: 'Se o cliente pedir um pouco mais. Soma com o desconto à vista (5% + 2% = 7%). O app mostra até onde dá para ir sem perder nada e avisa em vermelho se passar disso.' },
+    texto: 'Se o cliente pedir um pouco mais. Soma com o desconto à vista (5% + 2% = 7%). O app mostra até onde dá para ir sem perder nada. Passou disso, avisa em vermelho: "Com esse desconto você cobra R$ X abaixo do seu preço."' },
   cartoes: { alvo: '#titulo-cartoes', nome: 'Seus cartões',
     texto: 'As taxas que a maquininha cobra em cada parcela (Débito, 1x … 12x). Copie da calculadora de taxas do app da maquininha, um cartão de cada vez. Campo vazio = essa parcela não aparece no orçamento. Vazio é diferente de 0: 0 quer dizer "sem taxa".' },
   descontoPadrao: { alvo: 'label[for="p-descontoAVistaPadrao"]', nome: 'Desconto à vista padrão',
@@ -2673,7 +2703,7 @@ function ligarEventos() {
     else if (el.dataset.taxaCampo) onTaxaInput(el);
     else if (el.dataset.cartaoNome) onNomeCartaoInput(el);
     else if (el.dataset.pecaCampo) onPecaInput(el);
-    else if (el.dataset.orc) onOrcamentoInput(el);
+    else if (el.dataset.orc) { if (el.id === 'orc-telefone') mascararTelefone(el, e.inputType || ''); onOrcamentoInput(el); }
   });
 
   // Ao sair do campo: deixa o número bonito (só se estiver válido).

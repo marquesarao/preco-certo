@@ -357,6 +357,10 @@ input.pin { letter-spacing: 0.4em; }
 }
 .balao-dica[hidden] { display: none; }
 .campos-desconto + .balao-dica { margin: 12px 0 0; }
+/* Cliente | Telefone: lado a lado, com o espaço normal entre campos (16 px até o próximo rótulo) */
+.campos-lado { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 12px; margin-bottom: 16px; }
+.campos-lado .campo { margin-bottom: 0; }
+@media (max-width: 380px) { .campos-lado { grid-template-columns: 1fr; } }
 
 /* Só a âncora em destaque (ex.: parcelas "5"): o card das parcelas vira só o link "Ver outras formas…".
    Aberto, volta a ser um card normal com a lista. */

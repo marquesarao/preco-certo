@@ -535,6 +535,32 @@ function validarTelefone(t) {
 function soNumeros(t) { return String(t === null || t === undefined ? '' : t).replace(/\D/g, ''); }
 
 /**
+ * Telefone: só os números, sem o +55/55 do começo (quando sobram 12 ou 13 números) e no máximo 11 (DDD + 9 números).
+ * "+55 11 98888-7777" → "11988887777".
+ */
+function digitosDoTelefone(t) {
+  var d = soNumeros(t);
+  if (d.length >= 12 && d.length <= 13 && d.indexOf('55') === 0) d = d.slice(2);
+  return d.slice(0, MAX_DIGITOS_TELEFONE);
+}
+var MAX_DIGITOS_TELEFONE = 11;
+
+/**
+ * Máscara brasileira enquanto digita: "(11" → "(11) 9888" → "(11) 3333-4444" (fixo, 10) → "(11) 98888-7777" (celular, 11).
+ * Número incompleto fica como está (só formatado). Vazio → ''.
+ */
+function formatarTelefone(t) {
+  var d = digitosDoTelefone(t);
+  if (!d) return '';
+  if (d.length <= 2) return '(' + d;
+  var ddd = '(' + d.slice(0, 2) + ') ';
+  var resto = d.slice(2);
+  if (resto.length <= 4) return ddd + resto;
+  var corte = d.length === 11 ? 5 : 4;
+  return ddd + resto.slice(0, corte) + '-' + resto.slice(corte);
+}
+
+/**
  * Foto do que entra na conta, a partir dos dados de hoje (gastos, ajustes e cartões).
  * É o que fica gravado com o orçamento: ele não muda quando os gastos ou as taxas mudarem.
  */
@@ -1362,6 +1388,17 @@ function casosDeTeste() {
         var o = { cliente: 'João da Silva', servico: 'Embreagem – Gol 2015', telefone: '(11) 98888-7777' };
         return { obtido: [combinaBusca(o, 'joao'), combinaBusca(o, 'GOL'), combinaBusca(o, '98888-77'), combinaBusca(o, '11 9888'), combinaBusca(o, 'maria'), combinaBusca(o, ''), validarTelefone('(11) 98888-7777'), validarTelefone('11 9888A') !== ''],
                  esperado: [true, true, true, true, false, true, '', true] };
+      } },
+    { id: 'TEL1', descricao: 'Máscara do telefone: celular (11) 98888-7777; fixo (11) 3333-4444; colar com +55/55 e símbolos; só números; no máximo 11; incompleto formatado como está; busca com e sem máscara',
+      executar: function () {
+        var o = { cliente: '', servico: '', telefone: '(11) 98888-7777' };
+        var antigo = { cliente: '', servico: '', telefone: '11988887777' };
+        return { obtido: [formatarTelefone('11988887777'), formatarTelefone('1133334444'), formatarTelefone('+55 11 98888-7777'), formatarTelefone('55 11 3333-4444'), formatarTelefone('(11)98888-7777'),
+                          formatarTelefone('11a98b888'), formatarTelefone('119888877776'), formatarTelefone('1'), formatarTelefone('11'), formatarTelefone('119'), formatarTelefone('1198888'), formatarTelefone(''), formatarTelefone('55 98888-7777'),
+                          combinaBusca(o, '98888'), combinaBusca(o, '(11) 9888'), combinaBusca(antigo, '(11) 9888'), combinaBusca(antigo, '98888-7777'), validarTelefone(formatarTelefone('+55 11 98888-7777'))],
+                 esperado: ['(11) 98888-7777', '(11) 3333-4444', '(11) 98888-7777', '(11) 3333-4444', '(11) 98888-7777',
+                            '(11) 9888-8', '(11) 98888-7777', '(1', '(11', '(11) 9', '(11) 9888-8', '', '(55) 98888-7777',
+                            true, true, true, true, ''] };
       } },
     // ---- Fase 11: orçamento do print (dados reais) ----
     { id: 'PR1', descricao: 'Orçamento do print (aberto): 5x 6.648,27 (5× 1.329,65) · à vista 5% 6.315,86 · ainda pode 2,57% / 170,86 · imposto 631,59 · oficina 242,31 · casa 423,07 · sobra 1.518,89 · total seu 1.941,96 · pisos 4.158,12 / 4.628,21 · no cartão 5x: sobra 1.314,79, fica 1.737,86',
