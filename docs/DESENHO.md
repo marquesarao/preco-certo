@@ -581,7 +581,8 @@ O clasp e o GitHub Actions foram **removidos** (`.github/workflows/deploy.yml`, 
 10. **Orçamentos salvos + situação + aba "Resultados"** (**muda o backend**; `sw.js` v5), desenho na seção 11 ✅
     - 10a **backend** (`Codigo.gs` + testes do backend/API + proteção "somente aviso") ✅ aprovada
     - 10b **tela + docs** (`sw.js` v5) ✅ (commit 22e71a4)
-11. **Tela mais simples + mês atual automático** (só frontend; `apps-script/` sem mudança; `sw.js` v6), desenho na seção 12 (aprovado): feita, aguardando aprovação do commit
+11. **Tela mais simples + mês atual automático** (só frontend; `apps-script/` sem mudança; `sw.js` v6), desenho na seção 12 ✅ (commit 43c8e82); identidade do PWA ✅ (950b599); ajustes da seção 13 ✅ (895f51f)
+12. **Desempenho** (**muda o backend**; `sw.js` v9), desenho na seção 14 (aprovado): feita, aguardando aprovação do commit
 
 Cada fatia termina com uma parada para revisão. O commit local só é feito depois da aprovação.
 
@@ -1226,3 +1227,149 @@ Usa a ação que já existe, `usarGastosDeHojeNoMes(mes)`: ela grava ou troca a 
 ### 13.3 Espaçamento
 - Cliente | Telefone usavam a grade dos campos de desconto, que zera a margem de baixo: o rótulo "Qual serviço / veículo?" ficava colado. Agora usam `.campos-lado` (2 colunas, 12 px entre elas, e os 16 px normais até o próximo rótulo); abaixo de 380 px, um embaixo do outro, com os mesmos 16 px.
 - Conferidos os cards Peças, Meus gastos (gastos, Sua rotina, valor da hora) e Ajustes (cartões, Outros ajustes, Este aparelho): já estavam com 16 px; nada a corrigir.
+
+## 14. Desempenho: menos tempo de Apps Script por chamada e menos chamadas (desenho **aprovado**: decisões 1 e 2 = sim)
+
+**Muda o backend** (colar o `Codigo.gs` → Nova versão → `testarApi` → `git push`) e a tela (`sw.js` v9). **Nenhuma regra de cálculo muda.**
+
+Medição real (planilha de teste, 5 rodadas, com *cold start*), por chamada:
+- ~1,2–1,4 s de rede e "porta" do Apps Script (piso, não dá para tirar);
+- **~0,9–1,25 s de `configurarPlanilha_`** (`garantirAba_` ×5 ~0,7 s, migração das taxas ~0,2 s, proteções ~0,12 s);
+- ~0,13 s de lock;
+- **~0,3 s por leitura de aba**;
+- tela: 0,02–0,2 s.
+
+Fluxos: abrir ~4,0 s · Resultados ~4,0 s · salvar ~3,4 s · fechar ~6,8 s.
+
+### 14.1 Backend
+**A. Pular `configurarPlanilha_` quando nada mudou**
+- `ESQUEMA_VERSAO_ = 1` no código. Depois de uma configuração completa sem erro, ela é gravada em DocumentProperties (`esquemaV`).
+- Em cada pedido, uma leitura só de DocumentProperties (`getProperties()`, que traz também a versão da config, em B): se `esquemaV` for a atual, não roda a configuração.
+- **Aba sumiu** (apagada à mão): os pontos que pegam uma aba passam por `aba_(nome)`. Se ela vier `null`, roda a configuração completa uma vez e segue.
+- Versão nova no código: migração e proteções rodam de novo, como hoje.
+
+**B. Cache dos dados de configuração** (gastos, ajustes, cartões, `atualizadoEm`, `urlPlanilha`, `parametrosAusentes`)
+- Fica no CacheService (cache do script; cada planilha tem o seu script, então o cache é por planilha), validade de 6 h (o máximo).
+- **`obterDados` com cache: sem lock e sem tocar na planilha.**
+- `obterDados` sem cache: lê a planilha **com lock** (como hoje) e repõe o cache.
+- **`salvarDados`:** dentro do lock, depois de gravar, repõe o cache com o que foi gravado, já no formato em que a leitura devolveria (ex.: números com 4 casas, como a aba guarda). Um teste confere cache = leitura nova da planilha.
+- **Tamanho:**
+  - o limite é 100 KB por item;
+  - o valor típico é de 2–10 KB (o pior caso, 200 gastos + 12 cartões, fica em ~35 KB);
+  - acima de 90 KB, não usa cache (lê a planilha);
+  - se o `put` falhar, segue sem cache.
+- **Edição à mão na planilha**, conferido na documentação:
+  - **não está confirmado** que o CacheService funcione em gatilho simples. A documentação só diz que gatilho simples não acessa "serviços que exigem autorização" e não cita o CacheService;
+  - **o PropertiesService está confirmado** no modo do gatilho simples.
+  - Por isso: um `onEdit(e)` simples, em edição nas abas Gastos, Parâmetros ou Taxas, sobe a "versão da config" (`configV`) nas DocumentProperties. O cache guarda a `configV` com que foi montado; se for diferente, é como se não houvesse cache.
+  - Custo: nenhum a mais, porque a `configV` vem na mesma leitura das DocumentProperties de A.
+  - Gravações feitas pelo próprio script não disparam o `onEdit` (está na documentação).
+  - **Apagar linhas à mão** pode não disparar o `onEdit` (a documentação não diz).
+- **Para esses casos:** em Ajustes, um link discreto **"Recarregar da planilha"** força a leitura completa (`obterDados` com `forcar:true`, com lock, e repõe o cache). Sem o link, a mudança aparece em até 6 h ou no próximo salvamento pelo app.
+- **Escopo:** o CacheService não tem escopo OAuth; o `appsscript.json` continua só "esta planilha". Se aparecer pedido de autorização novo ao rodar o `testarApi`, eu paro e aviso.
+
+**C. Lock só nas gravações**
+- Sem lock: `obterDados` (com cache), `listarOrcamentos` e `obterOrcamento`.
+- Conferido no código:
+  - as abas Orçamentos e Meses **nunca** são apagadas e regravadas: as gravações são linha a linha (`setValues` de uma linha), e só o excluir usa `deleteRow`;
+  - **já Gastos, Parâmetros e Taxas são apagadas e regravadas** (`regravarCorpo_`) em todo `salvarDados`. Por isso, ler essas abas continua **com lock** (só acontece quando não há cache).
+- **O `deleteRow` sem lock pode deslocar linhas no meio de uma leitura.** Proteções:
+  - `obterOrcamento` confere se o ID da linha lida é o pedido. Se não for, lê de novo **com lock**.
+  - `listarOrcamentos`: linha sem ID válido é ignorada, como já é hoje. A conferência do JSON compara o ID da mesma leitura; se não bate, não descarta o orçamento.
+
+**D. `listarOrcamentos` com menos leituras**
+- **Orçamentos:** colunas A–U, uma leitura.
+- **JSON:** só das linhas do **mês pedido**. Não é mais um bloco contínuo desde a primeira linha: são trechos seguidos de linhas, normalmente 1 ou 2 leituras (o mês está no fim da aba; um orçamento antigo fechado neste mês vira um trecho a mais).
+- **Meses:** uma leitura (as fotos deste mês e do anterior saem dela).
+- **Gastos de hoje:** do cache B (sem cache: leitura com lock, que repõe o cache).
+- **Foto do mês corrente dentro do `listarOrcamentos`:**
+  - quando não existe ou é diferente dos gastos de hoje, grava ali mesmo e devolve já atualizada;
+  - pega o lock só para essa gravação e confere de novo dentro dele;
+  - o mês corrente é o do servidor (America/Sao_Paulo).
+  - Substitui a sequência `listarOrcamentos → usarGastosDeHojeNoMes → listarOrcamentos` da tela, que passa a fazer 1 chamada.
+  - `usarGastosDeHojeNoMes` continua existindo (para "Corrigir gastos de um mês passado").
+- **Resultado:** de 5 leituras + 2 `acharLinhaMes_` + 2 `lerFotoDoMes_` para 2–3 leituras.
+
+**E. `mudarSituacao`:** **não precisa mudar.**
+- Ele já só recebe `id` e `atualizadoEmBase` (o conflito é checado pelo `atualizadoEm` no servidor).
+- Precisa ler a linha dentro do lock de qualquer jeito: confere o fechamento com a foto gravada (a validação rígida fica) e regrava a linha.
+- O `obterOrcamento` antes dele era coisa da tela (F2).
+
+**Decisão 1 (aprovada):** o `salvarDados` atualiza a foto do mês corrente no mesmo lock quando os totais mudam (1 chamada em vez de 2). A tela não chama mais `usarGastosDeHojeNoMes` depois de salvar gastos; a ação continua para "Corrigir gastos de um mês passado".
+
+**F. Mantém:** token antes de tudo, roteador fechado (as mesmas 9 ações), validação rígida, leitura tolerante, conflito e excluído, proteção com aviso.
+
+**`testarApi` ampliado:**
+- cache preenchido depois do `obterDados`;
+- cache reposto pelo `salvarDados`;
+- cache ignorado depois de subir a `configV`;
+- configuração pulada com a versão certa;
+- **decisão 2 (aprovada):** o `testarApi` não apaga nenhuma aba da planilha real; o caso "aba sumida" fica só nos testes locais.
+
+### 14.2 Frontend
+- **F1. Resultados na hora:**
+  - a última resposta de cada mês fica no aparelho (`precoCerto.resultados.v1`, com a URL da API e até 6 meses);
+  - ao abrir ou trocar de mês, aparece na hora com "Atualizando…" discreto, e a resposta do servidor substitui;
+  - "Desconectar este aparelho" apaga esse cache.
+- **F2. "O cliente fechou?":**
+  - sem alteração não salva, monta a tela de fechamento com o que já está no aparelho (entrada, foto e resultado do orçamento salvo) e não chama `obterOrcamento`;
+  - "Confirmar" faz **1 chamada** (`mudarSituacao`);
+  - com alteração não salva: salva antes (1 chamada) e abre a tela sem `obterOrcamento`;
+  - pela lista de Resultados continua o `obterOrcamento`, porque a lista não tem o JSON.
+- **F3. Salvar e fechar sem travar:**
+  - na hora: "Salvando…" e, no fechamento, o resumo "Fechado em…" já aparece;
+  - a interface continua livre;
+  - se der erro (rede, conflito, excluído), volta o estado anterior e avisa, com os mesmos avisos de hoje.
+- **F4. Abrir o app:** continua mostrando o cache na hora; o `obterDados` fica mais rápido por B.
+- **F5. "Recarregar da planilha"** em Ajustes (B).
+
+### 14.3 Estimativa (a confirmar na nova medição)
+| Fluxo | Antes | Depois (estimado) | Por quê |
+|---|---|---|---|
+| Abrir (dados do servidor) | ~4,0 s | ~1,4–1,7 s | sem configuração, sem lock, sem ler a planilha (cache) |
+| Resultados | ~4,0 s | **na hora** (cache) e ~2,0–2,5 s para atualizar | 1 chamada, 2–3 leituras, sem lock |
+| Salvar orçamento | ~3,4 s | ~2,2 s (e "Salvando…" na hora) | sem configuração |
+| Fechar | ~6,8 s | ~2,3 s (e o resumo na hora) | 1 chamada em vez de 2, sem configuração |
+
+### 14.4 Testes e medição
+- **Mantidos:** todos os atuais (cálculo inalterado). O D10 passa para o hash novo aprovado.
+- **Novos:**
+  - cache: hit, miss, reposição no `salvarDados` e invalidação pela `configV`;
+  - cache = leitura nova;
+  - configuração pulada e refeita quando falta aba;
+  - `obterDados` sem lock com `salvarDados` concorrente (simulado) não vê aba vazia;
+  - `obterOrcamento` com `deleteRow` no meio (relê com lock);
+  - `listarOrcamentos` com a foto do mês dentro dele (uma linha só, mesmo com 2 pedidos);
+  - Resultados com cache + atualização;
+  - fechar com 1 chamada;
+  - conflito e excluído funcionando.
+- **Nova medição:** `Codigo-DIAGNOSTICO.gs` gerado de novo do código otimizado + `medir.js` atualizado; comparação lado a lado com a tabela de antes.
+
+**Riscos:**
+1. Edição manual de linhas pode demorar a aparecer (mitigado com `configV` + link).
+2. Cache do aparelho em Resultados mostra a lista velha por 1–2 s.
+3. Se o Google mudar o CacheService em gatilho: não usamos.
+
+### 14.5 Implementação (o que ficou registrado)
+- **Backend** (`apps-script/Codigo.gs`):
+  - `doPost`: token → ação conhecida → `PEDIDO_` (contexto do pedido, com as propriedades do documento lidas UMA vez por `getProperties()`) → `configurarCompleto_` só se `esquemaV` ≠ `ESQUEMA_VERSAO_` (com lock) → leitura sem lock / gravação com lock;
+  - `aba_(nome)`: aba sumida → configuração completa uma vez por pedido;
+  - `comLock_` não pega o lock de novo se o pedido já o tem (`PEDIDO_.travado`);
+  - cache: `dadosDaConfig_` (cache ou leitura com lock), `lerCacheDados_`/`gravarCacheDados_`/`apagarCacheDados_`; o cache guarda a `configV` com que foi montado;
+  - o `salvarDados_` monta o cache das MESMAS linhas que gravou, com as funções da leitura (`gastosDasLinhas_`, `parametrosDasLinhas_`, `cartoesDasLinhas_`): um teste confere cache = leitura nova;
+  - `onEdit` (gatilho simples, público): edição à mão em Gastos/Parâmetros/Taxas → `configV` = hora + sufixo aleatório (duas edições no mesmo milissegundo também mudam a versão; achado pelos testes);
+  - `listarOrcamentos_`: Orçamentos A–U (1 leitura) + JSON só das linhas do mês pedido, por trechos de linhas seguidas (`trechosDeLinhas_`) + Meses (`lerMeses_`, 1 leitura) + gastos de hoje do cache; ID repetido entra uma vez; a foto do mês corrente é gravada ali mesmo quando difere (lock só para isso);
+  - `obterOrcamento_`: sem lock; se a linha achada não for a do ID (exclusão no meio), relê com lock;
+  - o `mudarSituacao` não mudou (já recebia só `id` e `atualizadoEmBase`).
+- **Tela:**
+  - Resultados: a última resposta de cada mês fica em `precoCerto.resultados.v1` (com a URL da API; até 6 meses); aparece na hora com "Atualizando…" e a resposta do servidor substitui; "Desconectar" apaga;
+  - "O cliente fechou?" monta a tela de fechamento com o que está no aparelho (`orcamentoDaTela`), sem `obterOrcamento`;
+  - fechamento otimista: volta na hora já com o resumo e o aviso fixo "Fechando…" ("Mudar situação" espera); "Orçamento fechado ✓" só com a resposta; falha → volta o estado e avisa ("Sem conexão: o orçamento NÃO foi fechado. Tente de novo." / "Não foi fechado. Tente de novo. (motivo)"); conflito e excluído como antes;
+  - salvar: aviso fixo "Salvando…" (os campos continuam livres); "Orçamento salvo ✓" só com a resposta; erro → "Não foi salvo. Tente de novo. (motivo)"; sem conexão → "Sem conexão: orçamento NÃO foi salvo." (texto da fase 10);
+  - Ajustes → "Recarregar da planilha" (`obterDados` com `forcar:true`);
+  - a pendência da foto do mês no aparelho (`precoCerto.fotoMesPendente.v1`, seção 12.5) não é mais usada: o servidor faz tudo no mesmo pedido.
+
+### 14.6 Limitações conhecidas (aceitas)
+- **Lista sem lock no meio de uma exclusão:** por um instante, a lista pode pular ou repetir uma linha (a próxima atualização corrige). Ela **nunca** mostra o mesmo ID duas vezes (deduplicação por ID).
+- **Edição à mão:** só o `onEdit` invalida o cache, e ele só reage a edições feitas à mão (as gravações do próprio script não disparam). **Nenhuma gravação do app depende do `onEdit`:** o `salvarDados` repõe o cache (e o mês corrente) dentro do lock. Apagar linhas à mão pode não disparar o `onEdit`: aparece em até 6 h, no próximo salvamento pelo app ou com "Recarregar da planilha".
+- **Orçamento antigo fechado neste mês:** o JSON dele é lido num trecho a mais (uma leitura a mais), não mais num bloco contínuo desde a primeira linha do mês.

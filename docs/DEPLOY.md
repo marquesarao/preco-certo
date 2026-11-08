@@ -12,6 +12,23 @@ Mesmo modelo do app **Pendências**:
 
 ---
 
+## ⚠️ Desempenho (`sw.js` v9): o backend MUDOU — ordem obrigatória
+
+Esta versão muda **as duas pontas**: o `apps-script/Codigo.gs` (cache dos gastos e ajustes, configuração das abas só quando precisa, lock só nas gravações, `onEdit`) e a tela (`sw.js` v9). Mesma ordem de sempre:
+
+1. **Em cada planilha** (a de teste e a do mecânico): Extensões → Apps Script → **copie a sua `URL_DA_API`** → cole o `apps-script/Codigo.gs` novo → recoloque a `URL_DA_API` → salve → **Implantar → Gerenciar implantações → lápis → Versão: Nova versão → Implantar** → rode **`testarApi`**. O registro deve terminar com "Todos os testes da API passaram". Ele agora confere também o cache e a versão do esquema, **sem apagar nenhuma aba**.
+   - **Se aparecer pedido de autorização novo** ao rodar o `testarApi`: **pare** e me avise (não era para aparecer: o cache não pede permissão nova; o `appsscript.json` não mudou).
+   - O `onEdit` é um **gatilho simples**: funciona sozinho, não precisa instalar nada em "Acionadores".
+   - A primeira chamada depois de colar o código configura as abas (como antes) e grava a versão do esquema; as seguintes não configuram mais.
+2. **Só depois:** conferência de segredos e **`git push`**.
+3. Em cada aparelho: "Nova versão disponível · ATUALIZAR".
+
+**Versões do Apps Script:** cada "Nova versão" conta no limite de **200 versões por script**. Crie versão só para publicar de verdade; para medir com o `Codigo-DIAGNOSTICO.gs` na planilha de teste, use a mesma implantação e volte o código normal depois (sem criar versões a mais do que o necessário).
+
+Se fizer ao contrário (tela antes do backend): a tela nova funciona com o backend antigo, só que continua lenta, o "Recarregar da planilha" vira uma leitura normal e **a linha do mês atual na aba Meses deixa de se atualizar sozinha** (agora quem faz isso é o backend novo) até você colar o `Codigo.gs` novo. Por isso: backend primeiro.
+
+---
+
 ## Identidade do PWA (`sw.js` v7): só a tela muda — e quem já instalou precisa reinstalar
 
 - O `manifest.webmanifest` tinha `"id": "./"`, que o Chrome resolve contra a **origem** (`https://marquesarao.github.io/`): o mesmo id do app Pendências. Agora é `"id": "/preco-certo/"` → `https://marquesarao.github.io/preco-certo/`. O `Codigo.gs` não muda.

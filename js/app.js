@@ -7,7 +7,8 @@
 var CHAVE_CACHE = 'precoCerto.dados.v1';
 var CHAVE_ORCAMENTO = 'precoCerto.orcamento.v1';
 var CHAVE_DESCONTO_PADRAO = 'precoCerto.descontoPadrao.v1'; // versão antiga (por aparelho): migrado para a aba Parâmetros e apagado
-var CHAVE_FOTO_PENDENTE = 'precoCerto.fotoMesPendente.v1'; // mês corrente cuja foto dos gastos ainda não foi atualizada
+var CHAVE_FOTO_PENDENTE = 'precoCerto.fotoMesPendente.v1'; // (até a seção 14) pendência da foto do mês: só é apagada
+var CHAVE_RESULTADOS = 'precoCerto.resultados.v1';        // última lista de cada mês (Resultados na hora), por planilha
 var CHAVE_PIN = 'precoCerto.pin.v1';                        // só deste aparelho; "Desconectar" e novo link apagam
 var ESPERA_SALVAR_MS = 800;
 var BLOQUEIO_PIN_MS = 5 * 60 * 1000;  // PIN ligado: mais de 5 min em segundo plano → pede de novo
@@ -36,11 +37,12 @@ var timerAviso = null;
 var ultimoCalc = null;         // calcularComFoto do último render (vai para a planilha ao salvar)
 var salvandoOrc = null;        // Promise do salvamento do orçamento em andamento
 var desbloqueio = { ok: false, escondidoEm: null }; // PIN: um desbloqueio vale para Resultados e Configurações
-var resul = { mes: null, dados: null, filtro: 'todos', busca: '', aberto: null, ocultos: {}, pedido: 0, autoFeito: {} }; // aba Resultados
+var resul = { mes: null, dados: null, filtro: 'todos', busca: '', aberto: null, ocultos: {}, pedido: 0 }; // aba Resultados
 var corrigir = { mes: null, dados: null, pedido: 0 }; // Ajustes → "Corrigir gastos de um mês passado"
 var fech = null;               // tela de fechamento
 var menuSit = { alvo: null, deFechar: false };  // menu "Mudar situação" (deFechar: aberto pela tela de fechamento)
 var dialogo = { resolver: null, botoes: [] };
+var situacaoPendente = false;  // fechamento enviado, esperando a confirmação do servidor (tela otimista)
 
 // ------------------------------------------------------------------
 // Utilitários
@@ -89,13 +91,14 @@ function mensagemDoErro(e) {
 }
 
 /** tipo 'alerta': fundo vermelho e mais tempo na tela (ex.: "Sem conexão: orçamento NÃO foi salvo."). */
+/** tipo: 'alerta' (vermelho, 7 s) · 'fixo' (fica até o próximo aviso: "Salvando…", "Fechando…") · padrão (3,5 s). */
 function mostrarAviso(msg, tipo) {
   var el = $('aviso');
   el.textContent = msg;
   el.classList.toggle('toast-alerta', tipo === 'alerta');
   el.hidden = false;
   clearTimeout(timerAviso);
-  timerAviso = setTimeout(function () { el.hidden = true; }, tipo === 'alerta' ? 7000 : 3500);
+  if (tipo !== 'fixo') timerAviso = setTimeout(function () { el.hidden = true; }, tipo === 'alerta' ? 7000 : 3500);
 }
 
 // ------------------------------------------------------------------
@@ -200,11 +203,9 @@ function salvarAgora() {
   mostrarStatus('salvando');
 
   var envio = montarEnvio();
-  var totais = totaisDoMes(envio);
   PrecoCertoApi.chamar(conexao, 'salvarDados', envio).then(function (r) {
     sync.salvando = false;
     estado.atualizadoEm = r.atualizadoEm;
-    aposSalvarDados(totais);
     if (estado.migrandoDesconto) { apagarStorage(CHAVE_DESCONTO_PADRAO); estado.migrandoDesconto = false; }
     salvarCache();
     atualizarInfoSalvo();
@@ -233,7 +234,6 @@ function receberDadosDoServidor(r) {
   aplicarDados({ gastos: r.gastos, parametros: r.parametros, cartoes: r.cartoes }, r.urlPlanilha, r.atualizadoEm);
   var migrar = migrarDescontoPadrao(r);
   estado.carregadoDoServidor = true;
-  estado.totaisSalvos = totaisDoMes(estado.dados);
   sync.sujo = false;
   sync.erro = false;
   $('faixa-offline').hidden = true;
@@ -287,6 +287,27 @@ function carregarServidor() {
       ? 'Não foi possível carregar seus dados. Confira a internet.'
       : mensagemDoErro(e));
     else if (!estado.carregadoDoServidor) $('faixa-offline').hidden = false; // cache: só orçamento (edição bloqueada)
+  });
+}
+
+/**
+ * Ajustes → "Recarregar da planilha" (seção 14): lê as abas de novo, sem o cache do servidor (obterDados com forcar).
+ * Para mudanças feitas à mão na planilha que ainda não apareceram (o cache do servidor dura até 6 h).
+ */
+function recarregarDaPlanilha() {
+  if (!conexao) return;
+  if (temPendencia()) { mostrarAviso('Espere suas mudanças serem salvas antes de recarregar.', 'alerta'); return; }
+  mostrarAviso('Recarregando…', 'fixo');
+  var usada = conexao;
+  PrecoCertoApi.chamar(conexao, 'obterDados', undefined, { forcar: true }).then(function (r) {
+    if (conexao !== usada) return;
+    if (temPendencia()) { mostrarAviso('Você mudou algo enquanto recarregava: nada foi trocado.', 'alerta'); return; }
+    usuarioEscolheuTela = true; // continua em Ajustes
+    receberDadosDoServidor(r);
+    mostrarAviso('Dados recarregados da planilha ✓');
+  }, function (e) {
+    if (e && e.tipo === 'acesso') { perdeuAcesso(); return; }
+    mostrarAviso(e && e.tipo === 'rede' ? 'Sem conexão: não recarregou.' : 'Não recarregou: ' + mensagemDoErro(e), 'alerta');
   });
 }
 
@@ -821,6 +842,7 @@ function renderBotoesOrcamento(situacao) {
   $('botoes-aberto').hidden = situacao !== 'Aberto';
   $('botoes-fechado').hidden = situacao !== 'Fechado';
   $('botoes-nao-fechou').hidden = situacao !== 'Não fechou';
+  $('btn-mudar-situacao').disabled = situacaoPendente; // "Fechando…": espera a confirmação
   $('btn-compartilhar').hidden = !podeCompartilhar() || situacao === 'Não fechou';
 }
 
@@ -1193,12 +1215,15 @@ function avisarSalvamento(x, copiou) {
   else if (x.r === 'semMudanca') mostrarAviso(copiou ? 'Copiado! Agora é só colar no WhatsApp.' : 'Orçamento salvo ✓');
   else if (x.r === 'semConexao') mostrarAviso(antes + MSG_NAO_SALVO_SEM_CONEXAO, 'alerta');
   else if (x.r === 'invalido') mostrarAviso(antes + 'Orçamento não salvo: ' + x.msg, 'alerta');
-  else if (x.r === 'erro') mostrarAviso(antes + 'Não salvou: ' + x.msg, 'alerta');
+  else if (x.r === 'erro') mostrarAviso(antes + 'Não foi salvo. Tente de novo.' + (x.msg ? ' (' + x.msg + ')' : ''), 'alerta');
   else if (copiou) mostrarAviso('Copiado ✓');
 }
 
+/** Seção 14: "Salvando…" na hora (sem travar os campos); "Orçamento salvo ✓" só com a resposta do servidor. */
 function aoClicarSalvar() {
-  salvarOrcamento({}).then(function (x) { avisarSalvamento(x, false); });
+  var p = salvarOrcamento({});
+  if (salvandoOrc) mostrarAviso('Salvando…', 'fixo');
+  p.then(function (x) { avisarSalvamento(x, false); });
 }
 
 function avisarConflito() {
@@ -1309,10 +1334,20 @@ function alvoDoRascunho() {
 }
 
 /** "O cliente fechou?": salva antes (orçamento novo ou mudado) e abre a tela de fechamento. */
+/**
+ * O orçamento salvo da tela, no formato do obterOrcamento (sem pedir ao servidor). Só vale sem alteração não salva:
+ * aí a foto em uso é a gravada e a conta é a mesma que foi salva. O servidor confere o fechamento com o que está gravado.
+ */
+function orcamentoDaTela() {
+  var v = orc.vinculo;
+  return { id: v.id, criadoEm: v.criadoEm, atualizadoEm: v.atualizadoEm, cliente: orc.cliente, telefone: orc.telefone,
+    situacao: v.situacao, motivo: v.motivo || '',
+    dados: { v: 1, entrada: entradaDoRascunho(), foto: clonar(v.foto), resultado: resultadoParaGravar(calcularComFoto(orc, v.foto)) } };
+}
+
 function clienteFechou() {
-  var abrir = function () {
-    buscarOrcamento(orc.vinculo.id).then(function (o) { if (o) abrirFechamento(o, 'orcamento'); });
-  };
+  // Seção 14: abre a tela de fechamento com o que já está no aparelho (sem obterOrcamento).
+  var abrir = function () { abrirFechamento(orcamentoDaTela(), 'orcamento'); };
   if (orc.vinculo && !temMudancaNaoSalva()) { abrir(); return; }
   salvarOrcamento({}).then(function (x) {
     if ((x.r === 'salvo' || x.r === 'semMudanca') && orc.vinculo) abrir(); else avisarSalvamento(x, false);
@@ -1405,8 +1440,14 @@ function confirmarNaoFechou() {
 }
 
 /** mudarSituacao no servidor + o que muda na tela. @return Promise<boolean> */
-function enviarSituacao(alvo, situacao, campos) {
-  if (!conexao || navigator.onLine === false) { mostrarAviso('Sem conexão: a situação NÃO foi mudada.', 'alerta'); return Promise.resolve(false); }
+/**
+ * opcoes (fechamento otimista): aoFalhar() volta o estado da tela antes do aviso; semConexao/falhou: textos do aviso.
+ */
+function enviarSituacao(alvo, situacao, campos, opcoes) {
+  opcoes = opcoes || {};
+  var falhou = function () { if (opcoes.aoFalhar) opcoes.aoFalhar(); };
+  var txtSemConexao = opcoes.semConexao || 'Sem conexão: a situação NÃO foi mudada.';
+  if (!conexao || navigator.onLine === false) { falhou(); mostrarAviso(txtSemConexao, 'alerta'); return Promise.resolve(false); }
   var pedido = { id: alvo.id, atualizadoEmBase: alvo.atualizadoEm, situacao: situacao };
   Object.keys(campos).forEach(function (k) { pedido[k] = campos[k]; });
   return PrecoCertoApi.pedir(conexao, 'mudarSituacao', pedido).then(function (r) {
@@ -1424,7 +1465,8 @@ function enviarSituacao(alvo, situacao, campos) {
     resultadosMudaram();
     return true;
   }, function (e) {
-    if (e && e.tipo === 'acesso') perdeuAcesso();
+    falhou();
+    if (e && e.tipo === 'acesso') { perdeuAcesso(); if (opcoes.falhou) mostrarAviso(opcoes.falhou(''), 'alerta'); }
     else if (e && e.tipo === 'conflito') {
       perguntar('Esse orçamento foi alterado em outro aparelho.', 'Nada foi mudado. Veja a versão nova e tente de novo.', []);
       if (orc.vinculo && orc.vinculo.id === alvo.id) buscarOrcamento(alvo.id).then(function (o) { if (o && !temMudancaNaoSalva()) carregarRascunho(rascunhoDoSalvo(o)); });
@@ -1433,7 +1475,7 @@ function enviarSituacao(alvo, situacao, campos) {
       perguntar('Esse orçamento foi excluído em outro aparelho.', 'A situação não foi mudada.', []);
       desvincularSe(alvo.id);
       resultadosMudaram();
-    } else mostrarAviso(e && e.tipo === 'rede' ? 'Sem conexão: a situação NÃO foi mudada.' : 'Não mudou: ' + mensagemDoErro(e), 'alerta');
+    } else mostrarAviso(e && e.tipo === 'rede' ? txtSemConexao : (opcoes.falhou ? opcoes.falhou(mensagemDoErro(e)) : 'Não mudou: ' + mensagemDoErro(e)), 'alerta');
     return false;
   });
 }
@@ -1581,10 +1623,30 @@ function confirmarFechamento() {
   var fechamento = l.f;
   fechamento.data = l.data;
   var o = fech.o;
-  $('btn-confirmar-fechamento').disabled = true;
-  enviarSituacao({ id: o.id, atualizadoEm: o.atualizadoEm }, 'Fechado', { fechamento: fechamento }).then(function (ok) {
-    $('btn-confirmar-fechamento').disabled = false;
-    if (ok) sairDoFechamento();
+  // Seção 14 (tela otimista): volta na hora, já como "Fechado", com "Fechando…" até a confirmação do servidor.
+  // Nunca mostra "fechado ✓" antes da resposta. Se falhar, volta o estado anterior e avisa.
+  var daTela = !!(orc.vinculo && orc.vinculo.id === o.id);
+  var antes = daTela ? clonar(orc.vinculo) : null;
+  if (daTela) {
+    orc.vinculo.situacao = 'Fechado';
+    orc.vinculo.fechamento = fechamento;
+    orc.vinculo.motivo = '';
+    gravarRascunho();
+  }
+  sairDoFechamento();
+  mostrarAviso('Fechando…', 'fixo');
+  situacaoPendente = true;
+  renderOrcamento();
+  enviarSituacao({ id: o.id, atualizadoEm: o.atualizadoEm }, 'Fechado', { fechamento: fechamento }, {
+    aoFalhar: function () {
+      if (daTela && orc.vinculo && orc.vinculo.id === o.id) { orc.vinculo = antes; gravarRascunho(); }
+    },
+    semConexao: 'Sem conexão: o orçamento NÃO foi fechado. Tente de novo.',
+    falhou: function (msg) { return 'Não foi fechado. Tente de novo.' + (msg ? ' (' + msg + ')' : ''); }
+  }).then(function () {
+    situacaoPendente = false;
+    renderOrcamento();
+    if (nav.tela === 'resultados') resultadosMudaram();
   });
 }
 
@@ -1618,7 +1680,6 @@ function abrirResultados(peloUsuario, mes) {
 
 function mostrarResultados() {
   if (!resul.mes) resul.mes = mesAtualLocal();
-  resul.autoFeito = {}; // cada abertura confere de novo a foto do mês corrente (outro aparelho pode ter mudado os gastos)
   mostrarTela('resultados');
   window.scrollTo(0, 0);
   renderResultados();
@@ -1630,25 +1691,38 @@ function resultadosMudaram() {
   if (nav.tela === 'resultados') carregarMes();
 }
 
+/**
+ * Carrega o mês em Resultados. Se o aparelho tem a última lista desse mês (desta planilha), ela aparece NA HORA
+ * e a resposta do servidor substitui em segundo plano ("Atualizando…"). Seção 14, F1.
+ */
 function carregarMes() {
   var mes = resul.mes;
   var status = $('res-status');
   if (!conexao) { status.textContent = 'Este aparelho não está ligado a uma planilha.'; return; }
-  if (navigator.onLine === false) { status.textContent = 'Sem conexão: Resultados precisa da internet.'; return; }
+  if (!(resul.dados && resul.dados.mes === mes)) {
+    var guardado = resultadosDoAparelho(mes);
+    if (guardado) { resul.dados = guardado; renderResultados(); }
+  }
+  var temNaTela = !!(resul.dados && resul.dados.mes === mes);
+  if (navigator.onLine === false) {
+    status.textContent = temNaTela ? 'Sem conexão: mostrando a última lista guardada.' : 'Sem conexão: Resultados precisa da internet.';
+    return;
+  }
   var pedido = ++resul.pedido;
   var usada = conexao;
-  status.textContent = 'Carregando…';
+  status.textContent = temNaTela ? 'Atualizando…' : 'Carregando…';
   PrecoCertoApi.pedir(conexao, 'listarOrcamentos', { mes: mes }).then(function (r) {
     if (pedido !== resul.pedido || conexao !== usada) return; // resposta velha
     resul.dados = r;
+    guardarResultadosNoAparelho(r);
     status.textContent = '';
     renderResultados();
-    conferirFotoDoMes(r);
   }, function (e) {
     if (pedido !== resul.pedido || conexao !== usada) return;
     if (e && e.tipo === 'acesso') { perdeuAcesso(); status.textContent = 'Este aparelho perdeu o acesso à planilha.'; return; }
-    status.innerHTML = esc(e && e.tipo === 'rede' ? 'Sem conexão: Resultados precisa da internet.' : 'Não carregou: ' + mensagemDoErro(e)) +
-      ' <button type="button" class="link link-inline" id="btn-res-tentar">Tentar de novo</button>';
+    var msg = e && e.tipo === 'rede' ? 'Sem conexão: Resultados precisa da internet.' : 'Não carregou: ' + mensagemDoErro(e);
+    if (temNaTela) msg = (e && e.tipo === 'rede' ? 'Sem conexão' : 'Não atualizou') + ': mostrando a última lista guardada.';
+    status.innerHTML = esc(msg) + ' <button type="button" class="link link-inline" id="btn-res-tentar">Tentar de novo</button>';
   });
 }
 
@@ -1689,7 +1763,7 @@ function renderResultados() {
   $('res-vazio').hidden = true;
   $('res-conteudo').hidden = false;
 
-  // Mês corrente: sempre os gastos de hoje (a foto da planilha é atualizada sozinha; veja atualizarFotoDoMesAtual).
+  // Mês corrente: sempre os gastos de hoje (a linha do mês na planilha é atualizada pelo servidor).
   // Meses que já passaram: a última foto gravada.
   var corrente = mes === atual;
   var gravada = r.meses[mes] || null;
@@ -1814,58 +1888,30 @@ function acaoDoItem(acao, id) {
   else if (acao === 'excluir') excluirComDesfazer({ id: o.id, atualizadoEm: o.atualizadoEm, origem: 'lista' });
 }
 
-// ---------------- Mês atual acompanha os gastos (DESENHO 12.5) ----------------
-/** Totais do mês como o backend calcula (gastosDeHoje_): centavos inteiros e horas com 4 casas. */
-function totaisDoMes(dados) {
-  var p = dados.parametros;
-  return {
-    oficinaC: Math.round(totalGastos(dados.gastos, 'Oficina') * 100),
-    casaC: Math.round(totalGastos(dados.gastos, 'Casa') * 100),
-    horas: Math.round(p.horasCobradasPorDia * p.diasPorSemana * 52 / 12 * 10000) / 10000
-  };
-}
-
+// ---------------- Mês atual acompanha os gastos (DESENHO 12.5 e 14) ----------------
+// Desde a seção 14 quem atualiza a linha do mês corrente é o SERVIDOR: o salvarDados (no mesmo lock, quando os totais
+// mudam) e o listarOrcamentos (quando a foto do mês corrente difere dos gastos de hoje). A tela não chama mais nada.
 function mesmosTotais(a, b) { return !!a && !!b && a.oficinaC === b.oficinaC && a.casaC === b.casaC && a.horas === b.horas; }
 
-/** Depois do "Salvo ✓" dos gastos/ajustes: se os totais do mês mudaram (ou há pendência), atualiza o mês corrente, sem aviso. */
-function aposSalvarDados(enviados) {
-  var mudou = !mesmosTotais(enviados, estado.totaisSalvos);
-  estado.totaisSalvos = enviados;
-  if (mudou || lerTexto(CHAVE_FOTO_PENDENTE)) atualizarFotoDoMesAtual();
+// ---------------- Resultados: a última resposta de cada mês fica no aparelho (seção 14, F1) ----------------
+var CACHE_RESULTADOS_MESES = 6;
+
+/** Última resposta do listarOrcamentos para o mês, desta mesma planilha (ou null). */
+function resultadosDoAparelho(mes) {
+  var c = lerStorage(CHAVE_RESULTADOS);
+  if (!c || !conexao || c.api !== conexao.api || !c.meses || !c.meses[mes]) return null;
+  var r = c.meses[mes].r;
+  return r && r.mes === mes && Array.isArray(r.orcamentos) ? r : null;
 }
 
-/**
- * Grava os gastos de hoje no mês CORRENTE (ação usarGastosDeHojeNoMes, a mesma do antigo botão).
- * Falhou → fica "pendente" no aparelho e tenta de novo no próximo salvamento ou ao abrir Resultados.
- * Pendência de um mês que já virou é descartada (o mês novo se acerta ao abrir Resultados).
- * @return Promise<boolean>
- */
-function atualizarFotoDoMesAtual() {
-  var mes = mesAtualLocal();
-  var pendente = lerTexto(CHAVE_FOTO_PENDENTE);
-  if (pendente && pendente !== mes) apagarStorage(CHAVE_FOTO_PENDENTE);
-  if (!conexao) return Promise.resolve(false);
-  gravarTexto(CHAVE_FOTO_PENDENTE, mes);
-  var usada = conexao;
-  return PrecoCertoApi.pedir(conexao, 'usarGastosDeHojeNoMes', { mes: mes }).then(function () {
-    if (conexao !== usada) return false;
-    if (lerTexto(CHAVE_FOTO_PENDENTE) === mes) apagarStorage(CHAVE_FOTO_PENDENTE);
-    resul.autoFeito[mes] = true;
-    if (nav.tela === 'resultados' && resul.mes === mes) carregarMes();
-    return true;
-  }, function (e) {
-    if (e && e.tipo === 'acesso') perdeuAcesso();
-    return false;
-  });
-}
-
-/** Ao carregar o mês corrente em Resultados: foto diferente dos gastos de hoje (ou pendente) → atualiza (uma vez por abertura). */
-function conferirFotoDoMes(r) {
-  var mes = r.mes;
-  if (mes !== mesAtualLocal() || resul.autoFeito[mes]) return;
-  if (mesmosTotais(r.meses[mes], r.gastosHoje) && !lerTexto(CHAVE_FOTO_PENDENTE)) return;
-  resul.autoFeito[mes] = true;
-  atualizarFotoDoMesAtual();
+function guardarResultadosNoAparelho(r) {
+  if (!conexao || !r || !r.mes) return;
+  var c = lerStorage(CHAVE_RESULTADOS);
+  if (!c || c.api !== conexao.api || !c.meses) c = { api: conexao.api, meses: {} };
+  c.meses[r.mes] = { em: Date.now(), r: r };
+  var meses = Object.keys(c.meses).sort(function (a, b) { return c.meses[b].em - c.meses[a].em; });
+  meses.slice(CACHE_RESULTADOS_MESES).forEach(function (m) { delete c.meses[m]; });
+  gravarStorage(CHAVE_RESULTADOS, c);
 }
 
 // ---------------- Ajustes → "Corrigir gastos de um mês passado" ----------------
@@ -2489,7 +2535,8 @@ function desconectar() {
   PrecoCertoConfig.apagar();
   apagarStorage(CHAVE_CACHE);
   apagarStorage(CHAVE_PIN);
-  apagarStorage(CHAVE_FOTO_PENDENTE); // a pendência era da planilha desconectada
+  apagarStorage(CHAVE_FOTO_PENDENTE); // (versão antiga) a pendência era da planilha desconectada
+  apagarStorage(CHAVE_RESULTADOS);    // a lista guardada era da planilha desconectada
   conexao = null;
   estado.dados = null;
   estado.carregadoDoServidor = false;
@@ -2773,7 +2820,9 @@ function ligarEventos() {
     var texto = textoAtual();
     if (!texto) return;
     copiarTexto(texto).then(function (r) {
-      salvarOrcamento({}).then(function (x) { avisarSalvamento(x, r === 'ok'); });
+      var p = salvarOrcamento({});
+      if (salvandoOrc) mostrarAviso((r === 'ok' ? 'Copiado ✓ · ' : '') + 'Salvando…', 'fixo');
+      p.then(function (x) { avisarSalvamento(x, r === 'ok'); });
     });
   });
   $('btn-salvar-orc').addEventListener('click', aoClicarSalvar);
@@ -2807,6 +2856,7 @@ function ligarEventos() {
   $('fechar-valor').addEventListener('input', function () { if (fech) { fech.valorEditado = true; renderFechamento(); } });
   $('fechar-data').addEventListener('input', function () { if (fech) renderFechamento(); });
   $('btn-compartilhar').addEventListener('click', compartilhar);
+  $('btn-recarregar-planilha').addEventListener('click', recarregarDaPlanilha);
   $('btn-fechar-copia').addEventListener('click', function () { $('caixa-copia').hidden = true; });
 
   // Seus cartões

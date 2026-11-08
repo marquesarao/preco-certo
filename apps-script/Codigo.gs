@@ -7,9 +7,10 @@
  * Fonte da verdade das regras: docs/DESENHO.md (seções 5 e 11)
  *
  * PROTOCOLO (só POST; corpo JSON enviado como text/plain, para o navegador não fazer preflight de CORS):
- *   { token, action: "obterDados" }                    → { ok:true, gastos, parametros, cartoes, atualizadoEm, urlPlanilha,
- *                                                          parametrosAusentes }
- *   { token, action: "salvarDados", dados: {…} }       → { ok:true, atualizadoEm }
+ *   { token, action: "obterDados", forcar? }           → { ok:true, gastos, parametros, cartoes, atualizadoEm, urlPlanilha,
+ *                                                          parametrosAusentes }   (forcar:true = ignora o cache)
+ *   { token, action: "salvarDados", dados: {…} }       → { ok:true, atualizadoEm, fotoMes }
+ *                                                          (fotoMes: a linha do mês corrente na aba Meses, se foi gravada)
  *   { token, action: "obterTaxasPadraoVisa" }          → { ok:true, taxas: { debito, p1 … p12 } }
  *   Orçamentos (um registro por vez; NUNCA regrava a aba inteira):
  *   { token, action: "listarOrcamentos", mes }         → { ok:true, mes, mesAnterior, primeiroMes, orcamentos:[resumo],
@@ -28,7 +29,8 @@
  * SEGURANÇA
  * - O token fica nas Propriedades do script (chave TOKEN). Nenhum segredo neste arquivo.
  * - A checagem do token acontece ANTES de qualquer acesso à planilha.
- * - Funções PÚBLICAS (sem "_") deste arquivo: doGet, doPost, gerarLinkDeConfiguracao, trocarToken, testarApi.
+ * - Funções PÚBLICAS (sem "_") deste arquivo: doGet, doPost, onEdit, gerarLinkDeConfiguracao, trocarToken, testarApi.
+ *   onEdit é o gatilho SIMPLES da planilha (edição feita à mão): só marca que a configuração mudou (para o cache).
  *   As três últimas são para rodar À MÃO no editor (menu "Executar") e por isso não podem terminar em "_"
  *   (funções com "_" são privadas e não aparecem no menu). Isso é seguro porque este projeto NÃO usa
  *   HtmlService: não existe google.script.run, e a ÚNICA porta de entrada externa é o doPost, que só
@@ -44,6 +46,15 @@
  * O aparelho manda o carimbo que leu (atualizadoEmBase): igual → grava; diferente → conflito;
  * ID que não existe mais, mas com base → "excluído em outro aparelho" (não ressuscita).
  * Só um ID inédito SEM base vira linha nova.
+ *
+ * DESEMPENHO (DESENHO seção 14):
+ * - configurarPlanilha_ só roda quando a versão do esquema (DocumentProperties "esquemaV") é diferente de ESQUEMA_VERSAO_,
+ *   ou quando uma aba esperada sumiu (aba_ refaz a configuração uma vez);
+ * - gastos, ajustes e cartões ficam no CacheService (6 h). obterDados com cache não pega o lock nem lê a planilha.
+ *   salvarDados repõe o cache dentro do lock. Edição à mão nas abas → onEdit sobe "configV" e o cache deixa de valer;
+ * - o lock fica só nas GRAVAÇÕES. listarOrcamentos e obterOrcamento leem sem lock (as abas Orçamentos e Meses são
+ *   gravadas linha a linha, nunca apagadas e regravadas). Gastos, Parâmetros e Taxas SÃO apagadas e regravadas no
+ *   salvarDados: por isso só são lidas com o lock (quando falta o cache).
  *
  * @OnlyCurrentDoc
  */
@@ -190,6 +201,17 @@ var COLUNAS_BANDEIRAS_ANTIGAS_ = [
 var PROP_ATUALIZADO_EM_ = 'atualizadoEm';
 var PROP_TOKEN_ = 'TOKEN';
 var PROP_PROTECAO_ = 'protecaoAvisoV1';
+
+/** Desempenho: versão do esquema das abas (suba quando configurarPlanilha_ mudar), versão da config e cache. */
+var ESQUEMA_VERSAO_ = '1';
+var PROP_ESQUEMA_ = 'esquemaV';
+var PROP_CONFIG_V_ = 'configV';
+var CHAVE_CACHE_DADOS_ = 'dadosConfigV1';
+var CACHE_VALIDADE_S_ = 21600;      // 6 h: o máximo do CacheService
+var CACHE_MAX_LETRAS_ = 90000;      // o limite do CacheService é 100 KB por item
+/** Ações que não gravam: rodam SEM o lock. */
+var ACOES_DE_LEITURA_ = { obterDados: true, obterTaxasPadraoVisa: true, listarOrcamentos: true, obterOrcamento: true };
+var ABAS_DA_CONFIG_ = [ABA_GASTOS_, ABA_PARAMETROS_, ABA_TAXAS_];
 var AVISO_EDICAO_MANUAL_ = 'Use o app para alterar orçamentos. Editar aqui pode deixar a lista diferente do orçamento.';
 var MSG_SEM_ACESSO_ = 'Acesso não autorizado';
 var MSG_ACAO_DESCONHECIDA_ = 'Ação desconhecida.';
@@ -218,27 +240,81 @@ function doPost(e) {
       throw erroApi_(MSG_ACAO_DESCONHECIDA_);
     }
     var acao = ACOES_[req.action];
-    return responder_(comLock_(function () {
-      configurarPlanilha_(); // cria abas que faltam e migra a aba Taxas antiga (uma vez)
-      return acao(req);
-    }));
+    PEDIDO_ = { props: lerPropsDoc_(), travado: false, configurou: false };
+    // Abas, migração e proteções: só quando o esquema mudou (ou na 1ª vez). Senão, nada a fazer.
+    if (PEDIDO_.props[PROP_ESQUEMA_] !== ESQUEMA_VERSAO_) comLock_(configurarCompleto_);
+    // Leitura: sem lock. Gravação: com lock (uma de cada vez).
+    if (ACOES_DE_LEITURA_[req.action]) return responder_(acao(req));
+    return responder_(comLock_(function () { return acao(req); }));
   } catch (err) {
     if (err && err.api) return responder_({ ok: false, erro: err.message });
     console.error('Preço Certo – erro interno: ' + (err && err.stack ? err.stack : err));
     return responder_({ ok: false, erro: MSG_ERRO_INTERNO_ });
+  } finally {
+    PEDIDO_ = null;
+  }
+}
+
+/** Contexto do pedido em andamento: propriedades do documento (lidas uma vez) e se o lock está pego. */
+var PEDIDO_ = null;
+
+/** Todas as propriedades do documento numa leitura só (esquemaV, configV, atualizadoEm…). */
+function lerPropsDoc_() {
+  return PropertiesService.getDocumentProperties().getProperties() || {};
+}
+
+function propsDoPedido_() {
+  return PEDIDO_ ? PEDIDO_.props : lerPropsDoc_();
+}
+
+/** Configuração completa (abas, migração, proteções) e grava a versão do esquema. Quem chama segura o lock. */
+function configurarCompleto_() {
+  configurarPlanilha_();
+  PropertiesService.getDocumentProperties().setProperty(PROP_ESQUEMA_, ESQUEMA_VERSAO_);
+  if (PEDIDO_) { PEDIDO_.props[PROP_ESQUEMA_] = ESQUEMA_VERSAO_; PEDIDO_.configurou = true; }
+  apagarCacheDados_(); // a migração pode ter mudado a aba Taxas
+}
+
+/**
+ * A aba pelo nome. Se ela sumiu (apagada à mão), refaz a configuração completa UMA vez por pedido e tenta de novo.
+ * Use em todo acesso a abas fora de configurarPlanilha_.
+ */
+function aba_(nome) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(nome);
+  if (sh) return sh;
+  if (PEDIDO_ && PEDIDO_.configurou) return null;
+  comLock_(configurarCompleto_);
+  return ss.getSheetByName(nome);
+}
+
+/**
+ * Gatilho SIMPLES (edição feita à mão na planilha; gravações do script não disparam).
+ * Edição nas abas Gastos, Parâmetros ou Taxas → sobe "configV": o cache dos dados deixa de valer.
+ * Usa só o PropertiesService (disponível em gatilho simples, conforme a documentação do Google).
+ */
+function onEdit(e) {
+  try {
+    var nome = e && e.range ? e.range.getSheet().getName() : '';
+    if (ABAS_DA_CONFIG_.indexOf(nome) < 0) return;
+    // hora + sufixo aleatório: duas edições no mesmo milissegundo também mudam a versão
+    PropertiesService.getDocumentProperties().setProperty(PROP_CONFIG_V_, Date.now() + '-' + Math.random().toString(36).slice(2, 8));
+  } catch (err) {
+    // nunca atrapalha a edição na planilha
   }
 }
 
 /** As únicas ações que a API executa. */
 var ACOES_ = {
-  obterDados: function () {
-    var dados = obterDados_();
+  obterDados: function (req) {
+    var dados = obterDados_(req.forcar === true);
     dados.ok = true;
     return dados;
   },
   salvarDados: function (req) {
     var limpo = comMensagem_(function () { return validarDados_(req.dados); });
-    return { ok: true, atualizadoEm: salvarDados_(limpo) };
+    var r = salvarDados_(limpo);
+    return { ok: true, atualizadoEm: r.atualizadoEm, fotoMes: r.fotoMes };
   },
   obterTaxasPadraoVisa: function () {
     return { ok: true, taxas: obterTaxasPadraoVisa_() };
@@ -311,14 +387,110 @@ function iguais_(a, b) {
   return dif === 0;
 }
 
+/** Roda fn com o lock do script. Se o lock já está pego neste pedido, só roda (não pega de novo). */
 function comLock_(fn) {
+  if (PEDIDO_ && PEDIDO_.travado) return fn();
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(ESPERA_LOCK_MS_)) throw erroApi_('A planilha está ocupada. Tente de novo em alguns segundos.');
+  if (PEDIDO_) PEDIDO_.travado = true;
   try {
     return fn();
   } finally {
+    if (PEDIDO_) PEDIDO_.travado = false;
     lock.releaseLock();
   }
+}
+
+// ============================================================
+// Cache dos dados de configuração (gastos, ajustes, cartões) — CacheService, 6 h
+// ============================================================
+
+function cacheDoScript_() {
+  try { return CacheService.getScriptCache(); } catch (e) { return null; }
+}
+
+/** Dados do cache, ou null (sem cache, configV diferente, ou defeituoso). */
+function lerCacheDados_() {
+  var c = cacheDoScript_();
+  if (!c) return null;
+  try {
+    var s = c.get(CHAVE_CACHE_DADOS_);
+    if (!s) return null;
+    var o = JSON.parse(s);
+    if (!o || o.configV !== (propsDoPedido_()[PROP_CONFIG_V_] || '') || !o.dados) return null;
+    return o.dados;
+  } catch (e) {
+    return null;
+  }
+}
+
+function gravarCacheDados_(dados) {
+  var c = cacheDoScript_();
+  if (!c) return;
+  try {
+    var s = JSON.stringify({ configV: propsDoPedido_()[PROP_CONFIG_V_] || '', dados: dados });
+    if (s.length > CACHE_MAX_LETRAS_) { c.remove(CHAVE_CACHE_DADOS_); return; } // grande demais: lê a planilha
+    c.put(CHAVE_CACHE_DADOS_, s, CACHE_VALIDADE_S_);
+  } catch (e) {
+    // sem cache: segue lendo a planilha
+  }
+}
+
+function apagarCacheDados_() {
+  var c = cacheDoScript_();
+  if (c) { try { c.remove(CHAVE_CACHE_DADOS_); } catch (e) { /* ignora */ } }
+}
+
+/**
+ * Gastos, ajustes e cartões (e urlPlanilha, parametrosAusentes): do cache, sem tocar na planilha;
+ * sem cache (ou forcar): lê a planilha COM lock (as abas são apagadas e regravadas no salvarDados) e repõe o cache.
+ */
+function dadosDaConfig_(forcar) {
+  if (!forcar) {
+    var c = lerCacheDados_();
+    if (c) return c;
+  }
+  return comLock_(function () {
+    var d = lerDadosDaPlanilha_();
+    gravarCacheDados_(d);
+    return d;
+  });
+}
+
+/** Leitura completa das abas Gastos, Parâmetros e Taxas. Quem chama segura o lock. */
+function lerDadosDaPlanilha_() {
+  var ausentes = [];
+  var d = {
+    gastos: gastosDasLinhas_(lerCorpo_(aba_(ABA_GASTOS_), CAB_GASTOS_.length)),
+    parametros: parametrosDasLinhas_(lerCorpo_(aba_(ABA_PARAMETROS_), CAB_PARAMETROS_.length), ausentes),
+    parametrosAusentes: null,
+    cartoes: aba_(ABA_TAXAS_) ? lerCartoes_(SpreadsheetApp.getActiveSpreadsheet()) : [],
+    urlPlanilha: SpreadsheetApp.getActiveSpreadsheet().getUrl()
+  };
+  d.parametrosAusentes = ausentes.filter(function (k) { return PARAMETROS_OPCIONAIS_.indexOf(k) >= 0; });
+  return d;
+}
+
+/** Totais de hoje (centavos e horas do mês) a partir dos dados de configuração. */
+function totaisDosDados_(d) {
+  var soma = function (tipo) {
+    return d.gastos.reduce(function (t, g) { return t + (g.tipo === tipo && typeof g.valor === 'number' ? g.valor : 0); }, 0);
+  };
+  var p = d.parametros;
+  return {
+    oficinaC: Math.round(soma('Oficina') * 100),
+    casaC: Math.round(soma('Casa') * 100),
+    horas: Math.round(p.horasCobradasPorDia * p.diasPorSemana * 52 / 12 * 10000) / 10000
+  };
+}
+
+function mesmosTotais_(a, b) {
+  return !!a && !!b && a.oficinaC === b.oficinaC && a.casaC === b.casaC && a.horas === b.horas;
+}
+
+/** Mês corrente no fuso do script ("aaaa-mm"). */
+function mesCorrente_() {
+  return mesDe_(hojeTexto_(Date.now()));
 }
 
 // ============================================================
@@ -402,6 +574,22 @@ function testarApi() {
   r = pedir('obterTaxasPadraoVisa', {});
   conferir(r.ok === true && r.taxas && r.taxas.p5 === 7.57, 'obterTaxasPadraoVisa devolve as taxas', r);
 
+  // ---- Desempenho: esquema, cache (sem apagar nenhuma aba da planilha real) ----
+  conferir(lerPropsDoc_()[PROP_ESQUEMA_] === ESQUEMA_VERSAO_, 'versão do esquema gravada: configurarPlanilha_ não roda mais a cada pedido', null);
+  conferir(lerCacheDados_() !== null, 'salvarDados deixou o cache preenchido', null);
+  var doCache = pedir('obterDados', {});
+  var daPlanilha = pedir('obterDados', { forcar: true });
+  var semData = function (o) { return json({ g: o.gastos, p: o.parametros, c: o.cartoes, a: o.parametrosAusentes, u: o.urlPlanilha }); };
+  conferir(doCache.ok && daPlanilha.ok && semData(doCache) === semData(daPlanilha), 'cache = leitura da planilha (obterDados com forcar)', [doCache, daPlanilha]);
+  var configV = lerPropsDoc_()[PROP_CONFIG_V_] || null;
+  PropertiesService.getDocumentProperties().setProperty(PROP_CONFIG_V_, 'testarApi-' + Date.now()); // como o onEdit faz
+  conferir(lerCacheDados_() === null, 'edição à mão (configV nova) faz o cache deixar de valer', null);
+  r = pedir('obterDados', {});
+  conferir(r.ok === true && lerCacheDados_() !== null && semData(r) === semData(daPlanilha), 'obterDados sem cache lê a planilha e repõe o cache', r);
+  if (configV === null) PropertiesService.getDocumentProperties().deleteProperty(PROP_CONFIG_V_);
+  else PropertiesService.getDocumentProperties().setProperty(PROP_CONFIG_V_, configV);
+  apagarCacheDados_();
+
   // ---- Orçamentos (registro de teste, apagado no fim) ----
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var mesDeTeste = '2000-01';
@@ -466,7 +654,7 @@ function orcamentoDeTeste_(parametros, cartoes) {
 }
 
 function contarLinhasDoId_(id) {
-  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABA_ORCAMENTOS_);
+  var sh = aba_(ABA_ORCAMENTOS_);
   return lerCorpo_(sh, 1).filter(function (l) { return String(l[0]).trim() === id; }).length;
 }
 
@@ -504,31 +692,37 @@ function gerarToken_() {
 // Ações (internas): gastos, ajustes e cartões
 // ============================================================
 
-function obterDados_() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var ausentes = [];
+/**
+ * Gastos, ajustes e cartões. Com cache: sem lock e sem tocar na planilha. forcar (link "Recarregar da planilha"):
+ * lê a planilha com o lock e repõe o cache. atualizadoEm vem das propriedades (lidas no começo do pedido).
+ */
+function obterDados_(forcar) {
+  var d = dadosDaConfig_(forcar);
   return {
-    gastos: lerGastos_(ss),
-    parametros: lerParametros_(ss, ausentes),
-    parametrosAusentes: ausentes.filter(function (k) { return PARAMETROS_OPCIONAIS_.indexOf(k) >= 0; }),
-    cartoes: lerCartoes_(ss),
-    atualizadoEm: PropertiesService.getDocumentProperties().getProperty(PROP_ATUALIZADO_EM_),
-    urlPlanilha: ss.getUrl()
+    gastos: d.gastos,
+    parametros: d.parametros,
+    parametrosAusentes: d.parametrosAusentes || [],
+    cartoes: d.cartoes,
+    atualizadoEm: propsDoPedido_()[PROP_ATUALIZADO_EM_] || null,
+    urlPlanilha: d.urlPlanilha
   };
 }
 
 /**
  * Regrava SÓ as abas Gastos, Parâmetros e Taxas com dados JÁ validados (nunca Orçamentos nem Meses).
  * Parâmetro opcional ausente (tela antiga) → mantém o valor que já está na aba. Quem chama segura o lock.
- * @return atualizadoEm (ISO)
+ * Depois de gravar: repõe o cache (montado das MESMAS linhas gravadas, com a regra da leitura) e, se os totais do
+ * mês mudaram, atualiza a linha do mês corrente na aba Meses (no mesmo lock).
+ * @return {atualizadoEm (ISO), fotoMes (foto gravada ou null)}
  */
 function salvarDados_(limpo) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var antes = lerCacheDados_(); // para saber se os totais do mês mudaram (sem cache: confere a aba Meses)
 
   var linhasGastos = limpo.gastos.map(function (g) {
     return [g.tipo, g.descricao, g.valor === null ? '' : g.valor];
   });
-  regravarCorpo_(ss.getSheetByName(ABA_GASTOS_), CAB_GASTOS_.length, linhasGastos);
+  regravarCorpo_(aba_(ABA_GASTOS_), CAB_GASTOS_.length, linhasGastos);
 
   var faltando = PARAMETROS_OPCIONAIS_.filter(function (k) { return limpo.parametros[k] === undefined; });
   if (faltando.length) {
@@ -538,17 +732,45 @@ function salvarDados_(limpo) {
       if (ausentesNaAba.indexOf(k) < 0) limpo.parametros[k] = naAba[k]; // senão: continua sem a linha (migração depois)
     });
   }
-  var shParametros = ss.getSheetByName(ABA_PARAMETROS_);
+  var shParametros = aba_(ABA_PARAMETROS_);
   shParametros.getRange('B:B').setNumberFormat('@');
-  regravarCorpo_(shParametros, CAB_PARAMETROS_.length, linhasParametros_(limpo.parametros));
+  var linhasParam = linhasParametros_(limpo.parametros);
+  regravarCorpo_(shParametros, CAB_PARAMETROS_.length, linhasParam);
 
-  regravarCorpo_(ss.getSheetByName(ABA_TAXAS_), CAB_TAXAS_.length, linhasCartoes_(limpo.cartoes));
+  var linhasTaxas = linhasCartoes_(limpo.cartoes);
+  regravarCorpo_(aba_(ABA_TAXAS_), CAB_TAXAS_.length, linhasTaxas);
 
   SpreadsheetApp.flush();
 
   var atualizadoEm = new Date().toISOString();
   PropertiesService.getDocumentProperties().setProperty(PROP_ATUALIZADO_EM_, atualizadoEm);
-  return atualizadoEm;
+  if (PEDIDO_) PEDIDO_.props[PROP_ATUALIZADO_EM_] = atualizadoEm;
+
+  // Cache = o que a leitura devolveria (mesmas linhas, mesmas regras).
+  var ausentes = [];
+  var dados = {
+    gastos: gastosDasLinhas_(linhasGastos),
+    parametros: parametrosDasLinhas_(linhasParam, ausentes),
+    parametrosAusentes: null,
+    cartoes: cartoesDasLinhas_(linhasTaxas),
+    urlPlanilha: antes && antes.urlPlanilha ? antes.urlPlanilha : ss.getUrl()
+  };
+  dados.parametrosAusentes = ausentes.filter(function (k) { return PARAMETROS_OPCIONAIS_.indexOf(k) >= 0; });
+  gravarCacheDados_(dados);
+
+  // Mês corrente acompanha os gastos (antes era uma 2ª chamada da tela: usarGastosDeHojeNoMes).
+  var hoje = totaisDosDados_(dados);
+  var fotoMes = null;
+  if (!antes || !mesmosTotais_(totaisDosDados_(antes), hoje)) fotoMes = atualizarFotoDoMesCorrente_(hoje);
+  return { atualizadoEm: atualizadoEm, fotoMes: fotoMes };
+}
+
+/** Grava a linha do mês corrente com os totais de hoje, se ela não existe ou está diferente. Quem chama segura o lock. */
+function atualizarFotoDoMesCorrente_(hoje) {
+  var mes = mesCorrente_();
+  var foto = lerMeses_()[mes] || null;
+  if (mesmosTotais_(foto, hoje)) return null;
+  return gravarFotoDoMes_(mes, ORIGEM_GASTOS_DE_HOJE_, true, hoje);
 }
 
 /** Taxas Visa/Master padrão da InfinitePay, para o botão "Preencher com as taxas padrão". */
@@ -563,42 +785,54 @@ function obterTaxasPadraoVisa_() {
 // ============================================================
 
 /**
- * Lista do mês: resumos (colunas A–U) dos orçamentos FEITOS ou FECHADOS no mês pedido e no anterior
- * (o anterior serve para a comparação). O JSON não é devolvido, mas é conferido: linha com JSON
- * corrompido é ignorada e registrada no log.
+ * Lista do mês, SEM lock: resumos (colunas A–U) dos orçamentos FEITOS ou FECHADOS no mês pedido e no anterior
+ * (o anterior serve para a comparação). O JSON não é devolvido, mas o das linhas do MÊS PEDIDO é conferido
+ * (linha com JSON corrompido é ignorada e registrada no log), lido em trechos de linhas seguidas.
+ * Leituras: Orçamentos A–U (1) + trechos do mês (normalmente 1–2) + Meses (1); gastos de hoje vêm do cache.
+ * Mês corrente com a foto diferente dos gastos de hoje (ou sem foto): grava a linha ali mesmo (lock só para isso).
+ * Leitura sem lock no meio de uma exclusão pode pular ou repetir uma linha por um instante: ID repetido entra uma vez só.
  */
 function listarOrcamentos_(mes) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sh = ss.getSheetByName(ABA_ORCAMENTOS_);
+  var sh = aba_(ABA_ORCAMENTOS_);
   var anterior = mesAnterior_(mes);
   var linhas = lerCorpo_(sh, COL_ORC_.motivo);
   var escolhidas = [];
+  var vistos = {};
   var primeiroMes = null;
   linhas.forEach(function (l, i) {
     var r = resumoDaLinha_(l);
-    if (!r) return;
+    if (!r || vistos[r.id]) return; // sem ID válido, ou ID repetido: entra uma vez só
+    vistos[r.id] = true;
     var mesCriado = mesDe_(r.criadoEm);
     if (mesCriado && (!primeiroMes || mesCriado < primeiroMes)) primeiroMes = mesCriado;
     var mesFechado = r.situacao === 'Fechado' ? mesDe_(r.dataFechamento) : '';
     if (mesCriado === mes || mesCriado === anterior || mesFechado === mes || mesFechado === anterior) {
-      escolhidas.push({ linha: i + 2, resumo: r });
+      escolhidas.push({ linha: i + 2, resumo: r, doMes: mesCriado === mes || mesFechado === mes });
     }
   });
 
-  // Confere o JSON só das linhas escolhidas (um único bloco de leitura).
-  var orcamentos = [];
-  if (escolhidas.length) {
-    var primeira = escolhidas[0].linha;
-    var ultima = escolhidas[escolhidas.length - 1].linha;
-    var jsons = sh.getRange(primeira, COL_ORC_.dados, ultima - primeira + 1, 1).getValues();
+  // Confere o JSON só das linhas do mês pedido, uma leitura (A..V) por trecho de linhas seguidas.
+  var defeito = {};
+  trechosDeLinhas_(escolhidas.filter(function (e) { return e.doMes; }).map(function (e) { return e.linha; })).forEach(function (t) {
+    var vals = sh.getRange(t.de, 1, t.ate - t.de + 1, COL_ORC_.dados).getValues();
     escolhidas.forEach(function (e) {
-      if (lerJsonOrcamento_(jsons[e.linha - primeira][0], e.linha, e.resumo.id)) orcamentos.push(e.resumo);
+      if (!e.doMes || e.linha < t.de || e.linha > t.ate) return;
+      var l = vals[e.linha - t.de];
+      if (String(l[0]).trim() !== e.resumo.id) return; // a linha mudou de lugar (exclusão no meio): não descarta
+      if (!lerJsonOrcamento_(l[COL_ORC_.dados - 1], e.linha, e.resumo.id)) defeito[e.resumo.id] = true;
     });
-  }
+  });
+  var orcamentos = escolhidas.filter(function (e) { return !defeito[e.resumo.id]; }).map(function (e) { return e.resumo; });
 
+  var fotos = lerMeses_();
+  var hoje = totaisDosDados_(dadosDaConfig_());
+  var fotoMes = fotos[mes] || null;
+  if (mes === mesCorrente_() && !mesmosTotais_(fotoMes, hoje)) {
+    fotoMes = comLock_(function () { return gravarFotoDoMes_(mes, ORIGEM_GASTOS_DE_HOJE_, true, hoje); });
+  }
   var meses = {};
-  meses[mes] = lerFotoDoMes_(ss, mes);
-  meses[anterior] = lerFotoDoMes_(ss, anterior);
+  meses[mes] = fotoMes;
+  meses[anterior] = fotos[anterior] || null;
   return {
     ok: true,
     mes: mes,
@@ -606,14 +840,35 @@ function listarOrcamentos_(mes) {
     primeiroMes: primeiroMes,
     orcamentos: orcamentos,
     meses: meses,
-    gastosHoje: gastosDeHoje_(ss)
+    gastosHoje: hoje
   };
 }
 
+/** [5, 6, 7, 12, 13] → [{de:5, ate:7}, {de:12, ate:13}] (números de linha em ordem crescente). */
+function trechosDeLinhas_(numeros) {
+  var t = [];
+  numeros.slice().sort(function (a, b) { return a - b; }).forEach(function (n) {
+    var u = t[t.length - 1];
+    if (u && n === u.ate + 1) u.ate = n; else if (!u || n > u.ate) t.push({ de: n, ate: n });
+  });
+  return t;
+}
+
+/** SEM lock. Se a linha achada não for a do ID (exclusão no meio da leitura) ou não der para ler, confere com o lock. */
 function obterOrcamento_(id) {
-  var reg = lerRegistro_(id);
+  var reg = lerRegistroSemLock_(id);
   if (!reg) return { ok: false, excluido: true, erro: MSG_EXCLUIDO_ };
   return { ok: true, orcamento: publicoDoRegistro_(reg) };
+}
+
+function lerRegistroSemLock_(id) {
+  var sh = aba_(ABA_ORCAMENTOS_);
+  var linha = acharLinhaOrcamento_(sh, id);
+  if (linha) {
+    var reg = lerRegistroDaLinha_(sh, linha);
+    if (reg && reg.id === id) return reg;
+  }
+  return comLock_(function () { return lerRegistro_(id); });
 }
 
 /**
@@ -623,7 +878,7 @@ function obterOrcamento_(id) {
  * Em Fechado/Não fechou só cliente e telefone mudam (a conta e a foto ficam).
  */
 function salvarOrcamento_(pedido) {
-  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABA_ORCAMENTOS_);
+  var sh = aba_(ABA_ORCAMENTOS_);
   var linha = acharLinhaOrcamento_(sh, pedido.id);
   var agora = Date.now();
 
@@ -667,7 +922,7 @@ function salvarOrcamento_(pedido) {
  * O 1º fechamento de um mês grava a foto dos gastos daquele mês na aba Meses.
  */
 function mudarSituacao_(p) {
-  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABA_ORCAMENTOS_);
+  var sh = aba_(ABA_ORCAMENTOS_);
   var linha = acharLinhaOrcamento_(sh, p.id);
   if (!linha) return { ok: false, excluido: true, erro: MSG_EXCLUIDO_ };
   var reg = lerRegistroDaLinha_(sh, linha);
@@ -681,7 +936,7 @@ function mudarSituacao_(p) {
     reg.dados.fechamento = p.fechamento;
     reg.dados.motivo = '';
     var mes = mesDe_(p.fechamento.data);
-    if (!lerFotoDoMes_(SpreadsheetApp.getActiveSpreadsheet(), mes)) {
+    if (!lerMeses_()[mes]) {
       gravarFotoDoMes_(mes, ORIGEM_PRIMEIRO_FECHAMENTO_, false);
       mesGravado = mes;
     }
@@ -700,7 +955,7 @@ function mudarSituacao_(p) {
 
 /** Apaga a linha. ID que já não existe → ok (nada a fazer). Base diferente → conflito. */
 function excluirOrcamento_(id, base) {
-  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABA_ORCAMENTOS_);
+  var sh = aba_(ABA_ORCAMENTOS_);
   var linha = acharLinhaOrcamento_(sh, id);
   if (!linha) return { ok: true, jaExcluido: true };
   var atual = textoCelula_(sh.getRange(linha, COL_ORC_.atualizadoEm).getValue());
@@ -718,27 +973,20 @@ function conflito_(reg) {
 
 // ---------- Foto dos gastos por mês (aba Meses) ----------
 
-/** Totais de hoje (abas Gastos e Parâmetros), em centavos e horas. */
-function gastosDeHoje_(ss) {
-  var gastos = lerGastos_(ss);
-  var p = lerParametros_(ss, []);
-  var soma = function (tipo) {
-    return gastos.reduce(function (t, g) { return t + (g.tipo === tipo && typeof g.valor === 'number' ? g.valor : 0); }, 0);
-  };
-  return {
-    oficinaC: Math.round(soma('Oficina') * 100),
-    casaC: Math.round(soma('Casa') * 100),
-    horas: Math.round(p.horasCobradasPorDia * p.diasPorSemana * 52 / 12 * 10000) / 10000
-  };
+/** Totais de hoje (centavos e horas do mês), dos dados de configuração (cache; sem cache: leitura com lock). */
+function gastosDeHoje_() {
+  return totaisDosDados_(dadosDaConfig_());
 }
 
-/** Grava (ou, com sobrescrever, troca) a linha do mês com os gastos de hoje. @return a foto gravada */
-function gravarFotoDoMes_(mes, origem, sobrescrever) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sh = ss.getSheetByName(ABA_MESES_);
+/**
+ * Grava (ou, com sobrescrever, troca) a linha do mês com os gastos de hoje (ou com "hoje", se vier). Quem chama segura o lock.
+ * @return a foto gravada
+ */
+function gravarFotoDoMes_(mes, origem, sobrescrever, hoje) {
+  var sh = aba_(ABA_MESES_);
   var linha = acharLinhaMes_(sh, mes);
-  if (linha && !sobrescrever) return lerFotoDoMes_(ss, mes);
-  var hoje = gastosDeHoje_(ss);
+  if (linha && !sobrescrever) return lerMeses_()[mes] || null;
+  hoje = hoje || gastosDeHoje_();
   var gravadoEm = dataHoraTexto_(Date.now()).slice(0, 16);
   var valores = [mes, hoje.oficinaC / 100, hoje.casaC / 100, hoje.horas, gravadoEm, origem];
   var destino = linha || Math.max(sh.getLastRow(), 1) + 1;
@@ -748,20 +996,28 @@ function gravarFotoDoMes_(mes, origem, sobrescrever) {
 
 /** Foto do mês ou null (sem linha, ou linha inválida). Leitura tolerante. */
 function lerFotoDoMes_(ss, mes) {
-  var sh = ss.getSheetByName(ABA_MESES_);
-  var linha = acharLinhaMes_(sh, mes);
-  if (!linha) return null;
-  var l = sh.getRange(linha, 1, 1, CAB_MESES_.length).getValues()[0];
-  var oficina = lerNumeroBR_(l[1]);
-  var casa = lerNumeroBR_(l[2]);
-  var horas = lerNumeroBR_(l[3]);
-  if (!dentroDoLimite_(oficina, LIMITE_VALOR_FOTO_) || !dentroDoLimite_(casa, LIMITE_VALOR_FOTO_) ||
-      !dentroDoLimite_(horas, { min: 0, max: MAX_HORAS_ })) {
-    avisoNoLog_('Meses: linha ' + linha + ' (' + mes + ') ignorada: valores inválidos.');
-    return null;
-  }
-  return { mes: mes, oficinaC: Math.round(oficina * 100), casaC: Math.round(casa * 100), horas: horas,
-    gravadoEm: textoCelula_(l[4]), origem: textoCelula_(l[5]) };
+  return lerMeses_()[mes] || null;
+}
+
+/** A aba Meses inteira numa leitura só → { "aaaa-mm": foto }. Linha inválida fica de fora (e vai para o log). */
+function lerMeses_() {
+  var fotos = {};
+  lerCorpo_(aba_(ABA_MESES_), CAB_MESES_.length).forEach(function (l, i) {
+    var mes = textoMes_(l[0]);
+    if (!mes || fotos.hasOwnProperty(mes)) return; // mês repetido: vale a 1ª linha (a que acharLinhaMes_ grava)
+    var oficina = lerNumeroBR_(l[1]);
+    var casa = lerNumeroBR_(l[2]);
+    var horas = lerNumeroBR_(l[3]);
+    if (!dentroDoLimite_(oficina, LIMITE_VALOR_FOTO_) || !dentroDoLimite_(casa, LIMITE_VALOR_FOTO_) ||
+        !dentroDoLimite_(horas, { min: 0, max: MAX_HORAS_ })) {
+      avisoNoLog_('Meses: linha ' + (i + 2) + ' (' + mes + ') ignorada: valores inválidos.');
+      fotos[mes] = null;
+      return;
+    }
+    fotos[mes] = { mes: mes, oficinaC: Math.round(oficina * 100), casaC: Math.round(casa * 100), horas: horas,
+      gravadoEm: textoCelula_(l[4]), origem: textoCelula_(l[5]) };
+  });
+  return fotos;
 }
 var LIMITE_VALOR_FOTO_ = { min: 0, max: MAX_VALOR_ * MAX_GASTOS_ };
 
@@ -786,7 +1042,7 @@ function acharLinhaOrcamento_(sh, id) {
 }
 
 function lerRegistro_(id) {
-  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABA_ORCAMENTOS_);
+  var sh = aba_(ABA_ORCAMENTOS_);
   var linha = acharLinhaOrcamento_(sh, id);
   if (!linha) return null;
   var reg = lerRegistroDaLinha_(sh, linha);
@@ -1398,7 +1654,11 @@ function cartoesPadrao_() {
 // ============================================================
 
 function lerGastos_(ss) {
-  var valores = lerCorpo_(ss.getSheetByName(ABA_GASTOS_), CAB_GASTOS_.length);
+  return gastosDasLinhas_(lerCorpo_(ss.getSheetByName(ABA_GASTOS_), CAB_GASTOS_.length));
+}
+
+/** Linhas da aba Gastos (como estão na planilha) → gastos. Mesma regra da leitura (usada também para montar o cache). */
+function gastosDasLinhas_(valores) {
   var gastos = [];
   valores.forEach(function (l) {
     var tipoTxt = String(l[0]).trim();
@@ -1418,10 +1678,14 @@ function lerGastos_(ss) {
  * @param ausentes (opcional) lista que recebe as chaves que NÃO têm linha na aba (para a migração do desconto padrão)
  */
 function lerParametros_(ss, ausentes) {
+  return parametrosDasLinhas_(lerCorpo_(ss.getSheetByName(ABA_PARAMETROS_), CAB_PARAMETROS_.length), ausentes);
+}
+
+/** Linhas da aba Parâmetros → parâmetros (mesma regra da leitura; usada também para montar o cache). */
+function parametrosDasLinhas_(valores, ausentes) {
   var padrao = parametrosPadrao_();
   var p = parametrosPadrao_();
   var vistos = {};
-  var valores = lerCorpo_(ss.getSheetByName(ABA_PARAMETROS_), CAB_PARAMETROS_.length);
   valores.forEach(function (l) {
     var chave = String(l[0]).trim();
     if (!padrao.hasOwnProperty(chave)) return;
@@ -1451,7 +1715,12 @@ function lerCartoes_(ss) {
   if (!sh) return [];
   if (ehFormatoAntigoTaxas_(sh)) return limparCartoesLidos_(converterTaxasAntigas_(lerCorpo_(sh, 6)));
 
-  var brutos = lerCorpo_(sh, CAB_TAXAS_.length).map(function (l) {
+  return cartoesDasLinhas_(lerCorpo_(sh, CAB_TAXAS_.length));
+}
+
+/** Linhas da aba Taxas (formato novo) → cartões (mesma regra da leitura; usada também para montar o cache). */
+function cartoesDasLinhas_(linhas) {
+  var brutos = linhas.map(function (l) {
     var cartao = { nome: String(l[0]) };
     CAMPOS_TAXA_.forEach(function (campo, i) { cartao[campo] = l[1 + i]; });
     return cartao;

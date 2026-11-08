@@ -112,13 +112,13 @@ Para começar outro, toque em **"+ Novo orçamento"**, no topo do card **Serviç
 **Guardar**
 - No card **Serviço** você pode pôr o **Cliente** e o **Telefone** (os dois são opcionais e **nunca** vão para o WhatsApp).
   - O telefone se arruma sozinho enquanto você digita: **(11) 98888-7777** (celular) ou **(11) 3333-4444** (fixo). Pode colar em qualquer formato (com +55, traços, parênteses). Só aceita números; número incompleto fica como está.
-- Toque em **Salvar** (ou só em **Copiar para WhatsApp**, que já salva). Aparece **"Orçamento salvo ✓"** e, no topo do card, **"Salvo · Aberto · nome do cliente"**.
+- Toque em **Salvar** (ou só em **Copiar para WhatsApp**, que já salva). Aparece **"Salvando…"** na hora (você pode continuar mexendo) e, quando a planilha confirma, **"Orçamento salvo ✓"** e, no topo do card, **"Salvo · Aberto · nome do cliente"**.
 - Mexeu no orçamento depois? Salve de novo: ele **atualiza o mesmo** orçamento, não cria outro. **"+ Novo orçamento"** começa um do zero.
 - O orçamento guarda os **valores daquele dia** (seus gastos, taxas e ajustes). Se você mudar os gastos depois, ele não muda sozinho: aparece **"Valores de 03/11/2026"** e o link **"Recalcular com os valores de hoje"**. Recalcular só muda na tela; para guardar, toque em **Salvar**.
 
 **O cliente fechou? Não fechou?**
 - Toque em **O cliente fechou?** (se o orçamento ainda não foi salvo, o app salva antes):
-  - **Fechou:** escolha **como o cliente vai pagar** (Pix/dinheiro, Débito ou Cartão em Nx), confira o **valor combinado** (dá para mudar, se você deu um desconto na hora) e a **data**. O app mostra a **sobra extra** daquele fechamento, já tirando a taxa da maquininha e o imposto. Toque em **Confirmar fechamento**.
+  - **Fechou:** escolha **como o cliente vai pagar** (Pix/dinheiro, Débito ou Cartão em Nx), confira o **valor combinado** (dá para mudar, se você deu um desconto na hora) e a **data**. O app mostra a **sobra extra** daquele fechamento, já tirando a taxa da maquininha e o imposto. Toque em **Confirmar fechamento**: o app volta na hora com o resumo do fechamento e o aviso **"Fechando…"**; quando a planilha confirma, aparece **"Orçamento fechado ✓"**. Se não der certo (sem internet, por exemplo), o orçamento volta a ficar em aberto e aparece **"Não foi fechado. Tente de novo."**
   - **Não fechou:** na mesma tela, toque em **"O cliente não fechou"** e, se quiser, escolha o motivo ("Achou caro", "Vai pensar"…).
 - **Orçamento fechado:** no lugar dos preços aparece o resumo **"Fechado em 08/11 · Cartão em 5x · Cliente paga R$ 6.648,27"** e o **"Fica para você"** com a forma e o valor do fechamento. Botões: **Copiar para WhatsApp**, **Mudar situação** (Voltar para Aberto ou Excluir) e **Duplicar**.
 - **Não fechou:** aparece **"Não fechou · 08/11 · Achou caro"** e os botões **Voltar para Aberto** e **Duplicar**.
@@ -126,7 +126,7 @@ Para começar outro, toque em **"+ Novo orçamento"**, no topo do card **Serviç
 - **Excluir** (em Mudar situação ou na lista de Resultados) some na hora e mostra **DESFAZER** por 6 segundos.
 
 **Aba Resultados**
-- Toque em **Resultados**, no topo. Use **‹ ›** para trocar de mês.
+- Toque em **Resultados**, no topo. Use **‹ ›** para trocar de mês. A última lista que você viu aparece **na hora**, com "Atualizando…" embaixo, e se atualiza sozinha em seguida.
 - **O card do mês** ("Novembro até agora · dia 8 de 30"; nos meses que passaram, "Resultado de outubro"): cada orçamento supõe que você vendeu **todas** as horas do mês; aqui é o que aconteceu de verdade.
   - duas barras: **Oficina** (quanto dos gastos da oficina já foi pago; cheia = "✓ paga") e **Sua casa** ("R$ 780,96 de R$ 5.500,00");
   - a frase grande: **"Sobrou R$ X além da casa este mês"** (verde) ou **"Faltam R$ X para cobrir a casa este mês"** (amarelo; no mês atual nunca fica vermelho, porque o mês ainda não acabou). Nos meses que passaram: **"Faltaram R$ X…"**;
@@ -137,6 +137,7 @@ Para começar outro, toque em **"+ Novo orçamento"**, no topo do card **Serviç
   - Um gasto que só começa no mês que vem (ex.: aumento do aluguel)? Lance no **dia 1º**.
   - Um mês passado ficou com os gastos errados? **Engrenagem → Ajustes → Outros ajustes → "Corrigir gastos de um mês passado"**: escolha o mês e toque em **Substituir pelos gastos de hoje** (o app pede confirmação).
 - Embaixo, a **lista** do mês: busque por cliente, telefone ou serviço e filtre por situação. Toque num orçamento para **Abrir**, **Fechou? / Não fechou?** (nos que estão em aberto; nos outros, **Mudar situação**), **Duplicar** ou **Excluir**.
+- Mexeu nos gastos ou ajustes **direto na planilha** e o app ainda mostra o valor antigo? Em **Ajustes**, toque em **"Recarregar da planilha"** (embaixo, discreto).
 - **Não edite as abas "Orçamentos" e "Meses" na planilha.** A planilha avisa se você tentar. Apagar uma linha lá = excluir o orçamento.
 - **Dois aparelhos** (você no celular, alguém no computador): se os dois mexerem no **mesmo** orçamento, quem salvar depois vê **"Esse orçamento foi alterado em outro aparelho."** e escolhe entre **"Ver a versão nova"** ou **"Salvar as minhas como um novo orçamento"**. Nada se perde sem aviso.
 
