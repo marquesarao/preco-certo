@@ -1463,8 +1463,30 @@ function alertaDoPiso(precoC, pisoOficinaC, pisoCasaC, temCasa) {
 function porcentoInteiro(x) { return Math.round(x * 100) + '%'; }
 
 /**
+ * Placa na forma de comparação: sem hífen/espaços, maiúsculas e o 5º caractere da Mercosul (A–J) trocado pelo dígito
+ * da placa antiga (A=0 … J=9): "ABC2B22" e "ABC-2122" → "ABC2122". Fora do padrão (3 letras, número, letra/número,
+ * 2 números) → ''.
+ */
+function placaParaComparar(texto) {
+  var p = String(texto === null || texto === undefined ? '' : texto).toUpperCase().replace(/[\s-]/g, '');
+  if (!/^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(p)) return '';
+  var c = p.charAt(4);
+  if (c >= 'A' && c <= 'J') c = String(c.charCodeAt(0) - 65);
+  return /^[0-9]$/.test(c) ? p.slice(0, 4) + c + p.slice(5) : p;
+}
+
+/** As placas que aparecem num texto (com ou sem hífen), já na forma de comparação. */
+function placasNoTexto(texto) {
+  var re = /(^|[^A-Z0-9])([A-Z]{3}-?[0-9][A-Z0-9][0-9]{2})(?![A-Z0-9])/g, achadas = [], m;
+  var s = String(texto === null || texto === undefined ? '' : texto).toUpperCase();
+  while ((m = re.exec(s))) { var p = placaParaComparar(m[2]); if (p) achadas.push(p); re.lastIndex = m.index + m[0].length; }
+  return achadas;
+}
+
+/**
  * A busca da lista: cliente, serviço (coluna F) e itens (coluna Z: placa, modelo, serviços, parceiros e peças) sem
- * acento/maiúscula; placa com ou sem hífen ("abc1234" acha "ABC-1234"); telefone só pelos números.
+ * acento/maiúscula; placa com ou sem hífen ("abc1234" acha "ABC-1234"); placa antiga e Mercosul são a mesma
+ * ("abc2b22" acha "ABC-2122" e vice-versa); telefone só pelos números.
  */
 function combinaBusca(o, termo) {
   var t = chaveNome(termo);
@@ -1474,6 +1496,8 @@ function combinaBusca(o, termo) {
   var junto = function (x) { return x.replace(/[^a-z0-9]/g, ''); };
   var tj = junto(t);
   if (/[a-z]/.test(tj) && /\d/.test(tj) && textos.some(function (x) { return junto(x).indexOf(tj) >= 0; })) return true;
+  var placa = placaParaComparar(termo);
+  if (placa && [o.servico, o.itens].some(function (x) { return placasNoTexto(x).indexOf(placa) >= 0; })) return true;
   var n = soNumeros(termo);
   return n.length > 0 && n.length === t.replace(/[\s()+.\-]/g, '').length && soNumeros(o.telefone).indexOf(n) >= 0;
 }
@@ -2293,6 +2317,18 @@ function casosDeTeste() {
                           combinaBusca(o, 'retifica'), combinaBusca(o, 'filtro'), combinaBusca(o, 'xyz9999'), combinaBusca(mercosul, 'abc1d23'), combinaBusca(mercosul, 'ABC-1D23'),
                           combinaBusca(antigo, 'gol 2015'), combinaBusca(antigo, 'suspensao'), combinaBusca(o, '98888')],
                  esperado: [true, true, true, true, true, true, true, false, true, true, true, false, true] };
+      } },
+    { id: 'BV2', descricao: 'Busca: placa antiga e Mercosul são a mesma ("abc2b22" acha "ABC-2122" e vice-versa; 5º caractere A–J = 0–9); outra placa não; Mercosul com letra K–Z só acha ela mesma; termo fora do padrão de placa busca como antes',
+      executar: function () {
+        var antiga = { cliente: '', telefone: '', servico: 'ABC-2122 · Gol · Embreagem', itens: 'ABC-2122 · Gol · Embreagem · Disco' };
+        var mercosul = { cliente: '', telefone: '', servico: 'ABC2B22 · Uno', itens: 'ABC2B22 · Uno · Freio' };
+        var mercosulK = { cliente: '', telefone: '', servico: 'XYZ1K23 · Fox', itens: 'XYZ1K23 · Fox' };
+        var antigoSemZ = { cliente: '', telefone: '', servico: 'Troca de óleo ABC2122 Gol' };
+        return { obtido: [combinaBusca(antiga, 'abc2b22'), combinaBusca(antiga, 'ABC 2B22'), combinaBusca(mercosul, 'ABC-2122'), combinaBusca(mercosul, 'abc2122'),
+                          combinaBusca(antiga, 'abc2c22'), combinaBusca(mercosul, 'abc-2222'), combinaBusca(mercosulK, 'xyz1k23'), combinaBusca(mercosulK, 'XYZ-1023'),
+                          combinaBusca(antigoSemZ, 'abc2b22'), combinaBusca(antiga, 'abc2'), combinaBusca(mercosul, 'abc2b'), combinaBusca(antiga, 'gol'),
+                          placaParaComparar('ABC2B22'), placaParaComparar('abc-2122'), placaParaComparar('ABC2J22'), placaParaComparar('ABC12'), placaParaComparar('ABCD123')],
+                 esperado: [true, true, true, true, false, false, true, false, true, true, true, true, 'ABC2122', 'ABC2122', 'ABC2922', '', ''] };
       } },
     { id: 'PL1', descricao: 'Seção 17: placa (maiúsculas, "-" no padrão antigo, Mercosul junto; formato só avisa) e ano (4 números, 1950 até o ano que vem)',
       executar: function () {

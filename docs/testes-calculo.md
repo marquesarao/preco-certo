@@ -14,6 +14,10 @@
 
 ## Resultados (09/11/2026)
 
+**Busca de placa: antiga = Mercosul (só frontend; `sw.js` v16):**
+- **Cálculo:** 152 casos (151 + BV2): "abc2b22" e "ABC 2B22" acham "ABC-2122"; "ABC-2122" e "abc2122" acham "ABC2B22"; "abc2c22" não acha "ABC-2122"; Mercosul com letra K–Z (XYZ1K23) só acha ela mesma; placa no meio do texto de um orçamento antigo também é achada; trecho ("abc2") continua como antes.
+- **Tela:** `teste-placa.js` 2/2 na lista de Resultados (Codigo.gs real na página).
+
 **Esquema 4 (trava de versão `apiVersao` 4 + colunas AA–AG) e o bug do orçamento que reabria sem veículo; o backend mudou e o D10 confere o hash novo; `sw.js` v15:**
 - **Causa do bug (diagnóstico):** a planilha do André rodava o backend de antes da seção 17, que descarta `veiculo` e `servicos` ao salvar. `teste-reabrir.js` reproduz o caso com o backend antigo (6 falhas, iguais ao caso real) e passa 9/9 com o novo (salvar → reabrir pela lista → recarregar → reabrir → salvar de novo; inclui o combustível "Flex", que volta marcado: não há bug no combustível).
 - **Backend:** `check-19.js` 13/13: AA–AG no salvar (2,5 h; "—" no valor fechado sem horas; regravadas ao salvar de novo); orçamento de antes da 17 (veículo vazio, serviço = descrição, horas do modo); migração 3 → 4 e 2 → 4 (uma vez, sob lock, 2 escritas; JSON quebrado → vazio; não roda de novo); listarOrcamentos não lê AA–AG; busca igual; `apiVersao` 4 em toda resposta (GET, recusas, erros); `testarApi` inteiro no simulador. Os outros verificadores conferem `apiVersao` 4 em TODAS as respostas (V1) e mudaram só na largura (33 colunas), no esquema "4" e no número de escritas da migração.
