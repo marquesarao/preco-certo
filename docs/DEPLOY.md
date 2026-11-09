@@ -20,10 +20,10 @@ Dois commits locais: o pacote 16 (% por peça, serviços de terceiros, entrada +
    - **Se aparecer pedido de autorização novo:** **pare** e me avise (não era para aparecer; o `appsscript.json` não mudou).
    - O primeiro pedido depois de colar o código atualiza o esquema (versão 2):
      - acrescenta as colunas **W–Y** na aba Orçamentos ("Terceiros pagos | Entrada | Forma da entrada"), sem mudar nenhuma coluna de lugar;
-     - os parâmetros novos **não** são criados nas planilhas que já existem: os dois impostos e o desconto das peças valem os antigos até a tela nova salvar os Ajustes;
-     - numa planilha **nova**, as linhas `impostoPecasPercentual` e `impostoServicoPercentual` já nascem com 0.
+     - os parâmetros novos **não** são criados nas planilhas que já existem: os dois impostos valem o imposto antigo, e o desconto das peças vale o desconto à vista, até a tela nova salvar os Ajustes;
+     - numa planilha **nova**, as linhas `impostoPecasPercentual` e `impostoServicoPercentual` já nascem com 0 e `descontoPecasPadrao` nasce com 5.
    - A linha `impostoPercentual` continua na aba como **legado**: a tela antiga ainda usa essa chave e a tela nova grava nela o imposto do serviço. Ela não vale quando as linhas novas existem.
-2. **Só depois:** conferência de segredos e **`git push`** (os dois commits juntos; `sw.js` v11 ou o número do adendo).
+2. **Só depois:** conferência de segredos e **`git push`** dos dois commits juntos (`sw.js` v12).
 3. Em cada aparelho: "Nova versão disponível · ATUALIZAR". **Depois de atualizar, confira em Ajustes os dois impostos** (vêm iguais ao imposto antigo) e ajuste com o contador.
    - Até atualizar, o aparelho antigo continua funcionando com um imposto só e sem terceiros nem entrada.
    - Se o aparelho antigo salvar gastos ou ajustes, os impostos novos já salvos **não** mudam.

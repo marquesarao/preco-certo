@@ -14,6 +14,18 @@
 
 ## Resultados (08/11/2026)
 
+**Adendo 16.9 (desconto à vista diferente para serviço e peças, opção b; o backend mudou e o D10 confere o hash FINAL; `sw.js` v12):**
+- **Cálculo:** 89 casos (83 + DS1–DS6), com base 1.500 (serviço 1.000 + peças 500), A 5x = 1.622,8497, A_serv = 1.081,8998, A_peças = 540,9499.
+  - DS1: dServ 5%, dPeças 0% → V = 1.568,7547 → 1.568,75; desconto R$ 54,10; equivalente 3,3333%; ainda pode 4,2367% (R$ 68,75).
+  - DS2: os dois descontos 5% → 1.541,71.
+  - DS3: dois campos + extra 2% → 1.547,12; campo único + extra 2% → 1.509,25 (igual a hoje).
+  - DS4: orçamento antigo igual.
+  - DS5: automático pelos padrões.
+  - DS6: gravado no resultado, no fechamento, na entrada e no WhatsApp.
+- **Backend:** `check-16.js` 19/19 (B7–B9: linha nova = 5; planilha antiga = desconto à vista; tela antiga não sobrescreve; JSON e fechamento guardam os descontos; orçamento antigo continua sem as chaves).
+- **Tela:** `teste-169.js` 20/20 (campo único; dois campos; R$ na tela e no WhatsApp; extra; confirmação ao fechar; fechamento; Ajustes; abertura automática).
+- **Testes antigos:** sem mudança, exceto o texto aprovado do "?" do extra.
+
 **Pacote 16 (% por peça, terceiros, entrada + cartão, imposto separado; o backend mudou e o D10 confere o hash novo; `sw.js` v11):**
 - **Cálculo:** 83 casos (68 + PC1–PC3, TS1–TS4, EN1–EN4, IM1–IM4). Os antigos estão iguais com a planilha "antiga" (um imposto só).
   - PC: A 2×50 @47% = 147 + B 1×300 @20% = 360 → 507; geral 30% → A 130, B 360; "↺" → B segue o geral.

@@ -94,6 +94,11 @@ O à vista é o preço do cartão **com um desconto**. Assim o cliente vê que p
 
 - **Desconto à vista:** já vem com o seu número de sempre (de fábrica, 5%). Mude só se quiser, naquele orçamento.
 - **O cliente pediu mais desconto?** Toque nesse link: aparece o campo **"Desconto extra que vou dar"**. Ele **soma** com o desconto à vista (5% + 2% = 7%).
+- **Desconto diferente nas peças?** Quando a margem da peça é apertada, toque nesse link e aparecem dois campos: **"Desconto no serviço"** (mão de obra e serviços de terceiros) e **"Desconto nas peças"**. Os dois começam com o mesmo número; mude o das peças (ex.: 0%).
+  - Com os dois campos abertos, o **desconto extra vale só para o serviço**.
+  - O à vista mostra o desconto em reais. Ex.: "R$ 1.568,75 · R$ 54,10 de desconto"; no WhatsApp: "(R$ 54,10 de desconto)".
+  - Para voltar a um desconto só, toque em **"Mesmo desconto para tudo"**. Se os dois eram diferentes, o app pergunta antes.
+  - Quer que todo orçamento já venha assim? Em **Ajustes → Outros ajustes → "Desconto padrão nas peças"**, coloque um número diferente do desconto à vista.
 - Junto aparece, **só para você**: **"Se o cliente pedir mais: ainda pode dar até X% (R$ Y) sem perder nada — é só a taxa da maquininha que você não vai pagar."** Até esse ponto, o desconto sai da taxa que você não vai pagar, e não do seu bolso.
 - Passou desse ponto? Aparece em **vermelho** (sempre, mesmo sem tocar no link): **"Com esse desconto você cobra R$ X abaixo do seu preço."** (o seu preço é o à vista sem desconto; a sua sobra cai um pouco menos que isso, porque o imposto também diminui). Você ainda pode dar, mas sabendo quanto fica abaixo.
 - Em **Ver detalhes**: **"Ganho por ter desconto menor que a maquininha"** (ou **"Perda por desconto maior que a maquininha"**) e os limites: **"Abaixo de R$ X a oficina não se paga."** e **"Abaixo de R$ Y não sobra nada para a sua casa."**

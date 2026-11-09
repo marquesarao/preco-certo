@@ -27,7 +27,9 @@ var LIMITES_PARAMETROS = {
   // Seção 16 (opcionais: planilha antiga não tem; os impostos novos nascem do impostoPercentual)
   impostoPecasPercentual:   { min: 0, max: MAX_TAXA },
   impostoServicoPercentual: { min: 0, max: MAX_TAXA },
-  acrescimoTerceirosPadrao: { min: 0, max: MAX_ACRESCIMO }
+  acrescimoTerceirosPadrao: { min: 0, max: MAX_ACRESCIMO },
+  // Seção 16.9 (opcional: planilha antiga não tem; vale o descontoAVistaPadrao)
+  descontoPecasPadrao: { min: 0, max: 99 }
 };
 var LIMITE_TAXA = { min: 0, max: MAX_TAXA };
 var LIMITE_VALOR_GASTO = { min: 0, max: MAX_VALOR };
@@ -46,7 +48,8 @@ var MENSAGENS_PARAMETROS = {
   descontoAVistaPadrao: 'Use um número de 0 a 99.',
   impostoPecasPercentual: 'Use um número de 0 a 99.',
   impostoServicoPercentual: 'Use um número de 0 a 99.',
-  acrescimoTerceirosPadrao: 'Use um número de 0 a 1000.'
+  acrescimoTerceirosPadrao: 'Use um número de 0 a 1000.',
+  descontoPecasPadrao: 'Use um número de 0 a 99.'
 };
 var MENSAGEM_NAO_NUMERO = 'Digite só números. Ex.: 150,50';
 
@@ -423,8 +426,14 @@ function descontoPadraoDoAparelho(texto) {
  * @param res resultado de calcularOrcamento
  * @param parametros {impostoPercentual}
  * @param desconto % oferecido (0 a 99)   @param extra % extra (0 a 99)
+ * @param divisao (seção 16.9; ausente = regra antiga: desconto + extra sobre tudo) {descontoPecas}:
+ *   o extra soma só no SERVIÇO (mão de obra + terceiros); as peças ficam com descontoPecas.
+ *   A_serv = A × serviço_cliente ÷ base; A_peças = A × peças_cliente ÷ base (sem arredondar no meio);
+ *   V = A_serv × (1 − (desconto + extra)/100) + A_peças × (1 − descontoPecas/100).
+ *   Descontos iguais (ou sem peças / sem serviço): a conta é a de sempre, A × (1 − d/100).
+ *   descontoTotal = desconto equivalente = (1 − V exato ÷ A) × 100 quando são diferentes.
  */
-function calcularPrecoComDesconto(res, parametros, desconto, extra) {
+function calcularPrecoComDesconto(res, parametros, desconto, extra, divisao) {
   var impostoPct = typeof res.impostoPct === 'number' ? res.impostoPct : (typeof parametros.impostoPercentual === 'number' ? parametros.impostoPercentual : 0);
   var terceirosPagar = res.terceirosPagar || 0;
   var base = res.aVista.totalExato;
@@ -433,8 +442,25 @@ function calcularPrecoComDesconto(res, parametros, desconto, extra) {
   var d = typeof desconto === 'number' && desconto > 0 ? desconto : 0;
   var x = typeof extra === 'number' && extra > 0 ? extra : 0;
   var total = ancora ? Math.min(LIMITE_DESCONTO.max, d + x) : 0;
-
+  // Seção 16.9: desconto do serviço (com o extra) × desconto das peças
+  var dServ = total;
+  var dPec = total;
+  var iguais = true;
   var precoExato = ancora ? ancora.totalExato * (1 - total / 100) : base;
+  if (ancora && divisao) {
+    var p = typeof divisao.descontoPecas === 'number' && divisao.descontoPecas > 0 ? Math.min(LIMITE_DESCONTO.max, divisao.descontoPecas) : 0;
+    var pecCli = res.pecasCobrar > 0 ? res.pecasCobrar : 0;
+    var servCli = res.maoDeObra + (res.terceirosCobrar || 0);
+    dPec = p;
+    if (!(pecCli > 0)) dPec = dServ;                       // sem peças: só o desconto do serviço
+    else if (!(servCli > 0)) { dServ = dPec; total = dPec; precoExato = ancora.totalExato * (1 - dPec / 100); } // só peças
+    iguais = dServ === dPec;
+    if (!iguais) {
+      var soma = servCli + pecCli;
+      precoExato = ancora.totalExato * servCli / soma * (1 - dServ / 100) + ancora.totalExato * pecCli / soma * (1 - dPec / 100);
+      total = (1 - precoExato / ancora.totalExato) * 100;
+    }
+  }
   var precoCentavos = ancora ? centavos(precoExato) : baseCentavos;
   var maximo = ancora ? (1 - base / ancora.totalExato) * 100 : 0;
   var imposto = (precoCentavos / 100) * impostoPct / 100;
@@ -445,6 +471,10 @@ function calcularPrecoComDesconto(res, parametros, desconto, extra) {
     temAncora: !!ancora,
     ancora: ancora,
     descontoTotal: total,
+    descontoServico: dServ,          // seção 16.9: % do serviço (com o extra)
+    descontoPecas: dPec,             // % das peças
+    descontosIguais: iguais,
+    descontoReaisCentavos: ancora ? ancora.totalCentavos - precoCentavos : 0, // A − V (os valores exibidos)
     precoExato: precoExato,
     precoCentavos: precoCentavos,
     maximo: maximo,
@@ -612,6 +642,12 @@ function descontoPadraoDosParametros(p) {
   return dentroDoLimite(n, LIMITE_DESCONTO) ? n : DESCONTO_PADRAO_DE_FABRICA;
 }
 
+/** Seção 16.9: desconto padrão nas peças; sem a chave (planilha/foto antiga) = o desconto à vista padrão. */
+function descontoPecasPadraoDosParametros(p) {
+  var n = p ? p.descontoPecasPadrao : null;
+  return dentroDoLimite(n, LIMITE_DESCONTO) ? n : descontoPadraoDosParametros(p);
+}
+
 /** Telefone: '' se válido; senão a mensagem. */
 function validarTelefone(t) {
   var s = String(t === null || t === undefined ? '' : t).trim();
@@ -688,6 +724,7 @@ function fotosIguais(a, b) {
       c.parametros.impostoPecasPercentual = imp.pecas;
       c.parametros.impostoServicoPercentual = imp.servico;
       if (typeof c.parametros.acrescimoTerceirosPadrao !== 'number') c.parametros.acrescimoTerceirosPadrao = 0;
+      c.parametros.descontoPecasPadrao = descontoPecasPadraoDosParametros(c.parametros); // 16.9
     }
     return JSON.stringify(ordenado(c));
   }
@@ -725,6 +762,14 @@ function lerEntradaOrcamento(e, parametros) {
     ? e.acrescimoTexto : numeroParaCampo(parametros.acrescimoPecasPadrao, false);
   var descontoTexto = e.descontoTexto !== null && e.descontoTexto !== undefined
     ? e.descontoTexto : numeroParaCampo(descontoPadraoDosParametros(parametros), false);
+  // Seção 16.9: descontoSeparado ausente = orçamento de antes (regra antiga: um desconto só, o extra sobre tudo);
+  // null = automático (dois campos se os padrões dos Ajustes forem diferentes); true/false = escolha dele.
+  var legadoDesconto = e.descontoSeparado === undefined;
+  var descontoSeparado = legadoDesconto ? false
+    : e.descontoSeparado === null ? descontoPecasPadraoDosParametros(parametros) !== descontoPadraoDosParametros(parametros)
+    : e.descontoSeparado === true;
+  var descontoPecasTexto = e.descontoPecasTexto !== null && e.descontoPecasTexto !== undefined
+    ? e.descontoPecasTexto : numeroParaCampo(descontoPecasPadraoDosParametros(parametros), false);
   // % geral das peças (o do campo; inválido = 0, como antes)
   var rGeral = validarNumeroCampo(acrescimoTexto, LIMITE_ACRESCIMO, { vazioPermitido: true, mensagem: MENSAGENS_PARAMETROS.acrescimoPecasPadrao });
   var geralPecas = typeof rGeral.valor === 'number' ? rGeral.valor : 0;
@@ -786,6 +831,10 @@ function lerEntradaOrcamento(e, parametros) {
     formaEntrada: e.formaEntrada === 'debito' ? 'debito' : 'pix',
     parcelasEntrada: typeof e.parcelasEntrada === 'number' ? e.parcelasEntrada : null,
     desconto: campo('orc-desconto', descontoTexto, LIMITE_DESCONTO, MSG_DESCONTO),
+    legadoDesconto: legadoDesconto,
+    descontoSeparado: descontoSeparado,
+    descontoPecas: descontoSeparado ? campo('orc-desconto-pecas', descontoPecasTexto, LIMITE_DESCONTO, MSG_DESCONTO) : null,
+    descontoPecasTexto: descontoPecasTexto,
     extra: campo('orc-extra', e.extraTexto, LIMITE_DESCONTO, MSG_DESCONTO),
     erros: erros,
     acrescimoTexto: acrescimoTexto,
@@ -802,7 +851,10 @@ function calcularComFoto(e, foto) {
   var lido = lerEntradaOrcamento(e, ctx.parametros);
   var bandeira = e.bandeira !== NAO_SEI && acharCartao(ctx.cartoes, e.bandeira) < 0 ? NAO_SEI : (e.bandeira || NAO_SEI);
   var res = calcularOrcamento(lido.entrada, ctx.parametros, ctx.cartoes, bandeira, ctx.precoMinimoHora);
-  var preco = calcularPrecoComDesconto(res, ctx.parametros, lido.desconto, lido.extra);
+  // Seção 16.9 (opção b): só com os DOIS campos abertos (serviço × peças) o extra soma só no serviço e as peças têm o
+  // desconto delas. Campo único (e orçamento de antes): a regra de sempre, desconto + extra sobre o preço todo.
+  var divisao = lido.descontoSeparado ? { descontoPecas: lido.descontoPecas } : undefined;
+  var preco = calcularPrecoComDesconto(res, ctx.parametros, lido.desconto, lido.extra, divisao);
   var ganho = separarGanho(res, preco, ctx.parametros, ctx.minimoOficina, ctx.minimoCasa);
   var pe = parcelasParaEntrada(res, preco);
   var nEntrada = lido.parcelasEntrada !== null && pe.lista.indexOf(lido.parcelasEntrada) >= 0 ? lido.parcelasEntrada : pe.padrao;
@@ -826,6 +878,8 @@ function resultadoParaGravar(c) {
     aVistaBaseC: c.res.aVista.totalCentavos,
     ancora: c.preco.ancora ? op(c.preco.ancora) : null,
     descontoTotal: c.preco.descontoTotal,
+    descontoServico: c.preco.descontoServico, // seção 16.9
+    descontoPecas: c.preco.descontoPecas,
     oferecidoC: c.preco.precoCentavos,
     destaques: c.res.destaques.map(op),
     pagaOficinaC: c.det.pagaOficina,
@@ -963,6 +1017,12 @@ function calcularFechamento(foto, resultado, forma, parcelas, cartao, valorCombi
     estado: c.sobraC >= 0 ? 'verde' : (depoisDaOficina >= 0 ? 'ambar' : 'vermelho')
   };
   if (comEntrada) { f.entradaC = entradaC; f.formaEntrada = formaEntrada; f.taxaEntradaPct = taxaEntradaPct; }
+  // Seção 16.9: os descontos do orçamento ficam gravados no fechamento (orçamento de antes não tem)
+  if (typeof resultado.descontoServico === 'number' && typeof resultado.descontoPecas === 'number') {
+    f.descontoServicoPct = resultado.descontoServico;
+    f.descontoPecasPct = resultado.descontoPecas;
+    f.descontoEquivalentePct = resultado.descontoTotal;
+  }
   return f;
 }
 
@@ -1252,8 +1312,11 @@ function textoWhatsApp(res, parametros, descricao, preco, pecas, extras) {
   var comDesconto = preco && preco.temAncora && preco.descontoTotal > 0;
   // Com âncora, o débito paga o mesmo preço do Pix (DESENHO 15).
   var rotulo = preco && preco.temAncora ? 'À vista (Pix, dinheiro ou débito)' : 'À vista (Pix/dinheiro)';
+  // Seção 16.9: descontos diferentes (serviço × peças) → o desconto em reais (A − V)
+  var emReais = comDesconto && preco.descontosIguais === false;
   linhas.push('💵 ' + rotulo + ': *' + formatarCentavos(aVistaCentavos) + '*' +
-    (comDesconto ? ' — ' + formatarPercentual(preco.descontoTotal) + ' de desconto' : ''));
+    (emReais ? ' (' + formatarCentavos(preco.descontoReaisCentavos) + ' de desconto)'
+      : comDesconto ? ' — ' + formatarPercentual(preco.descontoTotal) + ' de desconto' : ''));
   return linhas.join('\n');
 }
 
@@ -1757,6 +1820,55 @@ function casosDeTeste() {
         var fotoAntiga = JSON.parse(JSON.stringify(s.foto)); fotoAntiga.parametros.impostoPercentual = 6;
         return { obtido: [f.impostoC, calcularFechamento(fotoAntiga, antigo, 'pix', null, NAO_SEI, 150000).impostoC], esperado: [8000, 9000] };
       } },
+    // ---- Seção 16.9: desconto à vista diferente para serviço e peças (base 1.500 = serviço 1.000 + peças 500; A 5x = 1.622,8497) ----
+    { id: 'DS1', descricao: 'dServ 5%, dPeças 0%: A_serv 1.081,8998 · A_peças 540,9499 · V = 1.027,8048 + 540,9499 = 1.568,7547 → 1.568,75; desconto R$ 54,10; equivalente 3,3333%; ainda pode 4,2367% (R$ 68,75)',
+      executar: function () {
+        var p = cenarioDescontos({ descontoSeparado: true, descontoTexto: '5', descontoPecasTexto: '0' }).calc.preco;
+        var A = p.ancora.totalExato;
+        return { obtido: [Math.round(A * 10000), Math.round(A * 1000 / 1500 * 10000), Math.round(A * 500 / 1500 * 10000), Math.round(p.precoExato * 10000), p.precoCentavos, p.descontoReaisCentavos,
+            Math.round(p.descontoTotal * 10000), p.aindaPodePct, p.aindaPodeCentavos, p.descontosIguais, p.descontoServico, p.descontoPecas],
+          esperado: [16228497, 10818998, 5409499, 15687547, 156875, 5410, 33333, 4.2367, 6875, false, 5, 0] };
+      } },
+    { id: 'DS2', descricao: 'dServ = dPeças = 5% (dois campos) → igual à regra atual: 1.541,71; descontos iguais (texto em %)',
+      executar: function () {
+        var p = cenarioDescontos({ descontoSeparado: true, descontoTexto: '5', descontoPecasTexto: '5' }).calc.preco;
+        var antigo = cenarioRegraPreco().calc.preco;
+        return { obtido: [p.precoCentavos, p.descontosIguais, p.descontoTotal, antigo.precoCentavos], esperado: [154171, true, 5, 154171] };
+      } },
+    { id: 'DS3', descricao: 'Extra 2%: dois campos (5% + 2% no serviço, peças 0%) → 1.547,12; campo único 5% + extra 2% (orçamento novo) → 7% sobre tudo = 1.509,25, igual a hoje',
+      executar: function () {
+        var a = cenarioDescontos({ descontoSeparado: true, descontoTexto: '5', descontoPecasTexto: '0', extraTexto: '2' }).calc.preco;
+        var b = cenarioDescontos({ descontoSeparado: false, descontoTexto: '5', extraTexto: '2' }).calc.preco;
+        var A = a.ancora.totalExato;
+        return { obtido: [a.precoCentavos, a.descontoServico, a.descontoPecas, b.precoCentavos, b.descontoServico, b.descontoPecas],
+          esperado: [154712, 7, 0, 150925, 7, 7] };
+      } },
+    { id: 'DS4', descricao: 'Orçamento antigo (sem dPeças) abre igual ao de hoje: 5% → 1.541,71; 5% + extra 2% → 7% sobre tudo = 1.509,25',
+      executar: function () {
+        var a = cenarioRegraPreco().calc.preco;
+        var b = cenarioDescontos({ extraTexto: '2' }).calc.preco; // sem descontoSeparado (legado)
+        return { obtido: [a.precoCentavos, b.precoCentavos, b.descontoTotal, b.descontosIguais], esperado: [154171, 150925, 7, true] };
+      } },
+    { id: 'DS5', descricao: 'Automático: padrões diferentes (à vista 5, peças 0) → já abre com os dois campos (1.568,75); padrões iguais → um campo só (1.541,71); planilha sem a chave nova → peças = o desconto à vista',
+      executar: function () {
+        var a = cenarioDescontos({ descontoSeparado: null }, { descontoPecasPadrao: 0 }).calc;
+        var b = cenarioDescontos({ descontoSeparado: null }, { descontoPecasPadrao: 5 }).calc;
+        var c = cenarioDescontos({ descontoSeparado: null }).calc;
+        return { obtido: [a.lido.descontoSeparado, a.preco.precoCentavos, b.lido.descontoSeparado, b.preco.precoCentavos, c.lido.descontoSeparado, descontoPecasPadraoDosParametros({ descontoAVistaPadrao: 7 })],
+          esperado: [true, 156875, false, 154171, false, 7] };
+      } },
+    { id: 'DS6', descricao: 'Gravado: resultado com dServ/dPeças e o equivalente; fechamento grava os três; entrada usa V (E 500 → f = 500/1.568,75); WhatsApp "(R$ 54,10 de desconto)"; iguais: "— 5% de desconto"',
+      executar: function () {
+        var s = cenarioDescontos({ descontoSeparado: true, descontoTexto: '5', descontoPecasTexto: '0', entradaTexto: '500', formaEntrada: 'pix', parcelasEntrada: 5 });
+        var f = calcularFechamento(s.foto, s.resultado, 'pix', null, NAO_SEI, s.resultado.oferecidoC);
+        var en = s.calc.entradaCartao;
+        var zap = textoWhatsApp(s.calc.res, s.foto.parametros, '', s.calc.preco, []).split('\n').pop();
+        var zapIgual = textoWhatsApp(cenarioRegraPreco().calc.res, s.foto.parametros, '', cenarioRegraPreco().calc.preco, []).split('\n').pop();
+        return { obtido: [s.resultado.descontoServico, s.resultado.descontoPecas, Math.round(s.resultado.descontoTotal * 10000), f.descontoServicoPct, f.descontoPecasPct, Math.round(f.descontoEquivalentePct * 10000),
+            en.restoC, zap, zapIgual],
+          esperado: [5, 0, 33333, 5, 0, 33333, centavos(s.calc.preco.ancora.totalExato * (1 - 500 / 1568.75)),
+            '💵 À vista (Pix, dinheiro ou débito): *R$ 1.568,75* (R$ 54,10 de desconto)', '💵 À vista (Pix, dinheiro ou débito): *R$ 1.541,71* — 5% de desconto'] };
+      } },
     // ---- Seção 15: preço por forma de pagamento (base 1.500; Visa débito 1,37%, 5x 7,57%; desconto 5%) ----
     { id: 'RP1', descricao: 'Âncora 5x 1.622,85 (1.500 ÷ 0,9243) · Pix 1.541,71 · Débito = Pix 1.541,71 · 1x/3x/4x/5x = 1.622,85 (3× 540,95; 5× 324,57) · 6x 1.635,41 (acima da âncora, sobre a base)',
       executar: function () {
@@ -1908,6 +2020,21 @@ function cenarioRegraPreco(desconto, parcelasDestaque) {
   var foto = fotoDeHoje(dados, '2026-11-08 10:00');
   var e = { descricao: 'Serviço', modo: 'fechado', horasTexto: '', valorTexto: '1000', horasFechadoTexto: '8', pecasModo: 'valor', pecas: [],
     pecasPagarTexto: '388,79', pecasCobrarTexto: '500', acrescimoTexto: null, descontoTexto: desconto === undefined ? null : desconto, extraTexto: '', bandeira: NAO_SEI };
+  var calc = calcularComFoto(e, foto);
+  return { foto: foto, e: e, calc: calc, resultado: resultadoParaGravar(calc) };
+}
+
+/**
+ * Cenário do adendo 16.9: o mesmo da seção 15 (base 1.500 = serviço 1.000 + peças 500; Visa; âncora 5x),
+ * com campos do desconto separado (mud) e parâmetros extras (par).
+ */
+function cenarioDescontos(mud, par) {
+  var dados = { gastos: [{ tipo: 'Oficina', valor: 4000 }, { tipo: 'Casa', valor: 3000 }], cartoes: [cartaoDeTeste('Visa/Master', VISA_TESTE)],
+    parametros: Object.assign({ diasPorSemana: 5, horasPorDia: 8, horasCobradasPorDia: 6, valorHoraCobrado: 150, impostoPercentual: 0,
+      acrescimoPecasPadrao: 25, descontoAVistaPadrao: 5, parcelasDestaque: '5,10', nomeOficina: '' }, par || {}) };
+  var foto = fotoDeHoje(dados, '2026-11-08 10:00');
+  var e = Object.assign({ descricao: 'Serviço', modo: 'fechado', horasTexto: '', valorTexto: '1000', horasFechadoTexto: '8', pecasModo: 'valor', pecas: [],
+    pecasPagarTexto: '388,79', pecasCobrarTexto: '500', acrescimoTexto: null, descontoTexto: null, extraTexto: '', bandeira: NAO_SEI }, mud || {});
   var calc = calcularComFoto(e, foto);
   return { foto: foto, e: e, calc: calc, resultado: resultadoParaGravar(calc) };
 }

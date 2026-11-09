@@ -263,9 +263,17 @@
             <div class="avista-linha"><span class="valor-grande" id="res-avista"></span><span class="avista-desconto" id="res-avista-desconto"></span></div>
             <div class="campos-desconto" id="bloco-desconto">
               <div class="campo">
-                <label for="orc-desconto">Desconto à vista</label>
+                <label for="orc-desconto" id="rotulo-desconto">Desconto à vista</label>
                 <div class="entrada com-sufixo">
                   <input id="orc-desconto" class="num" type="text" inputmode="decimal" data-orc="descontoTexto" autocomplete="off">
+                  <span class="sufixo">%</span>
+                </div>
+                <p class="erro"></p>
+              </div>
+              <div class="campo" id="campo-desconto-pecas" hidden>
+                <label for="orc-desconto-pecas">Desconto nas peças</label>
+                <div class="entrada com-sufixo">
+                  <input id="orc-desconto-pecas" class="num" type="text" inputmode="decimal" data-orc="descontoPecasTexto" autocomplete="off">
                   <span class="sufixo">%</span>
                 </div>
                 <p class="erro"></p>
@@ -279,7 +287,10 @@
                 <p class="erro"></p>
               </div>
             </div>
-            <button type="button" class="link" id="btn-mais-desconto">O cliente pediu mais desconto?</button>
+            <div class="links-desconto">
+              <button type="button" class="link" id="btn-mais-desconto">O cliente pediu mais desconto?</button>
+              <button type="button" class="link" id="btn-desconto-pecas">Desconto diferente nas peças?</button>
+            </div>
             <p class="ajuda" id="dica-sem-ancora" hidden>Cadastre a taxa do cartão em <button type="button" class="link link-inline" data-ir="ajustes">Ajustes</button> para oferecer desconto à vista.</p>
           </div>
 
@@ -699,6 +710,15 @@
               </div>
               <p class="erro"></p>
               <p class="ajuda">Vale para todos os aparelhos ligados a esta planilha. Cada orçamento novo começa com este número.</p>
+            </div>
+            <div class="campo">
+              <label for="p-descontoPecasPadrao">Desconto padrão nas peças</label>
+              <div class="entrada com-sufixo">
+                <input id="p-descontoPecasPadrao" class="num" type="text" inputmode="decimal" data-param="descontoPecasPadrao" autocomplete="off">
+                <span class="sufixo">%</span>
+              </div>
+              <p class="erro"></p>
+              <p class="ajuda">Se for diferente do desconto à vista, o orçamento já abre com dois campos: serviço e peças.</p>
             </div>
             <p class="rotulo" id="rotulo-impostos">Imposto</p>
             <div class="campos-lado campos-impostos">

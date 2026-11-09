@@ -121,6 +121,7 @@ function aplicarDados(dados, url, atualizadoEm) {
   estado.dados.parametros.impostoPecasPercentual = imp.pecas;
   estado.dados.parametros.impostoServicoPercentual = imp.servico;
   if (typeof estado.dados.parametros.acrescimoTerceirosPadrao !== 'number') estado.dados.parametros.acrescimoTerceirosPadrao = 0;
+  estado.dados.parametros.descontoPecasPadrao = descontoPecasPadraoDosParametros(estado.dados.parametros); // 16.9
   if (url) estado.urlPlanilha = url;
   estado.atualizadoEm = atualizadoEm || null;
   invalidos = {};
@@ -527,6 +528,9 @@ function orcamentoVazio() {
     horasTexto: '', valorTexto: '', horasFechadoTexto: '',
     pecasPagarTexto: '', pecasModo: 'acrescimo', acrescimoTexto: null, pecasCobrarTexto: '',
     descontoTexto: null, extraTexto: '',   // descontoTexto null = segue o padrão dos Ajustes (da foto em uso)
+    // Seção 16.9: descontoSeparado null = automático (dois campos se os padrões forem diferentes); true/false = escolha;
+    // AUSENTE (undefined) = orçamento/rascunho de antes: regra antiga (um desconto só, o extra sobre tudo).
+    descontoSeparado: null, descontoPecasTexto: null,
     pecas: [],                             // [{descricao, qtdTexto, valorTexto, acrescimoTexto}] (modo acréscimo; acrescimoTexto null = segue o geral)
     terceiros: [],                         // seção 16: [{descricao, valorTexto, acrescimoTexto}] (acrescimoTexto null = o padrão dos Ajustes)
     entradaTexto: '', formaEntrada: 'pix', parcelasEntrada: null, // seção 16: entrada + resto no cartão (parcelas null = a de referência)
@@ -572,6 +576,9 @@ function carregarOrcamentoSalvo() {
     });
   }
   if (base.formaEntrada !== 'debito') base.formaEntrada = 'pix';
+  // 16.9: rascunho de antes (sem a chave) continua na regra antiga
+  base.descontoSeparado = !Object.prototype.hasOwnProperty.call(o, 'descontoSeparado') ? undefined : o.descontoSeparado === true ? true : o.descontoSeparado === false ? false : null;
+  base.descontoPecasTexto = textoOuNulo(o.descontoPecasTexto);
   base.parcelasEntrada = typeof o.parcelasEntrada === 'number' ? o.parcelasEntrada : null;
   if (vinculoValido(o.vinculo)) base.vinculo = o.vinculo;
   orc = base;
@@ -749,6 +756,12 @@ function textoAcrescimo() {
   return p ? numeroParaCampo(p.acrescimoPecasPadrao, false) : '';
 }
 
+/** 16.9: texto do desconto das peças: o digitado, ou o padrão das peças dos Ajustes (da foto em uso). */
+function textoDescontoPecas() {
+  if (orc.descontoPecasTexto !== null && orc.descontoPecasTexto !== undefined) return orc.descontoPecasTexto;
+  return numeroParaCampo(descontoPecasPadraoDosParametros(parametrosEmUso()), false);
+}
+
 /** Texto do desconto à vista deste orçamento: o digitado, ou o padrão dos Ajustes (da foto em uso). */
 function textoDesconto() {
   if (orc.descontoTexto !== null) return orc.descontoTexto;
@@ -758,13 +771,13 @@ function textoDesconto() {
 function preencherOrcamento() {
   document.querySelectorAll('[data-orc]').forEach(function (el) {
     var k = el.dataset.orc;
-    el.value = k === 'acrescimoTexto' ? textoAcrescimo() : k === 'descontoTexto' ? textoDesconto() : (orc[k] || '');
+    el.value = k === 'acrescimoTexto' ? textoAcrescimo() : k === 'descontoTexto' ? textoDesconto() : k === 'descontoPecasTexto' ? textoDescontoPecas() : (orc[k] || '');
   });
   renderPecas();
   renderTerceiros();
 }
 
-var CAMPOS_NUMERICOS_ORC = ['orc-horas', 'orc-horas-fechado', 'orc-valor', 'orc-pecas-pagar', 'orc-acrescimo', 'orc-pecas-cobrar', 'orc-desconto', 'orc-extra'];
+var CAMPOS_NUMERICOS_ORC = ['orc-horas', 'orc-horas-fechado', 'orc-valor', 'orc-pecas-pagar', 'orc-acrescimo', 'orc-pecas-cobrar', 'orc-desconto', 'orc-desconto-pecas', 'orc-extra'];
 
 /** Chips "Não sei · cartão · cartão…" — só aparecem com 2 ou mais cartões. */
 function renderChipsBandeira(cartoes, efetivo) {
@@ -804,6 +817,8 @@ function renderOrcamento() {
   if (orc.acrescimoTexto === null && document.activeElement !== campoAcrescimo) campoAcrescimo.value = textoAcrescimo();
   var campoDesconto = $('orc-desconto');
   if (orc.descontoTexto === null && document.activeElement !== campoDesconto) campoDesconto.value = textoDesconto();
+  var campoDescPecas = $('orc-desconto-pecas');
+  if ((orc.descontoPecasTexto === null || orc.descontoPecasTexto === undefined) && document.activeElement !== campoDescPecas) campoDescPecas.value = textoDescontoPecas();
 
   $('faixa-sem-gastos-orc').hidden = ctx.gastosTotal !== 0;
 
@@ -877,9 +892,16 @@ function renderOrcamento() {
 
   // À vista oferecido
   $('res-avista').textContent = formatarCentavos(preco.precoCentavos);
-  $('res-avista-desconto').textContent = preco.temAncora && preco.descontoTotal > 0
-    ? '· ' + formatarPercentual(preco.descontoTotal) + ' de desconto'
-    : '';
+  // 16.9: descontos diferentes (serviço × peças) → o desconto em reais (A − V), como no WhatsApp
+  $('res-avista-desconto').textContent = !(preco.temAncora && preco.descontoTotal > 0) ? ''
+    : preco.descontosIguais === false ? '· ' + formatarCentavos(preco.descontoReaisCentavos) + ' de desconto'
+    : '· ' + formatarPercentual(preco.descontoTotal) + ' de desconto';
+  // 16.9: "Desconto diferente nas peças?" (só com peças) abre "Desconto no serviço" + "Desconto nas peças"
+  var separado = calc.lido.descontoSeparado;
+  $('campo-desconto-pecas').hidden = !separado;
+  $('rotulo-desconto').textContent = separado ? 'Desconto no serviço' : 'Desconto à vista';
+  $('btn-desconto-pecas').hidden = !preco.temAncora || !(separado || res.pecasCobrar > 0);
+  $('btn-desconto-pecas').textContent = separado ? 'Mesmo desconto para tudo' : 'Desconto diferente nas peças?';
   $('bloco-desconto').hidden = !preco.temAncora;
   $('dica-sem-ancora').hidden = preco.temAncora || res.semCartoes;
   // "O cliente pediu mais desconto?": o extra e a faixa "ainda pode dar" ficam escondidos até ele tocar (extra > 0 → aberto)
@@ -968,6 +990,37 @@ function renderEntrada(calc, res) {
       '<strong class="sem-quebra">' + ec.parcelas + 'x de ' + esc(formatarCentavos(ec.parcelaC)) + '</strong> no cartão · ' +
       '<span class="sem-quebra">total ' + esc(formatarCentavos(ec.totalC)) + '</span>'
     : '';
+}
+
+/** 16.9: abre os dois campos (serviço e peças), os dois com o valor do campo único. */
+function abrirDescontoPecas() {
+  if (travado()) return;
+  var atual = textoDesconto();
+  orc.descontoSeparado = true;
+  orc.descontoTexto = atual;
+  orc.descontoPecasTexto = atual;
+  $('orc-desconto-pecas').value = atual;
+  gravarRascunho();
+  renderOrcamento();
+  $('orc-desconto-pecas').focus();
+}
+
+/** 16.9: volta ao campo único com o valor do serviço; se os dois eram diferentes, confirma antes (na página). */
+function fecharDescontoPecas() {
+  if (travado() || !ultimoCalc) return;
+  var l = ultimoCalc.lido;
+  function fechar() {
+    orc.descontoSeparado = false;
+    orc.descontoPecasTexto = null;
+    gravarRascunho();
+    renderOrcamento();
+    $('btn-desconto-pecas').focus();
+  }
+  if (l.desconto === l.descontoPecas) { fechar(); return; }
+  var serv = formatarPercentual(typeof l.desconto === 'number' ? l.desconto : 0);
+  perguntar('Mesmo desconto para tudo?', 'O desconto das peças (' + formatarPercentual(typeof l.descontoPecas === 'number' ? l.descontoPecas : 0) +
+    ') vai ficar igual ao do serviço (' + serv + ').', [{ chave: 'sim', texto: 'Usar ' + serv + ' para tudo', classe: 'btn-primario' }], 'Cancelar')
+    .then(function (k) { if (k === 'sim') fechar(); });
 }
 
 function abrirEntrada() {
@@ -1246,7 +1299,7 @@ function aplicarTrava() {
     if (el.dataset.orc === 'cliente' || el.dataset.orc === 'telefone') return;
     el.disabled = t;
   });
-  ['ir-fechado', 'ir-horas', 'ir-pecas-valor', 'ir-pecas-acrescimo', 'btn-adicionar-peca', 'btn-adicionar-terceiro', 'btn-entrada', 'btn-tirar-entrada'].forEach(function (id) { $(id).disabled = t; });
+  ['ir-fechado', 'ir-horas', 'ir-pecas-valor', 'ir-pecas-acrescimo', 'btn-adicionar-peca', 'btn-adicionar-terceiro', 'btn-entrada', 'btn-tirar-entrada', 'btn-desconto-pecas'].forEach(function (id) { $(id).disabled = t; });
   document.querySelectorAll('#tela-orcamento [data-remover-peca], #tela-orcamento [data-remover-terceiro], #tela-orcamento [data-bandeira-indice], #tela-orcamento [data-voltar-acr], ' +
     '#tela-orcamento [data-forma-entrada], #tela-orcamento [data-parcelas-entrada]').forEach(function (b) { b.disabled = t; });
 }
@@ -1285,6 +1338,11 @@ function entradaDoRascunho() {
     extraTexto: textoCampo(orc.extraTexto),
     bandeira: textoCampo(orc.bandeira, MAX_NOME_CARTAO)
   };
+  // Seção 16.9: orçamento novo leva o modo do desconto (ausente = orçamento de antes, regra antiga)
+  if (orc.descontoSeparado !== undefined) {
+    e.descontoSeparado = orc.descontoSeparado;
+    e.descontoPecasTexto = orc.descontoPecasTexto === null || orc.descontoPecasTexto === undefined ? null : textoCampo(orc.descontoPecasTexto);
+  }
   // Seção 16: só entram quando usados (um orçamento sem eles grava exatamente como antes)
   if (orc.terceiros.length) {
     e.terceiros = orc.terceiros.slice(0, MAX_TERCEIROS).map(function (s) {
@@ -1446,6 +1504,9 @@ function rascunhoDoSalvo(o, comoCopia) {
   if (r.formaEntrada !== 'debito') r.formaEntrada = 'pix';
   if (typeof r.parcelasEntrada !== 'number') r.parcelasEntrada = null;
   if (typeof r.entradaTexto !== 'string') r.entradaTexto = '';
+  // 16.9: orçamento salvo antes do adendo (sem a chave) abre com a regra antiga (igual ao de antes)
+  if (e.descontoSeparado === undefined) { r.descontoSeparado = undefined; r.descontoPecasTexto = null; }
+  else { r.descontoSeparado = e.descontoSeparado === true ? true : e.descontoSeparado === false ? false : null; r.descontoPecasTexto = textoOuNulo(e.descontoPecasTexto); }
   r.cliente = o.cliente || '';
   r.telefone = formatarTelefone(o.telefone || ''); // telefone antigo sem máscara: aparece formatado (e vai formatado no próximo salvamento)
   if (!comoCopia) {
@@ -1813,7 +1874,8 @@ function renderFechamento() {
   $('fechar-valor-ajuda').textContent = comEntrada
     ? (restoTexto || 'Entrada + o resto no cartão em ' + fech.parcelas + 'x.') + ' Pode mudar o total (ex.: desconto dado na hora): a entrada fica igual.'
     : (fech.forma === 'pix'
-    ? (desc > 0 ? 'À vista com ' + formatarPercentual(desc) + ' de desconto, como no orçamento.' : 'À vista, como no orçamento.')
+    ? (desc > 0 ? 'À vista com ' + (typeof d.resultado.descontoServico === 'number' && d.resultado.descontoServico !== d.resultado.descontoPecas && d.resultado.ancora
+        ? formatarCentavos(d.resultado.ancora.totalC - d.resultado.oferecidoC) : formatarPercentual(desc)) + ' de desconto, como no orçamento.' : 'À vista, como no orçamento.')
     : fech.forma === 'debito' ? (d.resultado.ancora ? 'No débito, o mesmo preço do Pix.' : 'Total no débito.')
     : d.resultado.ancora && fech.parcelas < d.resultado.ancora.parcelas ? 'Cartão em ' + fech.parcelas + 'x: o mesmo preço do cartão em ' + d.resultado.ancora.parcelas + 'x.'
     : 'Total no cartão em ' + fech.parcelas + 'x.') +
@@ -2876,7 +2938,7 @@ var DICAS = {
       'Já vem com o seu número de sempre (Ajustes → Outros ajustes). O cliente pediu mais? Toque em "O cliente pediu mais desconto?".';
   } },
   extra: { alvo: 'label[for="orc-extra"]', nome: 'Desconto extra',
-    texto: 'Se o cliente pedir um pouco mais. Soma com o desconto à vista (5% + 2% = 7%). O app mostra até onde dá para ir sem perder nada. Passou disso, avisa em vermelho: "Com esse desconto você cobra R$ X abaixo do seu preço."' },
+    texto: 'Se o cliente pedir um pouco mais. Soma com o desconto à vista (5% + 2% = 7%). Com desconto diferente nas peças, o extra vale só para o serviço. O app mostra até onde dá para ir sem perder nada. Passou disso, avisa em vermelho: "Com esse desconto você cobra R$ X abaixo do seu preço."' },
   cartoes: { alvo: '#titulo-cartoes', nome: 'Seus cartões',
     texto: 'As taxas que a maquininha cobra em cada parcela (Débito, 1x … 12x). Copie da calculadora de taxas do app da maquininha, um cartão de cada vez. Campo vazio = essa parcela não aparece no orçamento. Vazio é diferente de 0: 0 quer dizer "sem taxa".' },
   descontoPadrao: { alvo: 'label[for="p-descontoAVistaPadrao"]', nome: 'Desconto à vista padrão',
@@ -3178,6 +3240,9 @@ function ligarEventos() {
   $('btn-adicionar-peca').addEventListener('click', adicionarPeca);
   $('btn-adicionar-terceiro').addEventListener('click', adicionarTerceiro);
   $('btn-entrada').addEventListener('click', abrirEntrada);
+  $('btn-desconto-pecas').addEventListener('click', function () {
+    if (ultimoCalc && ultimoCalc.lido.descontoSeparado) fecharDescontoPecas(); else abrirDescontoPecas();
+  });
   $('btn-tirar-entrada').addEventListener('click', tirarEntrada);
   $('fechar-entrada').addEventListener('input', function () {
     if (!fech) return;

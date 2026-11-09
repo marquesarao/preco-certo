@@ -135,6 +135,7 @@ var ORDEM_PARAMETROS_ = [
   'acrescimoPecasPadrao',
   'acrescimoTerceirosPadrao',
   'descontoAVistaPadrao',
+  'descontoPecasPadrao',
   'parcelasDestaque',
   'nomeOficina'
 ];
@@ -182,7 +183,9 @@ var LIMITES_PARAMETROS_ = {
   // Seção 16
   impostoPecasPercentual:   { nome: 'Imposto sobre peças (%)',   min: 0, max: MAX_TAXA_ },
   impostoServicoPercentual: { nome: 'Imposto sobre serviço (%)', min: 0, max: MAX_TAXA_ },
-  acrescimoTerceirosPadrao: { nome: 'Acréscimo padrão em serviços de terceiros (%)', min: 0, max: MAX_ACRESCIMO_ }
+  acrescimoTerceirosPadrao: { nome: 'Acréscimo padrão em serviços de terceiros (%)', min: 0, max: MAX_ACRESCIMO_ },
+  // Seção 16.9
+  descontoPecasPadrao:      { nome: 'Desconto padrão nas peças (%)', min: 0, max: MAX_DESCONTO_ }
 };
 var PARAMETROS_NUMERICOS_ = Object.keys(LIMITES_PARAMETROS_);
 
@@ -190,7 +193,7 @@ var PARAMETROS_NUMERICOS_ = Object.keys(LIMITES_PARAMETROS_);
  * Parâmetros que a tela ANTIGA (de antes da fase 10) não manda. Ausente no salvarDados → mantém o valor da aba.
  * Sem isso, um celular que ainda não tocou em ATUALIZAR não conseguiria salvar os gastos depois da troca do backend.
  */
-var PARAMETROS_OPCIONAIS_ = ['descontoAVistaPadrao', 'impostoPecasPercentual', 'impostoServicoPercentual', 'acrescimoTerceirosPadrao'];
+var PARAMETROS_OPCIONAIS_ = ['descontoAVistaPadrao', 'impostoPecasPercentual', 'impostoServicoPercentual', 'acrescimoTerceirosPadrao', 'descontoPecasPadrao'];
 /**
  * Imposto LEGADO (seção 16): a chave antiga impostoPercentual continua na aba para os aparelhos não atualizados
  * (a tela nova grava nela o imposto do serviço). Ela só vale para os impostos novos quando eles ainda NÃO têm linha na aba
@@ -198,6 +201,11 @@ var PARAMETROS_OPCIONAIS_ = ['descontoAVistaPadrao', 'impostoPecasPercentual', '
  * Se a aba já tem os novos, um salvarDados da tela antiga (só com a chave antiga) NÃO mexe neles.
  */
 var IMPOSTOS_NOVOS_ = ['impostoPecasPercentual', 'impostoServicoPercentual'];
+/**
+ * Parâmetros DERIVADOS (seções 16 e 16.9): sem linha na aba (planilha que já existia), valem a chave de origem.
+ * A tela antiga não manda a chave nova e nunca a sobrescreve (PARAMETROS_OPCIONAIS_). Planilha nova já nasce com a linha.
+ */
+var DERIVADOS_ = { impostoPecasPercentual: 'impostoPercentual', impostoServicoPercentual: 'impostoPercentual', descontoPecasPadrao: 'descontoAVistaPadrao' };
 
 /** Limite de cada taxa (%) de cada cartão. */
 var LIMITE_TAXA_ = { min: 0, max: MAX_TAXA_ };
@@ -489,7 +497,7 @@ function lerDadosDaPlanilha_() {
     cartoes: aba_(ABA_TAXAS_) ? lerCartoes_(SpreadsheetApp.getActiveSpreadsheet()) : [],
     urlPlanilha: SpreadsheetApp.getActiveSpreadsheet().getUrl()
   };
-  d.parametrosAusentes = ausentes.filter(function (k) { return PARAMETROS_OPCIONAIS_.indexOf(k) >= 0 && IMPOSTOS_NOVOS_.indexOf(k) < 0; }); // impostos novos ausentes = vêm do antigo (não é pendência)
+  d.parametrosAusentes = ausentes.filter(function (k) { return PARAMETROS_OPCIONAIS_.indexOf(k) >= 0 && !DERIVADOS_.hasOwnProperty(k); }); // derivados ausentes = vêm da chave de origem (não é pendência)
   return d;
 }
 
@@ -777,7 +785,7 @@ function salvarDados_(limpo) {
     cartoes: cartoesDasLinhas_(linhasTaxas),
     urlPlanilha: antes && antes.urlPlanilha ? antes.urlPlanilha : ss.getUrl()
   };
-  dados.parametrosAusentes = ausentes.filter(function (k) { return PARAMETROS_OPCIONAIS_.indexOf(k) >= 0 && IMPOSTOS_NOVOS_.indexOf(k) < 0; }); // impostos novos ausentes = vêm do antigo (não é pendência)
+  dados.parametrosAusentes = ausentes.filter(function (k) { return PARAMETROS_OPCIONAIS_.indexOf(k) >= 0 && !DERIVADOS_.hasOwnProperty(k); }); // derivados ausentes = vêm da chave de origem (não é pendência)
   gravarCacheDados_(dados);
 
   // Mês corrente acompanha os gastos (antes era uma 2ª chamada da tela: usarGastosDeHojeNoMes).
@@ -1319,7 +1327,7 @@ function validarEntrada_(e) {
   if (!Array.isArray(e.pecas)) throw erroApi_('Orçamento inválido: peças.');
   if (e.pecas.length > MAX_PECAS_) throw erroApi_('Peças demais: o limite é ' + MAX_PECAS_ + '.');
   var descricao = exigirTexto_(e.descricao, MAX_SERVICO_, 'Serviço / veículo');
-  return {
+  var limpo = {
     descricao: descricao,
     modo: exigirOpcao_(e.modo, ['horas', 'fechado'], 'modo'),
     horasTexto: textoDeCampo_(e.horasTexto, MAX_TEXTO_CAMPO_, 'horas'),
@@ -1347,6 +1355,13 @@ function validarEntrada_(e) {
     extraTexto: textoDeCampo_(e.extraTexto, MAX_TEXTO_CAMPO_, 'desconto extra'),
     bandeira: textoDeCampo_(e.bandeira, MAX_NOME_CARTAO_, 'cartão')
   };
+  // Seção 16.9: desconto separado serviço × peças. AUSENTE = orçamento de antes (fica ausente: a tela usa a regra antiga).
+  if (e.descontoSeparado !== undefined) {
+    if (e.descontoSeparado !== null && e.descontoSeparado !== true && e.descontoSeparado !== false) throw erroApi_('Orçamento inválido: desconto separado.');
+    limpo.descontoSeparado = e.descontoSeparado;
+    limpo.descontoPecasTexto = textoOuNulo_(e.descontoPecasTexto, MAX_TEXTO_CAMPO_, 'desconto das peças');
+  }
+  return limpo;
 }
 
 /** null/ausente → null (segue o padrão); senão, texto de campo. */
@@ -1427,6 +1442,9 @@ function validarResultado_(r) {
   if (r.terceirosPagarC !== undefined) limpo.terceirosPagarC = exigirCentavos_(r.terceirosPagarC, 'terceiros pagos');
   if (r.terceirosCobrarC !== undefined) limpo.terceirosCobrarC = exigirCentavos_(r.terceirosCobrarC, 'terceiros cobrados');
   if (r.impostoEfetivoPct !== undefined) limpo.impostoEfetivoPct = exigirNumeroOrc_(r.impostoEfetivoPct, 'imposto', 0, MAX_TAXA_);
+  // Seção 16.9 (opcionais): desconto do serviço (com o extra) e das peças; descontoTotal = o equivalente
+  if (r.descontoServico !== undefined) limpo.descontoServico = exigirNumeroOrc_(r.descontoServico, 'desconto do serviço', 0, MAX_DESCONTO_);
+  if (r.descontoPecas !== undefined) limpo.descontoPecas = exigirNumeroOrc_(r.descontoPecas, 'desconto das peças', 0, MAX_DESCONTO_);
   return limpo;
 }
 
@@ -1466,6 +1484,10 @@ function validarFechamento_(f) {
     limpo.taxaEntradaPct = limpo.formaEntrada === 'pix' ? 0 : exigirNumeroOrc_(f.taxaEntradaPct, 'taxa da entrada', 0, MAX_TAXA_);
     if (limpo.formaEntrada === 'pix' && f.taxaEntradaPct !== undefined && f.taxaEntradaPct !== 0) throw erroApi_('Fechamento inválido: entrada no Pix não tem taxa.');
   }
+  // Seção 16.9 (opcionais): os descontos do orçamento no fechamento (serviço, peças e o equivalente)
+  ['descontoServicoPct', 'descontoPecasPct', 'descontoEquivalentePct'].forEach(function (k) {
+    if (f[k] !== undefined) limpo[k] = exigirNumeroOrc_(f[k], 'desconto', 0, MAX_DESCONTO_);
+  });
   var casa = limpo.vaiParaCasaC === null ? 0 : limpo.vaiParaCasaC;
   if (limpo.valorCombinadoC - limpo.taxaC - limpo.impostoC - limpo.pecasPagarC - limpo.terceirosPagarC - limpo.pagaOficinaC - casa !== limpo.sobraC) {
     throw erroApi_('Fechamento com contas que não batem. Recarregue o app e tente de novo.');
@@ -1735,6 +1757,7 @@ function parametrosPadrao_() {
     acrescimoPecasPadrao: 47,
     acrescimoTerceirosPadrao: 0,
     descontoAVistaPadrao: 5,
+    descontoPecasPadrao: 5,
     parcelasDestaque: '5,10',
     nomeOficina: 'CliniCar Motors Tech'
   };
@@ -1804,7 +1827,7 @@ function parametrosDasLinhas_(valores, ausentes) {
     }
   });
   // Imposto legado: sem as linhas novas, os dois impostos nascem do imposto antigo (os números de antes não mudam).
-  IMPOSTOS_NOVOS_.forEach(function (k) { if (!vistos[k]) p[k] = p.impostoPercentual; });
+  Object.keys(DERIVADOS_).forEach(function (k) { if (!vistos[k]) p[k] = p[DERIVADOS_[k]]; });
   if (ausentes) Object.keys(padrao).forEach(function (k) { if (!vistos[k]) ausentes.push(k); });
   // horasPorDia já está no limite (> 0); ao limitar por ele, horasCobradasPorDia continua > 0.
   if (p.horasCobradasPorDia > p.horasPorDia) p.horasCobradasPorDia = p.horasPorDia;

@@ -521,3 +521,6 @@ body.orc-travado #tela-orcamento #ir-pecas-valor, body.orc-travado #tela-orcamen
 .cm-mes { font-size: 16px; }
 /* Ajustes: "Recarregar da planilha" (seção 14) */
 .link-discreto { display: flex; margin: 4px auto 0; font-size: 13px; color: var(--texto-3); }
+
+/* Seção 16.9: links do desconto (mais desconto · desconto diferente nas peças) lado a lado quando cabe */
+.links-desconto { display: flex; flex-wrap: wrap; gap: 0 18px; }

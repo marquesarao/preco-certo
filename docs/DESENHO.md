@@ -1579,7 +1579,7 @@ Neste fechamento: Sobra extra … (linhas: Entrada · No cartão · Taxa da maqu
   - backend `check-16.js` 13/13;
   - tela `teste-16.js` 46/46.
 
-### 16.9 Adendo: desconto à vista diferente para serviço e peças (desenho **aprovado** no 3º retorno; implementação em commit separado)
+### 16.9 Adendo: desconto à vista diferente para serviço e peças (desenho **aprovado**; implementado em commit separado; publicado junto com o pacote 16)
 Pedido do André: às vezes ele quer dar desconto só na mão de obra, porque a margem da peça é apertada.
 
 **Tela (simplicidade primeiro)**
@@ -1627,12 +1627,38 @@ Pedido do André: às vezes ele quer dar desconto só na mão de obra, porque a 
 - dServ = dPeças = 5%: **1.541,71**, igual à regra atual.
 - Extra 2% com os campos separados (5% + 2% no serviço, 0% nas peças): V = 1.547,12.
 
-**Dúvidas (preciso de resposta antes de implementar)**
-1. **Extra no modo de campo único.** Hoje 5% + 2% vale para tudo (V = 1.509,25 no exemplo). Se o extra somar só ao serviço também no campo único, um orçamento antigo com extra muda de valor, o que contradiz "orçamento antigo abre igual".
-   - Proposta: no campo único, o extra vale para tudo, como hoje; com os dois campos, o extra soma só ao serviço.
-2. **Texto da tela com os descontos diferentes.** Proposta: "R$ 1.568,75 · R$ 54,10 de desconto", a mesma forma do WhatsApp.
-3. **Dica "?" do extra.** Hoje o texto diz "5% + 2% = 7%". Proposta: acrescentar "Com desconto diferente nas peças, o extra vale só para o serviço."
-- **Por quê:** o desenho mantém o orçamento antigo e o de campo único idênticos ao de hoje, e os testes atuais continuam iguais.
+**Decisões (3º e 4º retornos)**
+1. **Extra — opção (b):** o extra vale só para o serviço **apenas com os dois campos abertos**. Com o campo único, ele continua valendo sobre o preço todo, como hoje. Os testes antigos não mudam: 5% + 2% = 7% sobre tudo = 1.509,25 no exemplo.
+2. **Descontos diferentes:** a tela e o WhatsApp mostram o desconto em reais, "(R$ 54,10 de desconto)". Com os descontos iguais, continua em %.
+3. **"?" do extra:** acrescenta "Com desconto diferente nas peças, o extra vale só para o serviço." O resto do texto continua igual.
+4. **`descontoPecasPadrao`:** segue a mesma regra dos impostos novos (decisão 3 do pacote 16).
+   - Planilha **nova**: já nasce com a linha (5).
+   - Planilha **antiga** (sem a linha): vale o `descontoAVistaPadrao` até a tela nova salvar.
+   - Tela antiga nunca sobrescreve a linha.
+
+**Implementação**
+- **Cálculo:** `calcularPrecoComDesconto(res, parametros, desconto, extra, divisao)`.
+  - Sem `divisao` = a regra de sempre (desconto + extra sobre tudo).
+  - Com `divisao` = {descontoPecas}, o extra soma só no serviço:
+    - sem peças, ou com os descontos iguais → A × (1 − d/100), idêntico ao de antes;
+    - só peças → o desconto das peças;
+    - senão → V = A_serv × (1 − (dServ + extra)/100) + A_peças × (1 − dPeças/100), e descontoTotal = equivalente (1 − V exato ÷ A).
+  - O retorno traz `descontoServico`, `descontoPecas`, `descontosIguais` e `descontoReaisCentavos` (A − V exibidos).
+  - `calcularComFoto` só passa `divisao` quando os dois campos estão abertos.
+- **Rascunho e JSON:** `descontoSeparado` (null = automático, abre os dois campos se os padrões dos Ajustes forem diferentes; true/false = a escolha) e `descontoPecasTexto` (null = o padrão das peças).
+  - Orçamento de antes (sem a chave) continua sem ela, porque o servidor não acrescenta.
+  - O resultado grava `descontoServico`/`descontoPecas`. O fechamento grava `descontoServicoPct`, `descontoPecasPct` e `descontoEquivalentePct` (opcionais no backend).
+- **Tela:**
+  - links "O cliente pediu mais desconto?" e "Desconto diferente nas peças?" lado a lado. Aberto, o segundo vira "Mesmo desconto para tudo";
+  - os rótulos ficam "Desconto no serviço" e "Desconto nas peças";
+  - o "?" do desconto fica no rótulo do serviço;
+  - fechar com valores diferentes abre a confirmação na página: "Mesmo desconto para tudo?" · "O desconto das peças (0%) vai ficar igual ao do serviço (5%)." · [Usar 5% para tudo] [Cancelar];
+  - fechamento no Pix: "À vista com R$ 54,10 de desconto, como no orçamento.";
+  - Ajustes: campo "Desconto padrão nas peças". `sw.js` v12.
+- **Testes:**
+  - cálculo DS1–DS6, com 89 casos ao todo;
+  - backend B7–B9 (`check-16.js` 19/19);
+  - tela `teste-169.js` 20/20, incluindo campo único + extra = os números de hoje e dois campos + extra = 1.547,12.
 
 **Testes (depois do OK)**
 - Os números acima.
