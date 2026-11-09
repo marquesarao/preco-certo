@@ -10,6 +10,35 @@ Mesmo modelo do app **Pendências**:
 
 > Os comandos e passos abaixo são para **você** fazer. Nada aqui roda sozinho.
 
+> ### ⚠️ Regra de ouro: **o backend vai nas DUAS planilhas ANTES do `git push`.**
+> **Cole o `Codigo.gs` na planilha de teste E na do André → Implantar → Gerenciar implantações → lápis → Versão: _Nova versão_ → Implantar → rode `testarApi`. Só depois dê o `git push`.**
+> Colar o código e salvar **não basta**: sem _Nova versão_, o endereço /exec continua rodando o código antigo.
+>
+> **Como confirmar que a planilha está na versão certa:** a **primeira linha** do registro do `testarApi` diz a versão, por exemplo:
+> `Preço Certo – código da API versão 4 · esquema 4 (colunas até "Horas por serviço")`.
+> Ela precisa bater com a versão deste pacote, e o `testarApi` precisa terminar com "Todos os testes da API passaram". Os itens da versão aparecem no registro (ex.: "as respostas trazem apiVersao 4", "colunas AB–AG preenchidas…").
+> Rode o `testarApi` pelo editor **depois** de criar a Nova versão; ele roda o código salvo no editor. Para conferir o /exec de verdade, abra o app: se a planilha estiver antiga, aparece a faixa **"A planilha está com uma versão antiga. Atualize o código da planilha antes de salvar."** e o app **não salva** orçamentos.
+>
+> **Desde o esquema 4 há uma trava:** o app novo só salva ou muda a situação de orçamentos se a planilha responder com `apiVersao` 4 ou mais. Se você inverter a ordem, o app avisa e não perde nada (antes da trava, um backend antigo descartava em silêncio os campos novos, como o veículo e a lista de serviços).
+
+---
+
+## ⚠️ Esquema 4 (trava de versão + colunas AA–AG): o backend MUDOU — ordem obrigatória
+
+Vale para quem já está na seção 17 (esquema 3). Se a seção 17 ainda não foi publicada numa planilha, este `Codigo.gs` já contém tudo: um deploy só.
+
+1. **Em cada planilha** (a de teste **e** a do André): Extensões → Apps Script → **copie a sua `URL_DA_API`** → cole o `apps-script/Codigo.gs` novo → recoloque a `URL_DA_API` → salve → **Implantar → Gerenciar implantações → lápis → Versão: Nova versão → Implantar** → rode **`testarApi`**.
+   - A 1ª linha do registro deve ser: **`Preço Certo – código da API versão 4 · esquema 4 (colunas até "Horas por serviço")`**, e o final: "Todos os testes da API passaram".
+   - **Se aparecer pedido de autorização novo:** **pare** e me avise (o `appsscript.json` não mudou).
+   - O primeiro pedido depois de colar o código atualiza o esquema (versão 4), **uma vez só**:
+     - acrescenta, **depois da Z**, as colunas **AA "Número do orçamento"** (reservada, fica vazia até a onda do PDF), **AB Placa · AC Modelo · AD Ano · AE Combustível · AF Serviços da oficina · AG Horas por serviço**. Nada muda de lugar;
+     - **preenche AA–AG de todos os orçamentos que já existem**, a partir dos dados de cada um. Os orçamentos de antes da seção 17 ficam com o veículo vazio; o serviço é a descrição antiga;
+     - a proteção "somente aviso" já cobre a aba inteira, inclusive as colunas novas.
+   - Essas colunas são **só para ler na planilha**: o app continua usando os dados da coluna V. Editar AB–AG à mão não muda o orçamento (e o próximo salvamento regrava).
+2. **Só depois, nas DUAS planilhas:** conferência de segredos e **`git push`** (`sw.js` v15).
+   - Se inverter: o app novo mostra a faixa "A planilha está com uma versão antiga…" e **não salva** orçamentos até a planilha ser atualizada (nada se perde; o que está na tela fica no aparelho). Depois de atualizar a planilha, o próximo "Salvar" já funciona, sem recarregar.
+3. Em cada aparelho: "Nova versão disponível · ATUALIZAR".
+
 ---
 
 ## ⚠️ Seção 17 (vários serviços, veículo em campos, WhatsApp separado): o backend MUDOU — ordem obrigatória

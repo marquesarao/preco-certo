@@ -1828,3 +1828,38 @@ Caso real (André, dia 9): 1 fechamento de 2,67 h (R$ 437,78) gerava "Faltam cer
 4. A frase principal com o total (oficina + casa) continua como no adendo da seção 17.
 
 **Testes:** casos PD1, EA1, PM1; `teste-18.js` na tela.
+
+## 19. Trava de versão da API e colunas do veículo na planilha (esquema 4)
+
+**Origem:** caso real — um orçamento salvo com veículo e 2 serviços reabria com o veículo vazio e UM serviço (a descrição da coluna F, horas e valor somados). **Causa:** a planilha do André ainda rodava o backend de antes da seção 17 (o código não tinha ganhado _Nova versão_ na implantação). O `validarEntrada_` antigo monta a entrada só com os campos que conhece e descartou `veiculo` e `servicos` em silêncio; ao reabrir, sem `servicos`, o app tratou o orçamento como antigo (regra correta). O app e o backend novos estavam certos; faltava uma trava.
+
+### 19.1 Trava de versão
+- O backend devolve **`apiVersao: 4`** em **todas** as respostas (`API_VERSAO_`, incluindo GET, recusas e erros).
+- O app tem **`APP_EXIGE_API = 4`** (`js/api.js`). Antes de **salvar** ou **mudar a situação** de um orçamento (Fechado, Não fechou, voltar para Aberto), confere a versão da planilha conectada: se ainda não sabe, ou se a última vista era antiga, pergunta com um `obterDados` (assim, depois que a planilha é atualizada, o próximo "Salvar" já funciona sem recarregar).
+- Sem `apiVersao` ou menor que a exigida: **o pedido nem é enviado**; aviso "A planilha está com uma versão antiga. Atualize o código da planilha antes de salvar."; **nada se perde** (a tela e o rascunho do aparelho ficam como estão). Enquanto a versão não bater, uma faixa discreta no topo com o mesmo texto.
+- **Leitura continua** permitida (orçamento, Resultados, Ajustes).
+- **Próximas ondas:** quando a gravação ganhar campos que um backend antigo perderia, suba `API_VERSAO_` e `APP_EXIGE_API` juntos.
+
+### 19.2 Colunas AA–AG na aba Orçamentos (esquema 4)
+Depois da Z, sem mover as existentes (ordem final):
+
+| Col. | Cabeçalho | Conteúdo |
+|---|---|---|
+| AA | Número do orçamento | **Reservada** para a onda do PDF (vazia por enquanto) |
+| AB | Placa | `entrada.veiculo.placa` |
+| AC | Modelo | `entrada.veiculo.modelo` |
+| AD | Ano | `entrada.veiculo.ano` (texto) |
+| AE | Combustível | `entrada.veiculo.combustivel` |
+| AF | Serviços da oficina | descrições separadas por " · " |
+| AG | Horas por serviço | as horas de cada serviço, na mesma ordem, " · " ("15 · 2"); "—" no serviço sem horas (valor fechado) |
+
+- Preenchidas pelo servidor a partir do JSON **a cada salvamento** (`colunasDoVeiculo_`). A coluna F continua (compatibilidade e lista). **A fonte da verdade é o JSON (coluna V).**
+- Orçamento de antes da seção 17 (sem `servicos`): veículo vazio; AF = a descrição antiga; AG = as horas do modo usado ("—" no valor fechado sem horas).
+- **Migração** (troca de esquema, dentro do lock, uma vez): cabeçalhos AA–AG + AA–AG de todas as linhas existentes, numa leitura e numa escrita. JSON com defeito → vazio. Com os cabeçalhos já lá, não faz nada.
+- As listagens **não leem** AA–AG (a busca continua pela coluna Z).
+- A proteção "somente aviso" cobre a aba inteira, inclusive as colunas novas.
+
+### 19.3 Deploy
+A regra em negrito no topo do DEPLOY: **backend nas DUAS planilhas ANTES do push**, com _Nova versão_; a 1ª linha do registro do `testarApi` mostra a versão ("código da API versão 4 · esquema 4").
+
+**Testes:** `check-19.js` (backend), V1 em todos os verificadores, `teste-trava.js` (backend antigo e novo), `teste-reabrir.js`.

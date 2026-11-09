@@ -245,6 +245,7 @@ function receberDadosDoServidor(r) {
   sync.erro = false;
   $('faixa-offline').hidden = true;
   $('faixa-acesso').hidden = true;
+  renderFaixaVersao();
   $('fs-gastos').disabled = false;
   $('fs-ajustes').disabled = false;
   salvarCache();
@@ -1570,6 +1571,7 @@ function salvarOrcamento(op) {
     if (e && e.tipo === 'conflito') { avisarConflito(); return { r: 'conflito' }; }
     if (e && e.tipo === 'excluido') { avisarExcluido(); return { r: 'excluido' }; }
     if (e && e.tipo === 'rede') return { r: 'semConexao' };
+    if (e && e.tipo === 'versao') return { r: 'versao', msg: mensagemDoErro(e) }; // nada foi enviado; a tela fica como está
     return { r: 'erro', msg: mensagemDoErro(e) };
   });
   return salvandoOrc;
@@ -1585,6 +1587,7 @@ function avisarSalvamento(x, copiou) {
   else if (x.r === 'semConexao') mostrarAviso(antes + MSG_NAO_SALVO_SEM_CONEXAO, 'alerta');
   else if (x.r === 'invalido') mostrarAviso(antes + 'Orçamento não salvo: ' + x.msg, 'alerta');
   else if (x.r === 'erro') mostrarAviso(antes + 'Não foi salvo. Tente de novo.' + (x.msg ? ' (' + x.msg + ')' : ''), 'alerta');
+  else if (x.r === 'versao') mostrarAviso(antes + x.msg, 'alerta');
   else if (copiou) mostrarAviso('Copiado ✓');
 }
 
@@ -1850,6 +1853,8 @@ function enviarSituacao(alvo, situacao, campos, opcoes) {
       perguntar('Esse orçamento foi alterado em outro aparelho.', 'Nada foi mudado. Veja a versão nova e tente de novo.', []);
       if (orc.vinculo && orc.vinculo.id === alvo.id) buscarOrcamento(alvo.id).then(function (o) { if (o && !temMudancaNaoSalva()) carregarRascunho(rascunhoDoSalvo(o)); });
       resultadosMudaram();
+    } else if (e && e.tipo === 'versao') {
+      mostrarAviso(mensagemDoErro(e), 'alerta');
     } else if (e && e.tipo === 'excluido') {
       perguntar('Esse orçamento foi excluído em outro aparelho.', 'A situação não foi mudada.', []);
       desvincularSe(alvo.id);
@@ -2912,6 +2917,7 @@ function mostrarTelaConectar(mensagemErro) {
   $('carregando').hidden = true;
   $('faixa-offline').hidden = true;
   $('faixa-acesso').hidden = true;
+  $('faixa-versao').hidden = true;
   $('tela-conectar').hidden = false;
   $('conectar-erro').textContent = mensagemErro || '';
 }
@@ -3449,8 +3455,15 @@ function ligarEventos() {
 // ------------------------------------------------------------------
 // Início
 // ------------------------------------------------------------------
+/** Trava de versão: faixa discreta no topo enquanto a planilha conectada responder com uma API antiga. */
+function renderFaixaVersao() {
+  var v = conexao ? PrecoCertoApi.versaoDa(conexao.api) : undefined;
+  $('faixa-versao').hidden = !(typeof v === 'number' && v < PrecoCertoApi.APP_EXIGE_API);
+}
+
 function iniciar() {
   $('logo-carregando').src = $('logo').src;
+  PrecoCertoApi.aoMudarVersao(renderFaixaVersao);
   montarDicas();
   ligarEventos();
   carregarOrcamentoSalvo();

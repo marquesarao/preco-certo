@@ -14,6 +14,11 @@
 
 ## Resultados (09/11/2026)
 
+**Esquema 4 (trava de versão `apiVersao` 4 + colunas AA–AG) e o bug do orçamento que reabria sem veículo; o backend mudou e o D10 confere o hash novo; `sw.js` v15:**
+- **Causa do bug (diagnóstico):** a planilha do André rodava o backend de antes da seção 17, que descarta `veiculo` e `servicos` ao salvar. `teste-reabrir.js` reproduz o caso com o backend antigo (6 falhas, iguais ao caso real) e passa 9/9 com o novo (salvar → reabrir pela lista → recarregar → reabrir → salvar de novo; inclui o combustível "Flex", que volta marcado: não há bug no combustível).
+- **Backend:** `check-19.js` 13/13: AA–AG no salvar (2,5 h; "—" no valor fechado sem horas; regravadas ao salvar de novo); orçamento de antes da 17 (veículo vazio, serviço = descrição, horas do modo); migração 3 → 4 e 2 → 4 (uma vez, sob lock, 2 escritas; JSON quebrado → vazio; não roda de novo); listarOrcamentos não lê AA–AG; busca igual; `apiVersao` 4 em toda resposta (GET, recusas, erros); `testarApi` inteiro no simulador. Os outros verificadores conferem `apiVersao` 4 em TODAS as respostas (V1) e mudaram só na largura (33 colunas), no esquema "4" e no número de escritas da migração.
+- **Tela:** `teste-trava.js`: backend antigo 9/9 (faixa; Salvar, "O cliente fechou?" e fechar pela lista bloqueados sem enviar nada; a tela e o rascunho ficam; a leitura continua) e backend novo 4/4 (sem faixa; salva e fecha normalmente).
+
 **Ajuste 18 (Resultados com poucos dados e primeiro mês; só frontend, `sw.js` v14):**
 - **Cálculo:** 151 casos (148 + PD1, EA1, PM1).
   - PD1: 1 fechamento de 2,67 h (R$ 437,78) → sem estimativa e com a mensagem de poucos dados; 3 fechamentos com 10 h → a estimativa aparece; 3 com 9,99 h ou 2 com 20 h → poucos dados.
