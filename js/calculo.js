@@ -182,8 +182,23 @@ function precoMinimoHora(gastos, p) {
  * Mão de obra e horas do serviço.
  * entrada.modo 'horas': horas × valor da hora.
  * entrada.modo 'fechado': valor digitado; horas vazias → valor ÷ valor da hora (horasEstimadas = true).
+ * entrada.modo 'servicos' (seção 17): cada linha {horas, valor} é uma das duas acima (valor vazio = por horas);
+ *   mão de obra = Σ das linhas, horas = Σ das horas (informadas ou estimadas). Uma linha só = a conta de antes.
  */
 function calcularMaoDeObra(entrada, valorHoraCobrado) {
+  if (entrada.modo === 'servicos') {
+    var linhas = (entrada.servicos || []).map(function (s) {
+      return calcularMaoDeObra(typeof s.valor === 'number'
+        ? { modo: 'fechado', valorFechado: s.valor, horas: s.horas }
+        : { modo: 'horas', horas: s.horas }, valorHoraCobrado);
+    });
+    return {
+      maoDeObra: linhas.reduce(function (t, l) { return t + l.maoDeObra; }, 0),
+      horas: linhas.reduce(function (t, l) { return t + l.horas; }, 0),
+      horasEstimadas: linhas.some(function (l) { return l.horasEstimadas; }),
+      linhas: linhas
+    };
+  }
   var horas = typeof entrada.horas === 'number' ? entrada.horas : null;
   if (entrada.modo === 'fechado') {
     var valor = typeof entrada.valorFechado === 'number' ? entrada.valorFechado : 0;
@@ -380,6 +395,7 @@ function calcularOrcamento(entrada, parametros, cartoes, cartaoEscolhido, precoM
     maoDeObra: mo.maoDeObra,
     horas: mo.horas,
     horasEstimadas: mo.horasEstimadas,
+    servicosLinhas: mo.linhas || null, // seção 17: mão de obra e horas de cada serviço da oficina
     pecasPagar: pecasPagar,
     pecasCobrar: pecasCobrar,
     lucroPecas: lucroPecas,
@@ -618,6 +634,113 @@ function parcelasParaEntrada(res, preco) {
   return { lista: lista, padrao: padrao };
 }
 
+// ---------------- Seção 17: vários serviços da oficina e veículo em campos ----------------
+
+var MAX_SERVICOS = 20;     // espelho de MAX_SERVICOS_ do Codigo.gs
+var MAX_PLACA = 8;         // "ABC-1234"
+var MAX_MODELO = 60;
+var COMBUSTIVEIS = ['Flex', 'Gasolina', 'Etanol', 'Diesel', 'GNV'];
+var ANO_MINIMO = 1950;
+
+var contadorIdServico = 0;
+/** Id estável de um serviço da oficina (não muda mais; a etapa B liga peças a ele). Ex.: "s_lq3k9a2x". */
+function novoIdServico() {
+  contadorIdServico = (contadorIdServico + 1) % 1296;
+  return 's_' + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36) + contadorIdServico.toString(36);
+}
+
+function servicoVazio() { return { id: novoIdServico(), descricao: '', horasTexto: '', valorTexto: '' }; }
+function veiculoVazio() { return { placa: '', modelo: '', ano: '', combustivel: '' }; }
+
+/**
+ * Orçamento de antes (um campo "serviço / veículo" + horas OU valor fechado) → UMA linha de serviço, com os mesmos números:
+ * modo horas → horas; modo valor fechado → valor + horas (vazias = estimadas); valor fechado VAZIO → "0" (a mão de obra era 0).
+ */
+function servicosDoLegado(e) {
+  var fechado = e && e.modo === 'fechado';
+  var texto = function (v) { return typeof v === 'string' ? v : ''; };
+  var valor = fechado ? texto(e.valorTexto) : '';
+  if (fechado && valor.trim() === '') valor = '0';
+  return [{ id: novoIdServico(), descricao: texto(e && e.descricao), horasTexto: fechado ? texto(e.horasFechadoTexto) : texto(e && e.horasTexto), valorTexto: valor }];
+}
+
+/** Lista de serviços gravada ou de rascunho → só os campos conhecidos (id repetido/ausente ganha um novo). */
+function servicosLimpos(lista) {
+  var vistos = {};
+  return (lista || []).filter(function (sv) { return sv && typeof sv === 'object'; }).slice(0, MAX_SERVICOS).map(function (sv) {
+    var id = typeof sv.id === 'string' && /^[A-Za-z0-9_-]{1,20}$/.test(sv.id) && !vistos[sv.id] ? sv.id : novoIdServico();
+    vistos[id] = true;
+    var t = function (v) { return typeof v === 'string' ? v : ''; };
+    return { id: id, descricao: t(sv.descricao), horasTexto: t(sv.horasTexto), valorTexto: t(sv.valorTexto) };
+  });
+}
+
+function veiculoLimpo(v) {
+  var t = function (x) { return typeof x === 'string' ? x : ''; };
+  v = v && typeof v === 'object' ? v : {};
+  return { placa: t(v.placa), modelo: t(v.modelo), ano: t(v.ano), combustivel: COMBUSTIVEIS.indexOf(v.combustivel) >= 0 ? v.combustivel : '' };
+}
+
+/**
+ * Campos antigos de reserva (para um app antigo no cache abrir um orçamento novo com os mesmos números):
+ * um serviço só, de valor fechado = Σ mão de obra e horas = Σ horas (números completos, sem arredondar).
+ */
+function legadoDosServicos(servicos, valorHoraCobrado) {
+  var lidos = (servicos || []).map(function (sv) {
+    var h = validarNumeroCampo(sv.horasTexto, LIMITE_HORAS_SERVICO, { vazioPermitido: true, mensagem: '' });
+    var v = validarNumeroCampo(sv.valorTexto, LIMITE_VALOR_ORCAMENTO, { vazioPermitido: true, mensagem: '' });
+    return { horas: h.valor, valor: v.valor };
+  });
+  var mo = calcularMaoDeObra({ modo: 'servicos', servicos: lidos }, valorHoraCobrado);
+  var txt = function (n) { return String(n).replace('.', ','); };
+  return { modo: 'fechado', horasTexto: '', valorTexto: txt(mo.maoDeObra), horasFechadoTexto: txt(mo.horas) };
+}
+
+/** Placa ao digitar: maiúsculas, só letras e números; padrão antigo ganha o "-" (ABC-1234); Mercosul fica junto (ABC1D23). */
+function formatarPlaca(texto) {
+  var c = String(texto === null || texto === undefined ? '' : texto).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7);
+  if (c.length >= 5 && /^[A-Z]{3}\d\d/.test(c)) return c.slice(0, 3) + '-' + c.slice(3);
+  return c;
+}
+
+/** Formato da placa (só aviso, não impede salvar): vazio, ABC-1234 / ABC1234 ou ABC1D23. */
+function validarPlaca(texto) {
+  var t = String(texto === null || texto === undefined ? '' : texto).trim().toUpperCase();
+  if (t === '' || /^[A-Z]{3}-?\d{4}$/.test(t) || /^[A-Z]{3}\d[A-Z]\d{2}$/.test(t)) return '';
+  return 'Placa no formato ABC-1234 ou ABC1D23.';
+}
+
+/** Ano (só aviso): vazio, ou 4 números de 1950 até o ano que vem. */
+function validarAno(texto, anoAtual) {
+  var t = String(texto === null || texto === undefined ? '' : texto).trim();
+  if (t === '') return '';
+  var n = Number(t);
+  if (/^\d{4}$/.test(t) && n >= ANO_MINIMO && n <= anoAtual + 1) return '';
+  return 'Ano com 4 números, de ' + ANO_MINIMO + ' a ' + (anoAtual + 1) + '.';
+}
+
+function textoLimpo(v) { return String(v === null || v === undefined ? '' : v).trim(); }
+
+/** "Veículo: Saveiro CS 1.6 · 2014 · ABC-1234" do WhatsApp (só os preenchidos; sem nada → ''). */
+function textoVeiculo(v) {
+  if (!v) return '';
+  return [v.modelo, v.ano, v.placa].map(textoLimpo).filter(function (t) { return t; }).join(' · ');
+}
+
+/**
+ * Texto da coluna F "Serviço / veículo" (lista de Resultados e fechamento): "ABC-1234 · Saveiro CS 1.6 · {1º serviço} (+N)".
+ * N = outros serviços da oficina com descrição. Até MAX_SERVICO letras.
+ */
+function descricaoDoOrcamento(veiculo, servicos) {
+  var nomes = (servicos || []).map(function (sv) { return textoLimpo(sv.descricao); }).filter(function (t) { return t; });
+  var partes = veiculo ? [textoLimpo(veiculo.placa), textoLimpo(veiculo.modelo)] : [];
+  if (nomes.length) partes.push(nomes[0] + (nomes.length > 1 ? ' (+' + (nomes.length - 1) + ')' : ''));
+  return partes.filter(function (t) { return t; }).join(' · ').slice(0, MAX_SERVICO);
+}
+
+/** Linhas "• descrição" do WhatsApp (sem descrição não aparece). */
+function comMarcador(lista) { return lista.map(function (t) { return '• ' + t; }); }
+
 /** "Serviços inclusos" do WhatsApp, SEM valores: só as descrições (sem descrição não aparece). */
 function linhasTerceirosWhatsApp(itens) {
   return (itens || []).filter(function (it) { return String(it.descricao || '').trim() !== ''; }).map(function (it) { return String(it.descricao).trim(); });
@@ -756,7 +879,15 @@ function lerEntradaOrcamento(e, parametros) {
     if (r.erro) erros[id] = r.erro;
     return r.valor;
   }
-  var fechado = e.modo === 'fechado';
+  // Seção 17: com a lista de serviços, os campos antigos (modo, horas, valor) ficam só de reserva para o app antigo.
+  var temServicos = Array.isArray(e.servicos);
+  var servicos = temServicos ? e.servicos.map(function (sv) {
+    var h = validarNumeroCampo(sv.horasTexto, LIMITE_HORAS_SERVICO, { vazioPermitido: true, mensagem: MSG_HORAS_SERVICO });
+    var v = validarNumeroCampo(sv.valorTexto, LIMITE_VALOR_ORCAMENTO, { vazioPermitido: true, mensagem: MSG_VALOR_ORCAMENTO });
+    if (h.erro || v.erro) erros.servicos = true;
+    return { id: sv.id, descricao: sv.descricao, horas: h.valor, valor: v.valor, erroHoras: h.erro, erroValor: v.erro };
+  }) : [];
+  var fechado = !temServicos && e.modo === 'fechado';
   var porAcrescimo = e.pecasModo !== 'valor';
   var acrescimoTexto = e.acrescimoTexto !== null && e.acrescimoTexto !== undefined
     ? e.acrescimoTexto : numeroParaCampo(parametros.acrescimoPecasPadrao, false);
@@ -806,8 +937,9 @@ function lerEntradaOrcamento(e, parametros) {
   var pagoPeca = function (it) { return totalPecasItens([it]); };
   var pagoTerceiro = function (it) { return typeof it.valor === 'number' && it.valor > 0 ? it.valor : 0; };
   var entrada = {
-    modo: fechado ? 'fechado' : 'horas',
-    horas: fechado
+    modo: temServicos ? 'servicos' : fechado ? 'fechado' : 'horas',
+    servicos: temServicos ? servicos : undefined,
+    horas: temServicos ? null : fechado
       ? campo('orc-horas-fechado', e.horasFechadoTexto, LIMITE_HORAS_SERVICO, MSG_HORAS_SERVICO)
       : campo('orc-horas', e.horasTexto, LIMITE_HORAS_SERVICO, MSG_HORAS_SERVICO),
     valorFechado: fechado ? campo('orc-valor', e.valorTexto, LIMITE_VALOR_ORCAMENTO, MSG_VALOR_ORCAMENTO) : null,
@@ -825,6 +957,7 @@ function lerEntradaOrcamento(e, parametros) {
   var entradaSinal = campo('orc-entrada', e.entradaTexto, LIMITE_VALOR_ORCAMENTO, MSG_VALOR_ORCAMENTO);
   return {
     entrada: entrada,
+    servicos: servicos,
     pecas: pecas,
     terceiros: terceiros,
     entradaSinal: entradaSinal,
@@ -858,10 +991,27 @@ function calcularComFoto(e, foto) {
   var ganho = separarGanho(res, preco, ctx.parametros, ctx.minimoOficina, ctx.minimoCasa);
   var pe = parcelasParaEntrada(res, preco);
   var nEntrada = lido.parcelasEntrada !== null && pe.lista.indexOf(lido.parcelasEntrada) >= 0 ? lido.parcelasEntrada : pe.padrao;
-  return { ctx: ctx, lido: lido, bandeira: bandeira, res: res, preco: preco, ganho: ganho, det: linhasDetalheServico(res, preco, ganho),
+  var c = { ctx: ctx, lido: lido, bandeira: bandeira, res: res, preco: preco, ganho: ganho, det: linhasDetalheServico(res, preco, ganho),
     outras: res.outras.map(function (op) { return precoNaForma(preco, op); }),
     parcelasEntrada: { lista: pe.lista, escolhida: nEntrada },
     entradaCartao: nEntrada ? calcularEntradaCartao(res, preco, lido.entradaSinal, nEntrada) : null };
+  c.ficaComEntrada = ficaComEntrada(c, foto);
+  return c;
+}
+
+/**
+ * Adendo da seção 17: "Com essa entrada fica" = total que é seu (casa + sobra; sem casa, a sobra) no cenário entrada + cartão,
+ * pela MESMA conta do fechamento "Entrada + cartão" (calcularFechamento): cliente paga E + R_n, maquininha só sobre R_n
+ * (+ a do débito sobre E), imposto sobre E + R_n. Sem entrada válida → null.
+ * @return null | {totalC, estado, sobraC, vaiParaCasaC}
+ */
+function ficaComEntrada(c, foto) {
+  var ec = c.entradaCartao;
+  if (!ec || ec.erro || !(ec.entradaC > 0) || !foto) return null;
+  var f = calcularFechamento(foto, resultadoParaGravar(c), 'entrada', ec.parcelas, c.bandeira, ec.totalC,
+    { entradaC: ec.entradaC, formaEntrada: c.lido.formaEntrada });
+  if (!f) return null;
+  return { totalC: f.totalSeuC !== null ? f.totalSeuC : f.sobraC, estado: f.estado, sobraC: f.sobraC, vaiParaCasaC: f.vaiParaCasaC };
 }
 
 /** O que vai para a planilha como "resultado" (centavos inteiros, os valores EXIBIDOS). */
@@ -1159,20 +1309,35 @@ function painelDoMes(resumo, corrente) {
     pctCasa: r.gastosCasaC > 0 ? r.casaCobertaC / r.gastosCasaC : null,
     corrente: !!corrente
   };
-  if (r.depoisDaOficinaC < 0) p.frase = { tipo: 'faltaOficina', valorC: -r.depoisDaOficinaC };
+  // Adendo da seção 17 (revoga a decisão 9 da seção 12): a frase diz o TOTAL que falta (oficina + casa) e a divisão embaixo.
+  p.faltaOficinaC = Math.max(-r.depoisDaOficinaC, 0);
+  p.faltaCasaC = r.gastosCasaC - r.casaCobertaC;
+  if (r.depoisDaOficinaC < 0) p.frase = { tipo: 'faltaOficina', valorC: p.temCasa ? -r.sobraDoMesC : -r.depoisDaOficinaC };
   else if (r.sobraDoMesC < 0) p.frase = { tipo: 'faltaCasa', valorC: -r.sobraDoMesC };
   else p.frase = { tipo: 'sobrou', valorC: r.sobraDoMesC };
   p.frase.tom = p.frase.tipo === 'sobrou' ? 'verde' : corrente ? 'ambar' : 'vermelho';
   return p;
 }
 
-/** A frase grande do card do mês (mês corrente: "este mês"; mês passado: no passado). */
+/**
+ * A frase grande do card do mês (mês corrente: "este mês"; mês passado: no passado). Falta = o TOTAL do mês:
+ * oficina e casa → "Faltam R$ (oficina + casa) para pagar a oficina e a sua casa"; só a casa → "… para pagar a sua casa".
+ */
 function fraseDoMes(p) {
   var v = formatarCentavos(p.frase.valorC);
   var este = p.corrente ? ' este mês' : '';
   if (p.frase.tipo === 'sobrou') return 'Sobrou ' + v + ' além ' + (p.temCasa ? 'da casa' : 'da oficina') + este;
   var verbo = p.corrente ? 'Faltam ' : 'Faltaram ';
-  return verbo + v + (p.frase.tipo === 'faltaOficina' ? ' para pagar a oficina' : ' para cobrir a casa') + este;
+  if (p.frase.tipo === 'faltaOficina') return verbo + v + (p.temCasa ? ' para pagar a oficina e a sua casa' : ' para pagar a oficina') + este;
+  return verbo + v + ' para pagar a sua casa' + este;
+}
+
+/** A linha menor embaixo da frase: "Oficina: faltam R$ X · Casa: faltam R$ Y" / "Oficina ✓ paga · Casa: faltam R$ Y"; senão ''. */
+function detalheDoMes(p) {
+  if (!p.temCasa || p.frase.tipo === 'sobrou') return '';
+  var falta = p.corrente ? 'faltam ' : 'faltaram ';
+  var casa = 'Casa: ' + falta + formatarCentavos(p.faltaCasaC);
+  return (p.frase.tipo === 'faltaOficina' ? 'Oficina: ' + falta + formatarCentavos(p.faltaOficinaC) : 'Oficina ✓ paga') + ' · ' + casa;
 }
 
 /**
@@ -1241,11 +1406,18 @@ function alertaDoPiso(precoC, pisoOficinaC, pisoCasaC, temCasa) {
 /** "63%" (sem casas). */
 function porcentoInteiro(x) { return Math.round(x * 100) + '%'; }
 
-/** A busca da lista: cliente e serviço sem acento/maiúscula; telefone só pelos números. */
+/**
+ * A busca da lista: cliente, serviço (coluna F) e itens (coluna Z: placa, modelo, serviços, parceiros e peças) sem
+ * acento/maiúscula; placa com ou sem hífen ("abc1234" acha "ABC-1234"); telefone só pelos números.
+ */
 function combinaBusca(o, termo) {
   var t = chaveNome(termo);
   if (!t) return true;
-  if (chaveNome(o.cliente).indexOf(t) >= 0 || chaveNome(o.servico).indexOf(t) >= 0) return true;
+  var textos = [o.cliente, o.servico, o.itens].map(chaveNome);
+  if (textos.some(function (x) { return x.indexOf(t) >= 0; })) return true;
+  var junto = function (x) { return x.replace(/[^a-z0-9]/g, ''); };
+  var tj = junto(t);
+  if (/[a-z]/.test(tj) && /\d/.test(tj) && textos.some(function (x) { return junto(x).indexOf(tj) >= 0; })) return true;
   var n = soNumeros(termo);
   return n.length > 0 && n.length === t.replace(/[\s()+.\-]/g, '').length && soNumeros(o.telefone).indexOf(n) >= 0;
 }
@@ -1275,22 +1447,24 @@ function textoWhatsApp(res, parametros, descricao, preco, pecas, extras) {
   var linhas = [];
   var nome = String(parametros.nomeOficina || '').trim();
   linhas.push(nome ? '*Orçamento – ' + nome + '*' : '*Orçamento*');
-  var desc = String(descricao || '').trim();
-  if (desc) linhas.push(desc);
+  // Seção 17: "Veículo: …" (só os campos preenchidos) e as seções na ordem oficina → parceiros → peças, todas com "•",
+  // sem valores por item; seção vazia não aparece. Sem a lista de serviços (chamada antiga), a descrição é o serviço.
+  var veiculo = textoVeiculo(extras.veiculo);
+  if (veiculo) linhas.push('Veículo: ' + veiculo);
   linhas.push('');
 
-  var listaPecas = linhasPecasWhatsApp(pecas);
-  if (listaPecas.length) {
-    linhas.push('Peças inclusas:');
-    listaPecas.forEach(function (l) { linhas.push(l); });
+  var oficina = extras.servicos !== undefined ? linhasTerceirosWhatsApp(extras.servicos) : linhasTerceirosWhatsApp([{ descricao: descricao }]);
+  var secoes = [
+    ['🔧 *Serviços da oficina:*', oficina],
+    ['🤝 *Serviços de parceiros:*', linhasTerceirosWhatsApp(extras.terceiros)],
+    ['🔩 *Peças:*', linhasPecasWhatsApp(pecas)]
+  ];
+  secoes.forEach(function (sc) {
+    if (!sc[1].length) return;
+    linhas.push(sc[0]);
+    comMarcador(sc[1]).forEach(function (l) { linhas.push(l); });
     linhas.push('');
-  }
-  var listaTerceiros = linhasTerceirosWhatsApp(extras.terceiros);
-  if (listaTerceiros.length) {
-    linhas.push('Serviços inclusos:');
-    listaTerceiros.forEach(function (l) { linhas.push(l); });
-    linhas.push('');
-  }
+  });
 
   var cartao = '💳 Cartão' + (res.cartaoNoTexto ? ' ' + res.cartaoNoTexto : '');
   res.destaques.forEach(function (op) {
@@ -1463,17 +1637,17 @@ function casosDeTeste() {
         var r = calcularOrcamento({ modo: 'horas', horas: 8, pecasPagar: pagar, pecasModo: 'acrescimo', pecasAcrescimo: 47 }, paramsT6, [visa()], NAO_SEI, 0);
         return { obtido: [pagar, centavos(r.pecasCobrar), r.aVista.totalCentavos], esperado: [0, 0, 120000] };
       } },
-    { id: 'P9', descricao: 'WhatsApp: "Peças inclusas:" sem nenhum "R$"; "1×" aparece; item sem descrição não aparece; sem peças, sem a seção',
+    { id: 'P9', descricao: 'WhatsApp (seção 17): "🔩 *Peças:*" com "•" e sem nenhum "R$"; "1×" aparece; item sem descrição não aparece; sem peças, sem a seção',
       executar: function () {
         var c = cenarioDesconto();
         var itens = [{ descricao: 'Pastilha de freio', qtd: 2 }, { descricao: 'Disco de freio', qtd: 1 }, { descricao: '  ', qtd: 3 }, { descricao: 'Óleo 5W30', qtd: 4.5 }];
         var texto = textoWhatsApp(c.res, { nomeOficina: 'CliniCar Motors Tech' }, 'Freio – Gol 2015', calcularPrecoComDesconto(c.res, c.params, 5, 0), itens);
         var l = texto.split('\n');
-        var i = l.indexOf('Peças inclusas:');
+        var i = l.indexOf('🔩 *Peças:*');
         var secao = l.slice(i, l.indexOf('', i));
         var semPecas = textoWhatsApp(c.res, { nomeOficina: '' }, '', null, []);
-        return { obtido: [secao, /R\$/.test(secao.join(' ')), l[i + 5].indexOf('💳 Cartão em até 5x') === 0, /Peças inclusas/.test(semPecas)],
-                 esperado: [['Peças inclusas:', '2× Pastilha de freio', '1× Disco de freio', '4,5× Óleo 5W30'], false, true, false] };
+        return { obtido: [secao, /R\$/.test(secao.join(' ')), l[i + 5].indexOf('💳 Cartão em até 5x') === 0, /Peças/.test(semPecas)],
+                 esperado: [['🔩 *Peças:*', '• 2× Pastilha de freio', '• 1× Disco de freio', '• 4,5× Óleo 5W30'], false, true, false] };
       } },
     { id: 'W4', descricao: 'WhatsApp: negrito no título e no à vista; cartão primeiro, à vista por último; sem a quebra mão de obra/peças e sem o acréscimo',
       executar: function () {
@@ -1968,9 +2142,10 @@ function casosDeTeste() {
         }
         return { obtido: [frase(315000, 50000, true), frase(315000, 50000, false), frase(315000, 550000, true), frase(315000, 550000, false),
                           frase(500000, 550000, true), frase(500000, 550000, false), frase(315000, 0, true)],
+                 // Adendo da seção 17: a falta é o TOTAL (oficina 1.069,04 + casa 5.500 = 6.569,04); casa: "para pagar a sua casa"
                  esperado: ['Sobrou R$ 280,96 além da casa este mês | verde', 'Sobrou R$ 280,96 além da casa | verde',
-                            'Faltam R$ 4.719,04 para cobrir a casa este mês | ambar', 'Faltaram R$ 4.719,04 para cobrir a casa | vermelho',
-                            'Faltam R$ 1.069,04 para pagar a oficina este mês | ambar', 'Faltaram R$ 1.069,04 para pagar a oficina | vermelho',
+                            'Faltam R$ 4.719,04 para pagar a sua casa este mês | ambar', 'Faltaram R$ 4.719,04 para pagar a sua casa | vermelho',
+                            'Faltam R$ 6.569,04 para pagar a oficina e a sua casa este mês | ambar', 'Faltaram R$ 6.569,04 para pagar a oficina e a sua casa | vermelho',
                             'Sobrou R$ 780,96 além da oficina este mês | verde'] };
       } },
     { id: 'Q6', descricao: 'Barras: oficina 100% e casa 14%; oficina parcial 79% (3.930,96 de 5.000) e casa 0%; sem casa → sem barra da casa',
@@ -1981,6 +2156,104 @@ function casosDeTeste() {
         }
         return { obtido: [barras(315000, 550000), barras(500000, 550000), barras(315000, 0)],
                  esperado: [['100%', true, 315000, true, '14%'], ['79%', false, 393096, true, '0%'], ['100%', true, 315000, false, null]] };
+      } },
+    { id: 'Q7', descricao: 'Adendo 17 (frase do mês com o total): 7.562 + 6.370 sem nada coberto → 13.932 + divisão; oficina paga e casa com 2.370 → 4.000; tudo coberto; sem casa; mês encerrado',
+      executar: function () {
+        function lista(valorC) {
+          return valorC ? [{ id: 'x', criadoEm: '2026-11-02 10:00', situacao: 'Fechado', dataFechamento: '2026-11-03', valorCombinadoC: valorC, pecasPagarC: 0, taxaC: 0, impostoC: 0, horas: 10 }] : [];
+        }
+        function m(valorC, oficinaC, casaC, corrente) {
+          var p = painelDoMes(resumoDoMes(lista(valorC), '2026-11', { oficinaC: oficinaC, casaC: casaC, horas: 130 }), corrente);
+          return [fraseDoMes(p), detalheDoMes(p), p.frase.tom].join(' | ');
+        }
+        return { obtido: [m(0, 756200, 637000, true), m(756200 + 237000, 756200, 637000, true), m(2000000, 756200, 637000, true), m(0, 756200, 0, true), m(0, 756200, 637000, false), m(756200 + 237000, 756200, 637000, false)],
+                 esperado: ['Faltam R$ 13.932,00 para pagar a oficina e a sua casa este mês | Oficina: faltam R$ 7.562,00 · Casa: faltam R$ 6.370,00 | ambar',
+                            'Faltam R$ 4.000,00 para pagar a sua casa este mês | Oficina ✓ paga · Casa: faltam R$ 4.000,00 | ambar',
+                            'Sobrou R$ 6.068,00 além da casa este mês |  | verde',
+                            'Faltam R$ 7.562,00 para pagar a oficina este mês |  | ambar',
+                            'Faltaram R$ 13.932,00 para pagar a oficina e a sua casa | Oficina: faltaram R$ 7.562,00 · Casa: faltaram R$ 6.370,00 | vermelho',
+                            'Faltaram R$ 4.000,00 para pagar a sua casa | Oficina ✓ paga · Casa: faltaram R$ 4.000,00 | vermelho'] };
+      } },
+    { id: 'SV1', descricao: 'Seção 17: 4 h + 2 h (R$ 150/h) + valor fechado R$ 80 (horas vazias) → mão de obra 980; horas 6,5333 (0,5333 estimadas); oficina 158,31 · casa 276,40 · pisos 175,90 / 483,02; igual a UM serviço fechado de 980 com 6,5333 h',
+      executar: function () {
+        var c = cenarioServicos([['Radiador', '4', ''], ['Suspensão', '2', ''], ['Alinhamento', '', '80']]);
+        var um = cenarioServicos(null, { descricao: 'x', modo: 'fechado', valorTexto: '980', horasFechadoTexto: String(c.calc.res.horas).replace('.', ',') });
+        return { obtido: [c.calc.res.maoDeObra, Math.round(c.calc.res.horas * 10000) / 10000, c.calc.res.horasEstimadas, c.calc.res.servicosLinhas.map(function (l) { return [l.maoDeObra, Math.round(l.horas * 10000) / 10000, l.horasEstimadas]; }),
+                          c.calc.det.pagaOficina, c.calc.det.vaiParaCasa, c.resultado.pisoOficinaC, c.resultado.pisoCasaC, JSON.stringify(c.resultado) === JSON.stringify(um.resultado)],
+                 esperado: [980, 6.5333, true, [[600, 4, false], [300, 2, false], [80, 0.5333, true]], 15831, 27640, 17590, 48302, true] };
+      } },
+    { id: 'SV2', descricao: 'Seção 17: orçamento antigo abre como UMA linha com os mesmos números (horas; valor fechado com e sem horas; valor fechado vazio = mão de obra 0)',
+      executar: function () {
+        var antigos = [{ descricao: 'Embreagem – Gol', modo: 'horas', horasTexto: '8', valorTexto: '', horasFechadoTexto: '' },
+          { descricao: 'Motor', modo: 'fechado', horasTexto: '3', valorTexto: '1000', horasFechadoTexto: '8' },
+          { descricao: 'Motor', modo: 'fechado', horasTexto: '', valorTexto: '1000', horasFechadoTexto: '' },
+          { descricao: 'Nada', modo: 'fechado', horasTexto: '', valorTexto: '', horasFechadoTexto: '6' }];
+        return { obtido: antigos.map(function (a) {
+          var linha = servicosDoLegado(a);
+          var antes = cenarioServicos(null, a).resultado, depois = cenarioServicos(null, { servicos: linha }).resultado;
+          return [linha.length, linha[0].descricao, linha[0].horasTexto, linha[0].valorTexto, /^s_[a-z0-9]+$/.test(linha[0].id), JSON.stringify(antes) === JSON.stringify(depois)];
+        }),
+                 esperado: [[1, 'Embreagem – Gol', '8', '', true, true], [1, 'Motor', '8', '1000', true, true], [1, 'Motor', '', '1000', true, true], [1, 'Nada', '6', '0', true, true]] };
+      } },
+    { id: 'SV3', descricao: 'Seção 17: campos antigos de reserva (app antigo no cache) = um serviço fechado com o total e dão os mesmos números; descrição da coluna F "placa · modelo · 1º serviço (+N)"; id estável e sem repetir',
+      executar: function () {
+        var servicos = [{ id: 's_a', descricao: 'Radiador', horasTexto: '4', valorTexto: '' }, { id: 's_b', descricao: 'Suspensão', horasTexto: '2', valorTexto: '' }, { id: 's_c', descricao: '', horasTexto: '', valorTexto: '80' }];
+        var leg = legadoDosServicos(servicos, 150);
+        var novo = cenarioServicos(null, { servicos: servicos }).resultado;
+        var antigo = cenarioServicos(null, { descricao: 'x', modo: leg.modo, horasTexto: leg.horasTexto, valorTexto: leg.valorTexto, horasFechadoTexto: leg.horasFechadoTexto }).resultado;
+        var ids = {}; for (var i = 0; i < 50; i++) ids[novoIdServico()] = true;
+        var limpos = servicosLimpos([{ id: 's_a', descricao: 'A' }, { id: 's_a', descricao: 'B' }, { descricao: 'C' }]);
+        return { obtido: [leg, JSON.stringify(novo) === JSON.stringify(antigo),
+                          descricaoDoOrcamento({ placa: 'ABC-1234', modelo: 'Saveiro CS 1.6' }, servicos), descricaoDoOrcamento(veiculoVazio(), [{ descricao: 'Troca de óleo' }]), descricaoDoOrcamento(veiculoVazio(), []),
+                          Object.keys(ids).length, limpos[0].id, limpos[1].id !== 's_a' && limpos[2].id !== limpos[1].id],
+                 esperado: [{ modo: 'fechado', horasTexto: '', valorTexto: '980', horasFechadoTexto: '6,533333333333333' }, true,
+                            'ABC-1234 · Saveiro CS 1.6 · Radiador (+1)', 'Troca de óleo', '', 50, 's_a', true] };
+      } },
+    { id: 'WZ1', descricao: 'Seção 17: WhatsApp com veículo e as seções na ordem oficina → parceiros → peças, todas com "•", sem valores por item; vazias e linhas sem descrição omitidas',
+      executar: function () {
+        var c = cenarioServicos([['Troca do radiador', '4', ''], ['Suspensão dianteira', '2', '300'], ['', '1', '']]);
+        var zap = function (veiculo, servicos, terceiros, pecas) {
+          return textoWhatsApp(c.calc.res, { nomeOficina: 'CliniCar' }, '', c.calc.preco, pecas, { veiculo: veiculo, servicos: servicos, terceiros: terceiros }).split('\n');
+        };
+        var cheio = zap({ placa: 'ABC-1234', modelo: 'Saveiro CS 1.6', ano: '2014', combustivel: 'Flex' }, c.e.servicos,
+          [{ descricao: 'Retífica do cabeçote' }, { descricao: '  ' }], [{ descricao: 'Óleo', qtd: 4 }, { descricao: 'Filtro de óleo', qtd: 1 }]);
+        var corpo = cheio.slice(0, cheio.indexOf('', 12) + 1);
+        var soModelo = zap({ placa: '', modelo: 'Gol', ano: '', combustivel: '' }, c.e.servicos, [], []);
+        var nada = zap(veiculoVazio(), [], [], []);
+        return { obtido: [corpo, /R\$/.test(corpo.join(' ')), soModelo.slice(0, 6), nada.slice(0, 3)],
+                 esperado: [['*Orçamento – CliniCar*', 'Veículo: Saveiro CS 1.6 · 2014 · ABC-1234', '',
+                             '🔧 *Serviços da oficina:*', '• Troca do radiador', '• Suspensão dianteira', '',
+                             '🤝 *Serviços de parceiros:*', '• Retífica do cabeçote', '',
+                             '🔩 *Peças:*', '• 4× Óleo', '• 1× Filtro de óleo', ''], false,
+                            ['*Orçamento – CliniCar*', 'Veículo: Gol', '', '🔧 *Serviços da oficina:*', '• Troca do radiador', '• Suspensão dianteira'],
+                            ['*Orçamento – CliniCar*', '', nada[2]]] };
+      } },
+    { id: 'BV1', descricao: 'Seção 17: busca por placa com ou sem hífen e sem maiúscula, pelo 2º serviço, por parceiro e por peça (coluna Z); antigo sem Z continua pela coluna F',
+      executar: function () {
+        var o = { cliente: 'João', telefone: '(11) 98888-7777', servico: 'ABC-1234 · Saveiro CS 1.6 · Troca do radiador (+1)', itens: 'ABC-1234 · Saveiro CS 1.6 · Troca do radiador · Suspensão dianteira · Retífica · Filtro de óleo' };
+        var mercosul = { cliente: '', telefone: '', servico: 'ABC1D23 · Gol', itens: 'ABC1D23 · Gol' };
+        var antigo = { cliente: 'Maria', telefone: '', servico: 'Embreagem – Gol 2015' };
+        return { obtido: [combinaBusca(o, 'abc1234'), combinaBusca(o, 'ABC-1234'), combinaBusca(o, 'abc-1234'), combinaBusca(o, 'saveiro'), combinaBusca(o, 'suspensao'),
+                          combinaBusca(o, 'retifica'), combinaBusca(o, 'filtro'), combinaBusca(o, 'xyz9999'), combinaBusca(mercosul, 'abc1d23'), combinaBusca(mercosul, 'ABC-1D23'),
+                          combinaBusca(antigo, 'gol 2015'), combinaBusca(antigo, 'suspensao'), combinaBusca(o, '98888')],
+                 esperado: [true, true, true, true, true, true, true, false, true, true, true, false, true] };
+      } },
+    { id: 'PL1', descricao: 'Seção 17: placa (maiúsculas, "-" no padrão antigo, Mercosul junto; formato só avisa) e ano (4 números, 1950 até o ano que vem)',
+      executar: function () {
+        return { obtido: [formatarPlaca('abc1234'), formatarPlaca('abc-1234'), formatarPlaca('abc12'), formatarPlaca('abc1'), formatarPlaca('abc1d23'), formatarPlaca('ABC1D2'), formatarPlaca('a b c 1 2 3 4 5'),
+                          validarPlaca(''), validarPlaca('ABC-1234'), validarPlaca('abc1234'), validarPlaca('ABC1D23'), validarPlaca('AB-123'),
+                          validarAno('', 2026), validarAno('2014', 2026), validarAno('2027', 2026), validarAno('2028', 2026), validarAno('1949', 2026), validarAno('14', 2026)],
+                 esperado: ['ABC-1234', 'ABC-1234', 'ABC-12', 'ABC1', 'ABC1D23', 'ABC1D2', 'ABC-1234',
+                            '', '', '', '', 'Placa no formato ABC-1234 ou ABC1D23.',
+                            '', '', '', 'Ano com 4 números, de 1950 a 2027.', 'Ano com 4 números, de 1950 a 2027.', 'Ano com 4 números, de 1950 a 2027.'] };
+      } },
+    { id: 'EF1', descricao: 'Adendo 17 "Com essa entrada fica": base 1.800 (12 h × 150), Visa 5x, desconto 5%, imposto 10% → à vista fica 1.374,27; entrada 1.000 Pix + 5x (R5 894,79) → 1.346,80; débito → 1.333,10; sem entrada → nada',
+      executar: function () {
+        var c = function (texto, forma) { return cenarioEntradaFica(texto, forma).calc; };
+        var pix = c('1000', 'pix'), deb = c('1000', 'debito'), sem = c('', 'pix');
+        return { obtido: [sem.det.totalSeu, sem.ficaComEntrada, pix.entradaCartao.restoC, pix.ficaComEntrada.totalC, pix.ficaComEntrada.sobraC, pix.ficaComEntrada.estado,
+                          deb.ficaComEntrada.totalC, deb.ficaComEntrada.sobraC, pix.det.totalSeu],
+                 esperado: [137427, null, 89479, 134680, 83911, 'verde', 133310, 82541, 137427] };
       } },
     { id: 'A1', descricao: 'Alerta do piso (pisos do print 4.158,12 / 4.628,21): 6.315,86 sem alerta; até 5.091,03 (10% acima do piso da casa) âmbar; 5.091,04 sem; abaixo de 4.158,12 vermelho; sem casa: âmbar até 4.573,93',
       executar: function () {
@@ -2085,6 +2358,26 @@ function cenarioImposto(comTerceiros) {
     terceiros: comTerceiros ? [{ descricao: 'Eletricista', valorTexto: '100', acrescimoTexto: '30' }] : [] };
   var calc = calcularComFoto(e, foto);
   return { foto: foto, e: e, calc: calc, resultado: resultadoParaGravar(calc) };
+}
+
+/**
+ * Cenário da seção 17: oficina 3.150 e casa 5.500 em 130 h; R$ 150/h; imposto 10%; Visa padrão; âncora 5x; desconto 5%; sem peças.
+ * linhas: [[descrição, horas, valor]] → lista de serviços; ou mud (entrada antiga/servicos prontos).
+ */
+function cenarioServicos(linhas, mud) {
+  var dados = { gastos: [{ tipo: 'Oficina', valor: 3150 }, { tipo: 'Casa', valor: 5500 }], cartoes: [cartaoDeTeste('Visa/Master', VISA_TESTE)],
+    parametros: { diasPorSemana: 5, horasPorDia: 8, horasCobradasPorDia: 6, valorHoraCobrado: 150, impostoPercentual: 10,
+      acrescimoPecasPadrao: 0, descontoAVistaPadrao: 5, parcelasDestaque: '5', nomeOficina: '' } };
+  var foto = fotoDeHoje(dados, '2026-11-09 10:00');
+  var e = Object.assign({ pecasModo: 'acrescimo', pecas: [], pecasPagarTexto: '', pecasCobrarTexto: '', acrescimoTexto: null, descontoTexto: null, extraTexto: '', bandeira: NAO_SEI },
+    linhas ? { servicos: linhas.map(function (l, i) { return { id: 's_' + i, descricao: l[0], horasTexto: l[1], valorTexto: l[2] }; }) } : {}, mud || {});
+  var calc = calcularComFoto(e, foto);
+  return { foto: foto, e: e, calc: calc, resultado: resultadoParaGravar(calc) };
+}
+
+/** Adendo 17: base 1.800 (12 h × 150) no cenário acima, com entrada (Pix ou débito) + resto em 5x. */
+function cenarioEntradaFica(entradaTexto, formaEntrada) {
+  return cenarioServicos([['Serviço', '12', '']], { entradaTexto: entradaTexto, formaEntrada: formaEntrada, parcelasEntrada: 5 });
 }
 
 /** Mês do exemplo da fase 11: 3 fechados de 10 h; faturamento 9.126,93 · peças 3.780 · maquininha 503,27 · imposto 912,70. */

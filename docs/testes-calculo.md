@@ -12,7 +12,16 @@
 - A comparação dos valores é **exata, em centavos inteiros**, sem tolerância.
 - Os casos T8–T12, do modelo antigo de bandeiras fixas, foram **substituídos** por C1–C8 (cartões cadastráveis).
 
-## Resultados (08/11/2026)
+## Resultados (09/11/2026)
+
+**Seção 17 (vários serviços da oficina, veículo em campos, WhatsApp separado, coluna Z) + adendos ("Com essa entrada fica" e frase do mês com o total); o backend mudou e o D10 confere o hash novo; `sw.js` v13:**
+- **Cálculo:** 148 casos (140 + Q7, SV1–SV3, WZ1, BV1, PL1, EF1). P9 e Q5 foram atualizados para o texto aprovado (WhatsApp com "•"; a frase do mês com o total).
+  - SV1: 4 h + 2 h (R$ 150/h) + R$ 80 fechado (horas vazias) → mão de obra 980,00; horas 6,5333 (0,5333 estimadas); oficina 158,31; casa 276,40; pisos 175,90 / 483,02. É idêntico a um serviço fechado de 980 com 6,5333 h.
+  - SV2: orçamento antigo (horas; valor fechado com e sem horas; valor fechado vazio → "0") → resultado gravado idêntico.
+  - EF1: base 1.800 → à vista fica 1.374,27; entrada 1.000 Pix + 5x (R5 894,79; sobra 839,11) → 1.346,80; débito (sobra 825,41) → 1.333,10.
+  - Q7: 7.562 + 6.370 → "Faltam R$ 13.932,00 para pagar a oficina e a sua casa este mês" + divisão; casa com 2.370 cobertos → 4.000,00.
+- **Backend:** `check-17.js` 11/11 (grava/devolve; F e Z; limites; migração do esquema 2 → 3 preenche Z das linhas antigas uma vez, a busca acha peça e parceiro de orçamento antigo, não roda de novo; Z regravada ao salvar). Os outros verificadores mudaram só na largura (26 colunas) e no esquema "3".
+- **Tela:** `teste-17.js` 25/25, mais os testes de tela anteriores com as expectativas de texto aprovadas e um adaptador só de teste (ids antigos → 1ª linha de serviço).
 
 **Adendo 16.9 (desconto à vista diferente para serviço e peças, opção b; o backend mudou e o D10 confere o hash FINAL; `sw.js` v12):**
 - **Cálculo:** 89 casos (83 + DS1–DS6), com base 1.500 (serviço 1.000 + peças 500), A 5x = 1.622,8497, A_serv = 1.081,8998, A_peças = 540,9499.

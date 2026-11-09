@@ -359,6 +359,36 @@ input.pin { letter-spacing: 0.4em; }
   .peca-linha { padding-bottom: 0; }
 }
 
+/* Seção 17: veículo em campos e serviços da oficina (celular: descrição + lixeira em cima, "Horas · R$" embaixo; 560–899 px: uma linha) */
+.grupo-veiculo { margin-bottom: 20px; }
+.grupo-veiculo legend { padding: 0; margin-bottom: 10px; font-size: 15px; font-weight: 600; color: var(--texto); }
+#orc-placa { text-transform: uppercase; }
+.subtitulo-card { margin: 4px 0 10px; font-size: 15px; font-weight: 600; color: var(--texto); }
+.servico-linha {
+  display: grid; gap: 8px; align-items: center; margin-bottom: 12px;
+  grid-template-columns: 92px minmax(0, 1fr) 44px;
+  grid-template-areas: "desc desc rem" "horas valor valor" "erro erro erro" "info info info" "ajuda ajuda ajuda";
+}
+.servico-linha .serv-desc { grid-area: desc; }
+.servico-linha .serv-horas { grid-area: horas; }
+.servico-linha .serv-valor { grid-area: valor; }
+.servico-linha .btn-remover { grid-area: rem; justify-self: end; }
+.servico-linha .erro { grid-area: erro; margin: 0; }
+.servico-linha .erro:empty, .servico-linha .serv-info:empty { display: none; }
+.servico-linha .serv-info { grid-area: info; margin: 0; font-size: 13px; color: var(--texto-3); }
+.servico-linha .serv-ajuda { grid-area: ajuda; margin: 0; }
+.servico-linha .serv-ajuda[hidden] { display: none; }
+.serv-horas input { padding-right: 28px; }
+.serv-horas .sufixo { right: 10px; }
+.serv-valor input::placeholder { font-size: 14px; }
+.servicos-totais strong { font-size: 15px; }
+@media (min-width: 560px) and (max-width: 899px) {
+  .servico-linha {
+    grid-template-columns: minmax(0, 1fr) 96px 200px 44px;
+    grid-template-areas: "desc horas valor rem" "erro erro erro erro" "info info info info" "ajuda ajuda ajuda ajuda";
+  }
+}
+
 /* Seção 16: entrada + resto no cartão (fechado: só o link, sem card) */
 .card-entrada:has(#bloco-entrada[hidden]) { background: none; box-shadow: none; padding: 0 4px; }
 #bloco-entrada .rotulo { margin-top: 4px; }
@@ -435,7 +465,6 @@ body.sem-conexao .abas-topo, body.em-config .abas-topo { display: none; }
 .chip-situacao.sit-fechado { background: #e6f4ea; color: var(--verde-escuro); }
 .chip-situacao.sit-nao { background: #fbeaea; color: #8a1c1c; }
 body.orc-travado #tela-orcamento .btn-remover, body.orc-travado #tela-orcamento .btn-adicionar,
-body.orc-travado #tela-orcamento #ir-fechado, body.orc-travado #tela-orcamento #ir-horas,
 body.orc-travado #tela-orcamento #ir-pecas-valor, body.orc-travado #tela-orcamento #ir-pecas-acrescimo { display: none; }
 .entrada input:disabled { background: #f3f4f6; color: var(--texto-2); }
 

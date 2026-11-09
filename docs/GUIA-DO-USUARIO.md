@@ -56,9 +56,15 @@ Errou e apagou um gasto? Toque em **DESFAZER** na barra que aparece embaixo.
 ## 3. Fazer um orçamento
 
 Na tela do **Orçamento**:
-1. **Serviço / veículo:** ex.: "Troca de embreagem – Gol 2015".
-2. **Horas de serviço:** o app calcula a mão de obra.
-   Prefere dar um preço fechado? Toque em **"Prefiro digitar o valor fechado"**.
+1. **Veículo (opcional):** **Placa**, **Ano**, **Modelo** (ex.: "Saveiro CS 1.6") e o **Combustível** (toque no chip; toque de novo para tirar).
+   - A placa fica em maiúsculas sozinha e ganha o "-" no modelo antigo (ABC-1234). A placa Mercosul fica junta (ABC1D23).
+   - Placa ou ano num formato estranho? O app avisa, mas deixa salvar.
+2. **Serviços da oficina** (a sua mão de obra): um serviço por linha, ex.: "Troca do radiador", "Suspensão dianteira".
+   - Em cada linha: o **nome** e as **horas**, e o app calcula a mão de obra daquele serviço.
+   - Prefere um **valor fechado** num serviço? Escreva o valor no **R$** daquela linha. As horas ficam opcionais: vazias, o app estima pelo valor da sua hora.
+   - **R$ vazio = calcula pelas horas.**
+   - **"+ Adicionar serviço"** para mais um. Errou? **Lixeira** e dá para **DESFAZER** logo depois.
+   - Embaixo aparece o total: "Total: 12 h · Mão de obra R$ 1.800,00".
 3. **Peças:**
    - toque em **"+ Adicionar peça"** para cada peça: o **nome** (ex.: "Pastilha de freio"), a **quantidade** (ex.: 2, ou 4,5 litros de óleo) e **quanto você paga por unidade**;
    - embaixo de cada peça aparece **quanto o cliente paga** por ela;
@@ -68,7 +74,7 @@ Na tela do **Orçamento**:
    - sem peças? Deixe a lista vazia: o orçamento fica só com a mão de obra;
    - prefere um valor só? Toque em **"Prefiro digitar o valor das peças"**;
    - o app mostra **quanto o cliente paga pelas peças**.
-   - **Serviços de terceiros** (eletricista, retífica, torno…): toque em **"+ Adicionar serviço"**, escreva o serviço, **quanto você paga** e o **% em cima** (já vem o seu número de Ajustes; de fábrica, 0 = repassa pelo mesmo valor). Entra no preço como as peças. No WhatsApp aparece só o nome do serviço, sem valor.
+   - **Serviços de parceiros (terceiros)** (eletricista, retífica, torno…): toque em **"+ Adicionar serviço de parceiro"**, escreva o serviço, **quanto você paga** e o **% em cima** (já vem o seu número de Ajustes; de fábrica, 0 = repassa pelo mesmo valor). Entra no preço como as peças. No WhatsApp aparece só o nome do serviço, sem valor.
 4. Veja o resultado:
    - **Cartão em 5x** (em cima): o preço cheio no cartão, já cobrindo a taxa da maquininha;
    - **À vista (Pix, dinheiro ou débito):** o preço do cartão **com desconto** (veja abaixo);
@@ -77,6 +83,7 @@ Na tela do **Orçamento**:
    - **Fica para você neste serviço:** sua hora já inclui os gastos da **oficina** e os da sua **casa**:
      - o **número grande** é o **total que é seu**: a parte da casa (o seu **salário**) mais a **sobra extra**. Embaixo, a conta em uma linha: "R$ 423,07 do seu salário + R$ 1.518,89 de sobra";
      - **"No cartão em 5x fica: R$ …"**: quanto fica para você se o cliente pagar no cartão;
+     - com uma **entrada** preenchida (item 6), aparece também **"Com essa entrada fica: R$ …"**: quanto fica para você se ele pagar a entrada e o resto no cartão;
      - em **verde**, tudo pago e ainda sobrou; em **amarelo**, a oficina se paga, mas não cobre toda a sua casa; em **vermelho**, com esse preço a oficina não se paga;
      - perto do limite aparece um aviso: em amarelo **"Cuidado: abaixo de R$ X não sobra nada para a sua casa."**; em vermelho **"Abaixo de R$ X a oficina não se paga."**;
      - **Ver detalhes** (fechado no começo) mostra a conta inteira e os dois limites.
@@ -87,6 +94,13 @@ Na tela do **Orçamento**:
    - **em quantas vezes** fica o resto no cartão (já vem a parcela de sempre, ex.: 5x).
    - O app mostra, por exemplo, "Entrada R$ 1.000,00 no Pix + 5x de R$ 789,47 no cartão · total R$ 4.947,37". O desconto à vista vale só sobre a parte que ele paga à vista.
    - Essa linha também vai para o WhatsApp. Para tirar, toque em **"Tirar a entrada"**.
+
+**O que vai no WhatsApp:** o veículo (modelo · ano · placa) e três listas separadas, sem valor nenhum por item:
+- 🔧 **Serviços da oficina** (o que você faz);
+- 🤝 **Serviços de parceiros** (o que outra pessoa faz);
+- 🔩 **Peças** (com a quantidade).
+
+Depois vêm o cartão, a entrada (se houver) e o à vista. Lista vazia não aparece.
 
 ### Desconto à vista
 
@@ -149,14 +163,14 @@ Para começar outro, toque em **"+ Novo orçamento"**, no topo do card **Serviç
 - Toque em **Resultados**, no topo. Use **‹ ›** para trocar de mês. A última lista que você viu aparece **na hora**, com "Atualizando…" embaixo, e se atualiza sozinha em seguida.
 - **O card do mês** ("Novembro até agora · dia 8 de 30"; nos meses que passaram, "Resultado de outubro"): cada orçamento supõe que você vendeu **todas** as horas do mês; aqui é o que aconteceu de verdade.
   - duas barras: **Oficina** (quanto dos gastos da oficina já foi pago; cheia = "✓ paga") e **Sua casa** ("R$ 780,96 de R$ 5.500,00");
-  - a frase grande: **"Sobrou R$ X além da casa este mês"** (verde) ou **"Faltam R$ X para cobrir a casa este mês"** (amarelo; no mês atual nunca fica vermelho, porque o mês ainda não acabou). Nos meses que passaram: **"Faltaram R$ X…"**;
+  - a frase grande: **"Sobrou R$ X além da casa este mês"** (verde), ou quanto **falta para pagar o mês inteiro**: a oficina **e** a sua casa (o seu salário). Ex.: **"Faltam R$ 13.932,00 para pagar a oficina e a sua casa este mês"** e, embaixo, menor: "Oficina: faltam R$ 7.562,00 · Casa: faltam R$ 6.370,00". Com a oficina já paga: **"Faltam R$ 4.000,00 para pagar a sua casa este mês"** e "Oficina ✓ paga · Casa: faltam R$ 4.000,00". No mês atual nunca fica vermelho, porque o mês ainda não acabou. Nos meses que passaram: **"Faltaram R$ X…"**;
   - no mês atual, se faltar: **"Faltam cerca de 37 horas de serviço (uns 4 serviços como os deste mês)"**, com quanto você ganha por hora já tirando peças, maquininha e imposto.
 - **Dinheiro que entrou** é o caminho do dinheiro no mês, de cima para baixo: Entrou − Peças − Maquininha − Imposto − Gastos da oficina = **Ficou para a casa** − Gastos da casa = **Sobra extra** (ou **Faltou**).
 - **Orçamentos feitos** contam pelo mês em que você fez o orçamento; o **dinheiro que entrou** conta pela **data do fechamento**. Um orçamento feito em outubro e fechado em novembro conta como feito em outubro, mas o dinheiro entra em novembro.
 - **O mês atual usa sempre os seus gastos de hoje.** Mudou um gasto em Meus gastos? O mês atual se ajusta sozinho, sem botão. Os meses que já passaram ficam com os gastos que estavam valendo.
   - Um gasto que só começa no mês que vem (ex.: aumento do aluguel)? Lance no **dia 1º**.
   - Um mês passado ficou com os gastos errados? **Engrenagem → Ajustes → Outros ajustes → "Corrigir gastos de um mês passado"**: escolha o mês e toque em **Substituir pelos gastos de hoje** (o app pede confirmação).
-- Embaixo, a **lista** do mês: busque por cliente, telefone ou serviço e filtre por situação. Toque num orçamento para **Abrir**, **Fechou? / Não fechou?** (nos que estão em aberto; nos outros, **Mudar situação**), **Duplicar** ou **Excluir**.
+- Embaixo, a **lista** do mês: busque por cliente, telefone, **placa** (com ou sem o "-"), modelo, qualquer serviço da oficina, parceiro ou **peça**, e filtre por situação. Toque num orçamento para **Abrir**, **Fechou? / Não fechou?** (nos que estão em aberto; nos outros, **Mudar situação**), **Duplicar** ou **Excluir**.
 - Mexeu nos gastos ou ajustes **direto na planilha** e o app ainda mostra o valor antigo? Em **Ajustes**, toque em **"Recarregar da planilha"** (embaixo, discreto).
 - **Não edite as abas "Orçamentos" e "Meses" na planilha.** A planilha avisa se você tentar. Apagar uma linha lá = excluir o orçamento.
 - **Dois aparelhos** (você no celular, alguém no computador): se os dois mexerem no **mesmo** orçamento, quem salvar depois vê **"Esse orçamento foi alterado em outro aparelho."** e escolhe entre **"Ver a versão nova"** ou **"Salvar as minhas como um novo orçamento"**. Nada se perde sem aviso.

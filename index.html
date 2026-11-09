@@ -127,44 +127,43 @@
               <p class="erro"></p>
             </div>
           </div>
-          <div class="campo">
-            <label for="orc-descricao">Qual serviço / veículo?</label>
-            <div class="entrada">
-              <input id="orc-descricao" type="text" data-orc="descricao" maxlength="100" autocomplete="off" placeholder="Ex.: Troca de embreagem – Gol 2015">
+          <!-- Seção 17: veículo em campos (tudo opcional) -->
+          <fieldset class="grupo-veiculo">
+            <legend class="rotulo">Veículo (opcional)</legend>
+            <div class="campos-lado">
+              <div class="campo">
+                <label for="orc-placa">Placa</label>
+                <div class="entrada"><input id="orc-placa" type="text" data-veiculo="placa" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABC-1234"></div>
+                <p class="erro"></p>
+              </div>
+              <div class="campo">
+                <label for="orc-ano">Ano</label>
+                <div class="entrada"><input id="orc-ano" class="num" type="text" inputmode="numeric" data-veiculo="ano" maxlength="4" autocomplete="off" placeholder="Ex.: 2014"></div>
+                <p class="erro"></p>
+              </div>
             </div>
-          </div>
+            <div class="campo">
+              <label for="orc-modelo">Modelo</label>
+              <div class="entrada"><input id="orc-modelo" type="text" data-veiculo="modelo" maxlength="60" autocomplete="off" placeholder="Ex.: Saveiro CS 1.6"></div>
+            </div>
+            <p class="rotulo">Combustível</p>
+            <div class="chips" id="chips-combustivel" role="radiogroup" aria-label="Combustível">
+              <button type="button" class="chip" role="radio" data-combustivel="Flex" aria-checked="false">Flex</button>
+              <button type="button" class="chip" role="radio" data-combustivel="Gasolina" aria-checked="false">Gasolina</button>
+              <button type="button" class="chip" role="radio" data-combustivel="Etanol" aria-checked="false">Etanol</button>
+              <button type="button" class="chip" role="radio" data-combustivel="Diesel" aria-checked="false">Diesel</button>
+              <button type="button" class="chip" role="radio" data-combustivel="GNV" aria-checked="false">GNV</button>
+            </div>
+          </fieldset>
 
-          <div id="bloco-horas">
-            <div class="campo">
-              <label for="orc-horas">Quantas horas de serviço?</label>
-              <div class="entrada">
-                <input id="orc-horas" class="num" type="text" inputmode="decimal" data-orc="horasTexto" autocomplete="off" placeholder="Ex.: 8">
-              </div>
-              <p class="erro"></p>
-              <p class="info" id="info-mao-horas"></p>
-            </div>
-            <button type="button" class="link" id="ir-fechado">Prefiro digitar o valor fechado</button>
-          </div>
-
-          <div id="bloco-fechado" hidden>
-            <div class="campo">
-              <label for="orc-valor">Valor da mão de obra</label>
-              <div class="entrada com-prefixo">
-                <span class="prefixo">R$</span>
-                <input id="orc-valor" class="num" type="text" inputmode="decimal" data-orc="valorTexto" autocomplete="off" placeholder="0,00">
-              </div>
-              <p class="erro"></p>
-            </div>
-            <div class="campo">
-              <label for="orc-horas-fechado">Horas (opcional)</label>
-              <div class="entrada">
-                <input id="orc-horas-fechado" class="num" type="text" inputmode="decimal" data-orc="horasFechadoTexto" autocomplete="off" placeholder="Ex.: 6">
-              </div>
-              <p class="erro"></p>
-              <p class="info" id="info-horas-estimadas"></p>
-            </div>
-            <button type="button" class="link" id="ir-horas">Prefiro calcular por horas</button>
-          </div>
+          <!-- Seção 17: serviços da oficina (mão de obra). Cada linha: horas, ou valor fechado (R$) com horas opcionais -->
+          <h3 class="subtitulo-card" id="titulo-servicos-oficina">Serviços da oficina</h3>
+          <div id="lista-servicos"></div>
+          <button type="button" class="btn-adicionar" id="btn-adicionar-servico">
+            <svg class="ic" aria-hidden="true"><use href="#i-mais"/></svg>Adicionar serviço
+          </button>
+          <div class="total-linha servicos-totais" id="servicos-totais" hidden></div>
+          <p class="info" id="info-servicos"></p>
         </div>
 
         <div class="card">
@@ -219,14 +218,14 @@
 
         <!-- Seção 16: serviços de terceiros (eletricista, retífica…): o que você paga + % em cima; sem quantidade -->
         <div class="card" id="card-terceiros">
-          <h2 class="card-titulo">Serviços de terceiros</h2>
+          <h2 class="card-titulo">Serviços de parceiros (terceiros)</h2>
           <div class="terceiros-cabecalho" id="terceiros-cabecalho" aria-hidden="true">
             <span>Serviço</span><span>Valor pago</span><span>% em cima</span><span></span>
           </div>
           <div id="lista-terceiros"></div>
           <p class="ajuda" id="terceiros-vazia">Eletricista, retífica, torno… Serviço que outra pessoa faz, você paga e repassa ao cliente.</p>
           <button type="button" class="btn-adicionar" id="btn-adicionar-terceiro">
-            <svg class="ic" aria-hidden="true"><use href="#i-mais"/></svg>Adicionar serviço
+            <svg class="ic" aria-hidden="true"><use href="#i-mais"/></svg>Adicionar serviço de parceiro
           </button>
           <div class="total-linha pecas-totais" id="terceiros-totais" hidden></div>
         </div>
@@ -339,6 +338,7 @@
             <div class="valor-grande" id="res-fica"></div>
             <p class="fica-partes" id="res-fica-partes"></p>
             <p class="pequeno" id="res-fica-cartao" hidden></p>
+            <p class="pequeno" id="res-fica-entrada" hidden></p>
             <p class="alerta" id="res-lucro-alerta" hidden></p>
             <details id="det-servico">
               <summary>Ver detalhes<svg class="ic" aria-hidden="true"><use href="#i-seta"/></svg></summary>
@@ -401,6 +401,7 @@
               <div class="barra" aria-hidden="true"><div class="barra-cheia" id="mes-casa-barra"></div></div>
             </div>
             <p class="frase-mes" id="mes-frase"></p>
+            <p class="pequeno mes-detalhe" id="mes-detalhe" hidden></p>
             <div class="faixa faixa-dica falta-trabalhar" id="mes-falta-trabalhar" hidden></div>
             <p class="pequeno" id="mes-comparacao" hidden></p>
           </div>
@@ -430,7 +431,7 @@
         <div class="card">
           <div class="entrada com-prefixo busca">
             <span class="prefixo"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-busca"/></svg></span>
-            <input id="res-busca" type="search" autocomplete="off" placeholder="Buscar cliente, telefone ou serviço" aria-label="Buscar cliente, telefone ou serviço">
+            <input id="res-busca" type="search" autocomplete="off" placeholder="Buscar cliente, placa, serviço ou peça" aria-label="Buscar por cliente, telefone, placa, modelo, serviço, parceiro ou peça">
           </div>
           <div class="chips" id="res-filtros" role="radiogroup" aria-label="Situação">
             <button type="button" class="chip" role="radio" data-filtro="todos" aria-checked="true">Todos</button>

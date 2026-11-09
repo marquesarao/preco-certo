@@ -524,8 +524,9 @@ function renderTudo() {
 // ---------------- Orçamento ----------------
 function orcamentoVazio() {
   return {
-    descricao: '', modo: 'horas',
-    horasTexto: '', valorTexto: '', horasFechadoTexto: '',
+    // Seção 17: veículo em campos + serviços da oficina [{id, descricao, horasTexto, valorTexto}] (novo já começa com 1 linha)
+    veiculo: veiculoVazio(),
+    servicos: [servicoVazio()],
     pecasPagarTexto: '', pecasModo: 'acrescimo', acrescimoTexto: null, pecasCobrarTexto: '',
     descontoTexto: null, extraTexto: '',   // descontoTexto null = segue o padrão dos Ajustes (da foto em uso)
     // Seção 16.9: descontoSeparado null = automático (dois campos se os padrões forem diferentes); true/false = escolha;
@@ -555,7 +556,9 @@ function carregarOrcamentoSalvo() {
   if (!o || typeof o !== 'object') return;
   var base = orcamentoVazio();
   Object.keys(base).forEach(function (k) { if (typeof o[k] === 'string') base[k] = o[k]; });
-  if (base.modo !== 'horas' && base.modo !== 'fechado') base.modo = 'horas';
+  // Seção 17: rascunho de antes (campo único + horas ou valor fechado) vira UMA linha de serviço, com os mesmos números
+  base.servicos = Array.isArray(o.servicos) ? servicosLimpos(o.servicos) : servicosDoLegado(o);
+  base.veiculo = veiculoLimpo(o.veiculo);
   if (base.pecasModo !== 'acrescimo' && base.pecasModo !== 'valor') base.pecasModo = 'acrescimo';
   if (Array.isArray(o.pecas)) {
     base.pecas = o.pecas.filter(function (p) { return p && typeof p === 'object'; }).slice(0, MAX_PECAS).map(function (p) {
@@ -673,6 +676,123 @@ function voltarAcrescimoPeca(i) {
   if (el) el.focus();
 }
 
+// ---------------- Serviços da oficina e veículo (seção 17) ----------------
+
+/** Desenha as linhas (só ao carregar, adicionar, remover ou começar um novo orçamento). */
+function renderServicos() {
+  $('lista-servicos').innerHTML = orc.servicos.map(function (sv, i) {
+    var nome = esc(sv.descricao || 'serviço');
+    return '<div class="servico-linha" data-servico="' + i + '">' +
+      '<div class="entrada serv-desc"><input type="text" data-servico-campo="descricao" data-indice="' + i + '" maxlength="80"' +
+      ' placeholder="Serviço (ex.: Troca do radiador)" aria-label="Descrição do serviço da oficina" autocomplete="off" value="' + esc(sv.descricao) + '"></div>' +
+      '<div class="entrada com-sufixo serv-horas"><input type="text" class="num" inputmode="decimal" data-servico-campo="horasTexto" data-indice="' + i + '" maxlength="40"' +
+      ' placeholder="Horas" aria-label="Horas de ' + nome + '" autocomplete="off" value="' + esc(sv.horasTexto) + '"><span class="sufixo">h</span></div>' +
+      '<div class="entrada com-prefixo serv-valor"><span class="prefixo">R$</span>' +
+      '<input type="text" class="num" inputmode="decimal" data-servico-campo="valorTexto" data-formato="dinheiro" data-indice="' + i + '" maxlength="40"' +
+      ' placeholder="Valor fechado (opcional)" aria-label="Valor fechado de ' + nome + ' (opcional)" autocomplete="off" value="' + esc(sv.valorTexto) + '"></div>' +
+      '<button type="button" class="btn-remover" data-remover-servico="' + i + '" aria-label="Remover ' + nome + '">' + icone('i-lixeira') + '</button>' +
+      '<p class="erro"></p>' +
+      '<p class="serv-info"></p>' +
+      (i === 0 ? '<p class="ajuda serv-ajuda" id="servicos-ajuda" hidden>Deixe o R$ vazio para calcular pelas horas.</p>' : '') +
+      '</div>';
+  }).join('');
+  $('btn-adicionar-servico').hidden = orc.servicos.length >= MAX_SERVICOS;
+}
+
+function adicionarServico() {
+  if (orc.servicos.length >= MAX_SERVICOS || travado()) return;
+  orc.servicos.push(servicoVazio());
+  gravarRascunho();
+  renderServicos();
+  renderOrcamento();
+  var campo = document.querySelector('[data-servico-campo="descricao"][data-indice="' + (orc.servicos.length - 1) + '"]');
+  if (campo) campo.focus();
+}
+
+function onServicoInput(el) {
+  var sv = orc.servicos[Number(el.dataset.indice)];
+  if (!sv || travado()) return;
+  sv[el.dataset.servicoCampo] = el.value;
+  gravarRascunho();
+  renderOrcamento();
+}
+
+/** Horas sem zeros desnecessários: "12 h", "6,53 h". */
+function horasCurtas(h) { return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(h) + ' h'; }
+
+/** Erros e apoio de cada serviço + "Total: 12 h · Mão de obra R$ 1.800,00". */
+function mostrarServicos(lidos, res, p) {
+  var porLinha = res.servicosLinhas || [];
+  lidos.forEach(function (sv, i) {
+    var linha = document.querySelector('.servico-linha[data-servico="' + i + '"]');
+    if (!linha) return;
+    var inHoras = linha.querySelector('[data-servico-campo="horasTexto"]');
+    var inValor = linha.querySelector('[data-servico-campo="valorTexto"]');
+    [[inHoras, sv.erroHoras], [inValor, sv.erroValor]].forEach(function (par) {
+      par[0].classList.toggle('invalido', !!par[1]);
+      if (par[1]) par[0].setAttribute('aria-invalid', 'true'); else par[0].removeAttribute('aria-invalid');
+    });
+    linha.querySelector('.erro').textContent = sv.erroHoras || sv.erroValor || '';
+    var mo = porLinha[i];
+    var info = '';
+    if (mo && mo.horasEstimadas) info = 'Horas estimadas pelo valor da sua hora: ' + formatarHoras(mo.horas);
+    else if (mo && typeof sv.valor !== 'number' && mo.horas > 0 && p.valorHoraCobrado > 0) info = 'Mão de obra: ' + formatarBRL(mo.maoDeObra);
+    linha.querySelector('.serv-info').textContent = info;
+  });
+  // Ajuda de 1 linha embaixo do 1º serviço: só enquanto houver um serviço só, e sem valor
+  var ajuda = $('servicos-ajuda');
+  if (ajuda) ajuda.hidden = !(orc.servicos.length === 1 && String(orc.servicos[0].valorTexto || '').trim() === '');
+  var tem = res.maoDeObra > 0 || res.horas > 0;
+  $('servicos-totais').hidden = !tem;
+  $('servicos-totais').innerHTML = tem
+    ? '<span>Total: <strong>' + esc(horasCurtas(res.horas)) + '</strong></span>' +
+      '<span>Mão de obra <strong>' + esc(formatarBRL(res.maoDeObra)) + '</strong></span>'
+    : '';
+  var semValorHora = !(p.valorHoraCobrado > 0) && lidos.some(function (sv) { return typeof sv.valor !== 'number' && sv.horas > 0; });
+  $('info-servicos').textContent = semValorHora ? 'Coloque quanto você cobra por hora em Meus gastos.' : '';
+}
+
+/** Placa, ano e modelo (data-veiculo). Placa: maiúsculas e "-" do padrão antigo enquanto digita. */
+function onVeiculoInput(el) {
+  if (travado()) return;
+  var k = el.dataset.veiculo;
+  if (k === 'placa') {
+    var fimDoCampo = el.selectionStart === el.value.length;
+    var novo = formatarPlaca(el.value);
+    if (novo !== el.value) {
+      el.value = novo;
+      if (fimDoCampo) try { el.setSelectionRange(novo.length, novo.length); } catch (err) { /* ignora */ }
+    }
+  } else if (k === 'ano') {
+    var so = el.value.replace(/\D/g, '').slice(0, 4);
+    if (so !== el.value) el.value = so;
+  }
+  orc.veiculo[k] = el.value;
+  gravarRascunho();
+  renderOrcamento();
+}
+
+/** Chip do combustível: toca de novo no escolhido → desmarca (é opcional). */
+function escolherCombustivel(c) {
+  if (travado()) return;
+  orc.veiculo.combustivel = orc.veiculo.combustivel === c ? '' : c;
+  gravarRascunho();
+  renderOrcamento();
+}
+
+function preencherVeiculo() {
+  ['placa', 'modelo', 'ano'].forEach(function (k) { var el = document.querySelector('[data-veiculo="' + k + '"]'); if (el) el.value = orc.veiculo[k] || ''; });
+}
+
+/** Avisos de formato (não impedem salvar) e os chips do combustível. */
+function mostrarVeiculo() {
+  mostrarErroCampo($('orc-placa'), validarPlaca(orc.veiculo.placa));
+  mostrarErroCampo($('orc-ano'), validarAno(orc.veiculo.ano, new Date().getFullYear()));
+  document.querySelectorAll('#chips-combustivel [data-combustivel]').forEach(function (b) {
+    b.setAttribute('aria-checked', String(b.dataset.combustivel === orc.veiculo.combustivel));
+  });
+}
+
 // ---------------- Serviços de terceiros (seção 16) ----------------
 
 /** Desenha as linhas (só ao carregar, adicionar, remover ou começar um novo orçamento). */
@@ -773,11 +893,13 @@ function preencherOrcamento() {
     var k = el.dataset.orc;
     el.value = k === 'acrescimoTexto' ? textoAcrescimo() : k === 'descontoTexto' ? textoDesconto() : k === 'descontoPecasTexto' ? textoDescontoPecas() : (orc[k] || '');
   });
+  preencherVeiculo();
+  renderServicos();
   renderPecas();
   renderTerceiros();
 }
 
-var CAMPOS_NUMERICOS_ORC = ['orc-horas', 'orc-horas-fechado', 'orc-valor', 'orc-pecas-pagar', 'orc-acrescimo', 'orc-pecas-cobrar', 'orc-desconto', 'orc-desconto-pecas', 'orc-extra'];
+var CAMPOS_NUMERICOS_ORC = ['orc-pecas-pagar', 'orc-acrescimo', 'orc-pecas-cobrar', 'orc-desconto', 'orc-desconto-pecas', 'orc-extra'];
 
 /** Chips "Não sei · cartão · cartão…" — só aparecem com 2 ou mais cartões. */
 function renderChipsBandeira(cartoes, efetivo) {
@@ -807,8 +929,6 @@ function renderOrcamento() {
   ultimoPreco = calc.preco;
   ultimasPecas = calc.lido.pecas;
 
-  $('bloco-horas').hidden = orc.modo !== 'horas';
-  $('bloco-fechado').hidden = orc.modo !== 'fechado';
   $('bloco-acrescimo').hidden = orc.pecasModo !== 'acrescimo';
   $('bloco-pecas-valor').hidden = orc.pecasModo !== 'valor';
 
@@ -831,17 +951,9 @@ function renderOrcamento() {
   renderVinculo();
   aplicarTrava();
 
-  // Linhas de apoio
-  var infoMao = '';
-  if (orc.modo === 'horas' && res.horas > 0) {
-    infoMao = p.valorHoraCobrado > 0
-      ? 'Mão de obra: <strong>' + esc(formatarBRL(res.maoDeObra)) + '</strong>'
-      : 'Coloque quanto você cobra por hora em Meus gastos.';
-  }
-  $('info-mao-horas').innerHTML = infoMao;
-  $('info-horas-estimadas').textContent = res.horasEstimadas
-    ? 'Horas estimadas pelo valor da sua hora: ' + formatarHoras(res.horas)
-    : '';
+  // Seção 17: serviços da oficina (apoio de cada linha e o total) e o veículo
+  mostrarServicos(calc.lido.servicos, res, p);
+  mostrarVeiculo();
   // Peças: "Cliente paga" em cada linha e os totais do card
   if (orc.pecasModo === 'acrescimo') {
     // Seção 16: cada peça com o seu % (sem % próprio = o geral, e o campo acompanha o geral)
@@ -1108,6 +1220,11 @@ function renderFicaAberto(calc, res, preco) {
   var elCartao = $('res-fica-cartao');
   elCartao.hidden = !anc || res.semCartoes;
   elCartao.textContent = anc ? 'No cartão em ' + anc.parcelas + 'x fica: ' + comSinal(centavos(anc.lucro) + (det.vaiParaCasa || 0)) : '';
+  // Adendo da seção 17: com a entrada preenchida, o que fica nesse cenário (mesma conta do fechamento "Entrada + cartão")
+  var ce = calc.ficaComEntrada;
+  var elEntrada = $('res-fica-entrada');
+  elEntrada.hidden = !ce || res.semCartoes;
+  elEntrada.innerHTML = ce ? '<span class="' + ({ verde: 'positivo', ambar: 'ambar', vermelho: 'negativo' }[ce.estado] || '') + '">Com essa entrada fica: ' + esc(comSinal(ce.totalC)) + '</span>' : '';
 
   // Ver detalhes (as linhas fecham no centavo com a sobra exibida: veja linhasDetalheServico)
   var linhas = [
@@ -1139,6 +1256,7 @@ function renderFicaFechado(f) {
   $('res-fica-partes').textContent = textoPartes(f.vaiParaCasaC, f.sobraC);
   pintarFica(total, f.estado, [{ tom: f.estado, texto: f.estado === 'ambar' ? 'Paga a oficina, mas não cobre toda a sua casa.' : f.estado === 'vermelho' ? 'Com esse valor a oficina não se paga.' : '' }]);
   $('res-fica-cartao').hidden = true;
+  $('res-fica-entrada').hidden = true;
   var linhas = [
     ['Cliente paga (' + descreverForma(f) + ')', formatarCentavos(f.valorCombinadoC)],
     ['Taxa da maquininha', menos(f.taxaC)],
@@ -1208,14 +1326,6 @@ function onOrcamentoInput(el) {
   renderOrcamento();
 }
 
-function trocarModo(modo) {
-  if (travado()) return;
-  orc.modo = modo;
-  gravarRascunho();
-  renderOrcamento();
-  $(modo === 'horas' ? 'orc-horas' : 'orc-valor').focus();
-}
-
 function trocarModoPecas(modo) {
   if (travado()) return;
   orc.pecasModo = modo;
@@ -1226,7 +1336,7 @@ function trocarModoPecas(modo) {
 
 /** Troca o rascunho (novo, reaberto ou cópia) e redesenha. */
 function carregarRascunho(r, manterAssinatura) {
-  if ((desfazer.tipo === 'peca' || desfazer.tipo === 'terceiro') && desfazer.item) finalizarRemocao(); // a linha removida não volta em outro orçamento
+  if (doRascunho(desfazer.tipo) && desfazer.item) finalizarRemocao(); // a linha removida não volta em outro orçamento
   orc = r;
   ui.maisDesconto = false; // o extra volta escondido (abre sozinho se o orçamento tiver extra)
   ui.entradaAberta = false; // idem a entrada (abre sozinha se o orçamento tiver entrada)
@@ -1255,7 +1365,8 @@ function novoOrcamento() {
   carregarRascunho(orcamentoVazio());
   apagarStorage(CHAVE_ORCAMENTO);
   window.scrollTo(0, 0);
-  $('orc-descricao').focus();
+  var primeiro = document.querySelector('[data-servico-campo="descricao"]');
+  if (primeiro) primeiro.focus();
   mostrarAviso('Pronto para um novo orçamento.');
 }
 
@@ -1295,12 +1406,12 @@ function renderVinculo() {
 function aplicarTrava() {
   var t = travado();
   document.body.classList.toggle('orc-travado', t);
-  document.querySelectorAll('#tela-orcamento [data-orc], #tela-orcamento [data-peca-campo], #tela-orcamento [data-terceiro-campo]').forEach(function (el) {
+  document.querySelectorAll('#tela-orcamento [data-orc], #tela-orcamento [data-peca-campo], #tela-orcamento [data-terceiro-campo], #tela-orcamento [data-servico-campo], #tela-orcamento [data-veiculo]').forEach(function (el) {
     if (el.dataset.orc === 'cliente' || el.dataset.orc === 'telefone') return;
     el.disabled = t;
   });
-  ['ir-fechado', 'ir-horas', 'ir-pecas-valor', 'ir-pecas-acrescimo', 'btn-adicionar-peca', 'btn-adicionar-terceiro', 'btn-entrada', 'btn-tirar-entrada', 'btn-desconto-pecas'].forEach(function (id) { $(id).disabled = t; });
-  document.querySelectorAll('#tela-orcamento [data-remover-peca], #tela-orcamento [data-remover-terceiro], #tela-orcamento [data-bandeira-indice], #tela-orcamento [data-voltar-acr], ' +
+  ['ir-pecas-valor', 'ir-pecas-acrescimo', 'btn-adicionar-servico', 'btn-adicionar-peca', 'btn-adicionar-terceiro', 'btn-entrada', 'btn-tirar-entrada', 'btn-desconto-pecas'].forEach(function (id) { $(id).disabled = t; });
+  document.querySelectorAll('#tela-orcamento [data-remover-peca], #tela-orcamento [data-remover-terceiro], #tela-orcamento [data-remover-servico], #tela-orcamento [data-combustivel], #tela-orcamento [data-bandeira-indice], #tela-orcamento [data-voltar-acr], ' +
     '#tela-orcamento [data-forma-entrada], #tela-orcamento [data-parcelas-entrada]').forEach(function (b) { b.disabled = t; });
 }
 
@@ -1319,12 +1430,19 @@ function textoCampo(s, max) { return String(s === null || s === undefined ? '' :
 
 /** O rascunho no formato da coluna "Dados" → entrada (textos como foram digitados). */
 function entradaDoRascunho() {
+  // Seção 17: descricao = o texto da coluna F ("placa · modelo · 1º serviço (+N)"); modo/horas/valor = reserva para o
+  // app antigo no cache (um serviço só com o total); a conta usa a lista "servicos".
+  var p = parametrosEmUso();
+  var legado = legadoDosServicos(orc.servicos, p && typeof p.valorHoraCobrado === 'number' ? p.valorHoraCobrado : 0);
   var e = {
-    descricao: String(orc.descricao || '').trim().slice(0, MAX_SERVICO),
-    modo: orc.modo,
-    horasTexto: textoCampo(orc.horasTexto),
-    valorTexto: textoCampo(orc.valorTexto),
-    horasFechadoTexto: textoCampo(orc.horasFechadoTexto),
+    descricao: descricaoDoOrcamento(orc.veiculo, orc.servicos),
+    modo: legado.modo,
+    horasTexto: textoCampo(legado.horasTexto),
+    valorTexto: textoCampo(legado.valorTexto),
+    horasFechadoTexto: textoCampo(legado.horasFechadoTexto),
+    servicos: orc.servicos.slice(0, MAX_SERVICOS).map(function (sv) {
+      return { id: sv.id, descricao: textoCampo(sv.descricao, 80), horasTexto: textoCampo(sv.horasTexto), valorTexto: textoCampo(sv.valorTexto) };
+    }),
     pecasModo: orc.pecasModo,
     pecas: orc.pecas.slice(0, MAX_PECAS).map(function (p) {
       var x = { descricao: textoCampo(p.descricao, 80), qtdTexto: textoCampo(p.qtdTexto), valorTexto: textoCampo(p.valorTexto) };
@@ -1342,6 +1460,12 @@ function entradaDoRascunho() {
   if (orc.descontoSeparado !== undefined) {
     e.descontoSeparado = orc.descontoSeparado;
     e.descontoPecasTexto = orc.descontoPecasTexto === null || orc.descontoPecasTexto === undefined ? null : textoCampo(orc.descontoPecasTexto);
+  }
+  // Seção 17: veículo só quando tem algo
+  var v = orc.veiculo;
+  if (['placa', 'modelo', 'ano', 'combustivel'].some(function (k) { return String(v[k] || '').trim() !== ''; })) {
+    e.veiculo = { placa: textoCampo(String(v.placa || '').trim(), MAX_PLACA), modelo: textoCampo(String(v.modelo || '').trim(), MAX_MODELO),
+      ano: textoCampo(String(v.ano || '').trim(), 4), combustivel: v.combustivel || '' };
   }
   // Seção 16: só entram quando usados (um orçamento sem eles grava exatamente como antes)
   if (orc.terceiros.length) {
@@ -1364,7 +1488,8 @@ function assinaturaDe(gravada) {
 }
 
 function rascunhoTemConteudo() {
-  return [orc.descricao, orc.cliente, orc.telefone, orc.horasTexto, orc.valorTexto, orc.pecasPagarTexto, orc.entradaTexto].some(function (s) { return String(s || '').trim() !== ''; }) ||
+  return [orc.cliente, orc.telefone, orc.pecasPagarTexto, orc.entradaTexto, orc.veiculo.placa, orc.veiculo.modelo, orc.veiculo.ano, orc.veiculo.combustivel].some(function (s) { return String(s || '').trim() !== ''; }) ||
+    orc.servicos.some(function (sv) { return ['descricao', 'horasTexto', 'valorTexto'].some(function (k) { return String(sv[k] || '').trim() !== ''; }); }) ||
     orc.pecas.some(function (p) { return String(p.descricao || '').trim() !== '' || String(p.valorTexto || '').trim() !== ''; }) ||
     orc.terceiros.some(function (s) { return String(s.descricao || '').trim() !== '' || String(s.valorTexto || '').trim() !== ''; });
 }
@@ -1491,7 +1616,7 @@ function avisarExcluido() {
 }
 
 // ---------------- Reabrir, duplicar ----------------
-var CAMPOS_ENTRADA = ['descricao', 'modo', 'horasTexto', 'valorTexto', 'horasFechadoTexto', 'pecasModo', 'pecasPagarTexto',
+var CAMPOS_ENTRADA = ['pecasModo', 'pecasPagarTexto',
   'pecasCobrarTexto', 'acrescimoTexto', 'descontoTexto', 'extraTexto', 'bandeira', 'entradaTexto', 'formaEntrada', 'parcelasEntrada'];
 
 /** Orçamento vindo do servidor (obterOrcamento) → rascunho da tela. comoCopia: sem vínculo (Duplicar), valores de hoje. */
@@ -1499,6 +1624,9 @@ function rascunhoDoSalvo(o, comoCopia) {
   var e = o.dados.entrada;
   var r = orcamentoVazio();
   CAMPOS_ENTRADA.forEach(function (k) { if (e[k] !== undefined) r[k] = e[k]; });
+  // Seção 17: orçamento de antes (sem a lista) abre como UMA linha com o texto antigo; veículo vazio. Nenhum número muda.
+  r.servicos = Array.isArray(e.servicos) ? servicosLimpos(e.servicos) : servicosDoLegado(e);
+  r.veiculo = veiculoLimpo(e.veiculo);
   r.pecas = (e.pecas || []).map(function (p) { return { descricao: p.descricao || '', qtdTexto: p.qtdTexto || '', valorTexto: p.valorTexto || '', acrescimoTexto: textoOuNulo(p.acrescimoTexto) }; });
   r.terceiros = (e.terceiros || []).map(function (s) { return { descricao: s.descricao || '', valorTexto: s.valorTexto || '', acrescimoTexto: textoOuNulo(s.acrescimoTexto) }; });
   if (r.formaEntrada !== 'debito') r.formaEntrada = 'pix';
@@ -1580,7 +1708,7 @@ function duplicarRascunho() {
 /** alvo = {id, atualizadoEm, situacao, cliente, servico, valorCombinadoC?, origem: 'orcamento'|'lista'} */
 function alvoDoRascunho() {
   var v = orc.vinculo;
-  return { id: v.id, atualizadoEm: v.atualizadoEm, situacao: v.situacao, cliente: orc.cliente, servico: orc.descricao,
+  return { id: v.id, atualizadoEm: v.atualizadoEm, situacao: v.situacao, cliente: orc.cliente, servico: descricaoDoOrcamento(orc.veiculo, orc.servicos),
     valorCombinadoC: v.fechamento ? v.fechamento.valorCombinadoC : null, origem: 'orcamento' };
 }
 
@@ -2095,6 +2223,9 @@ function renderResultados() {
       $('mes-casa-barra').className = 'barra-cheia ' + (casaToda ? 'verde' : 'ambar');
     }
     $('mes-frase').textContent = fraseDoMes(pm);
+    var detalhe = detalheDoMes(pm);
+    $('mes-detalhe').hidden = !detalhe;
+    $('mes-detalhe').textContent = detalhe;
     $('mes-frase').className = 'frase-mes ' + { verde: 'positivo', ambar: 'ambar', vermelho: 'negativo-discreto' }[pm.frase.tom];
     var q = quantoFaltaTrabalhar(resumo, corrente);
     $('mes-falta-trabalhar').hidden = !q;
@@ -2325,7 +2456,10 @@ function textoAtual() {
   // Seção 16: "Serviços inclusos" (sem valores) e a linha da entrada (só com o bloco aberto e a entrada válida)
   var extras = ultimoCalc ? { terceiros: ultimoCalc.lido.terceiros, formaEntrada: ultimoCalc.lido.formaEntrada,
     entrada: ui.entradaAberta && !ultimoResultado.semCartoes ? ultimoCalc.entradaCartao : null } : {};
-  return textoWhatsApp(ultimoResultado, estado.dados.parametros, orc.descricao, ultimoPreco,
+  // Seção 17: veículo e serviços da oficina (só as descrições)
+  extras.veiculo = orc.veiculo;
+  extras.servicos = orc.servicos;
+  return textoWhatsApp(ultimoResultado, estado.dados.parametros, '', ultimoPreco,
     orc.pecasModo === 'acrescimo' ? ultimasPecas : [], extras);
 }
 
@@ -2446,16 +2580,22 @@ function adicionarGasto(tipo, descricao) {
  * Remoção com "Desfazer" (gasto ou cartão): some na hora e mostra a barra por 6 s.
  * O salvamento só dispara quando a barra some (ou junto com a próxima alteração).
  */
+/** Remoções que são só do rascunho do orçamento (nada a salvar na planilha). */
+function doRascunho(tipo) { return tipo === 'peca' || tipo === 'terceiro' || tipo === 'servico'; }
+
 function listaDoTipo(tipo) {
+  if (tipo === 'servico') return orc.servicos;
   if (tipo === 'peca') return orc.pecas;
   if (tipo === 'terceiro') return orc.terceiros;
   return tipo === 'cartao' ? estado.dados.cartoes : estado.dados.gastos;
 }
 
-var NOMES_REMOCAO = { gasto: ['Gasto removido', 'Gasto de volta.'], cartao: ['Cartão removido', 'Cartão de volta.'], peca: ['Peça removida', 'Peça de volta.'], terceiro: ['Serviço removido', 'Serviço de volta.'] };
+var NOMES_REMOCAO = { gasto: ['Gasto removido', 'Gasto de volta.'], cartao: ['Cartão removido', 'Cartão de volta.'], peca: ['Peça removida', 'Peça de volta.'], terceiro: ['Serviço de parceiro removido', 'Serviço de parceiro de volta.'],
+  servico: ['Serviço removido', 'Serviço de volta.'] };
 
 function redesenharDoTipo(tipo) {
-  if (tipo === 'peca') { gravarStorage(CHAVE_ORCAMENTO, orc); renderPecas(); }
+  if (tipo === 'servico') { gravarStorage(CHAVE_ORCAMENTO, orc); renderServicos(); }
+  else if (tipo === 'peca') { gravarStorage(CHAVE_ORCAMENTO, orc); renderPecas(); }
   else if (tipo === 'terceiro') { gravarStorage(CHAVE_ORCAMENTO, orc); renderTerceiros(); }
   else if (tipo === 'cartao') renderAjustes();
   else renderGastos();
@@ -2467,7 +2607,7 @@ function removerComDesfazer(tipo, indice) {
   desfazer.tipo = tipo;
   desfazer.item = listaDoTipo(tipo).splice(indice, 1)[0];
   desfazer.indice = indice;
-  if (tipo !== 'peca' && tipo !== 'terceiro') remocoesNaoSalvas++; // peça/serviço é só do rascunho deste aparelho: nada a salvar na planilha
+  if (!doRascunho(tipo)) remocoesNaoSalvas++; // peça/serviço é só do rascunho deste aparelho: nada a salvar na planilha
   if (tipo === 'cartao') ui.cartao = Math.min(indice, estado.dados.cartoes.length - 1);
   redesenharDoTipo(tipo);
   $('aviso').hidden = true;
@@ -2506,7 +2646,7 @@ function desfazerRemocao() {
   if (tipo === 'cartao') { ui.cartao = posicao; ui.adicionandoCartao = false; }
   $('barra-desfazer').hidden = true;
   redesenharDoTipo(tipo);
-  if (tipo === 'peca' || tipo === 'terceiro') {
+  if (doRascunho(tipo)) {
     // só o rascunho do orçamento mudou (já gravado em redesenharDoTipo)
   } else if (remocoesNaoSalvas > 0) {
     remocoesNaoSalvas--;                  // esta remoção nunca foi salva: voltar não precisa salvar
@@ -2946,7 +3086,7 @@ var DICAS = {
   pin: { alvo: '#rotulo-pin', nome: 'Proteger com PIN',
     texto: 'Pede 4 números para abrir Resultados, Meus gastos e Ajustes neste aparelho. Depois de digitar, fica liberado enquanto o app estiver aberto; se ficar mais de 5 minutos fora do app, pede de novo. Serve para ninguém mexer sem querer: não é uma senha forte. Esqueceu? Na tela do PIN, toque em "Esqueci o PIN".' },
   mesReal: { alvo: '#titulo-mes-real', nome: 'Resultado do mês',
-    texto: 'Cada orçamento supõe que você vendeu todas as horas do mês. Aqui é o que aconteceu de verdade: o que entrou nos fechamentos, menos peças, maquininha e imposto, paga primeiro a oficina e depois a sua casa. O mês atual usa sempre os seus gastos de hoje; os meses que já passaram ficam como estavam.' },
+    texto: 'Cada orçamento supõe que você vendeu todas as horas do mês. Aqui é o que aconteceu de verdade: o que entrou nos fechamentos, menos peças, maquininha e imposto, paga primeiro a oficina e depois a sua casa. "Pagar o mês" é pagar as duas: os gastos da oficina e a sua casa (o seu salário). Por isso, quando falta, o valor grande é o total que falta, e embaixo aparece quanto é de cada uma. O mês atual usa sempre os seus gastos de hoje; os meses que já passaram ficam como estavam.' },
   contagem: { alvo: '#titulo-contagem', nome: 'Orçamentos feitos',
     texto: 'Dos orçamentos feitos neste mês, quantos o cliente aceitou. Um orçamento feito em outubro e fechado em novembro conta como feito em outubro, mas o dinheiro entra em novembro.' },
   dinheiro: { alvo: '#titulo-dinheiro', nome: 'Dinheiro que entrou',
@@ -3058,6 +3198,8 @@ function ligarEventos() {
     else if (el.dataset.cartaoNome) onNomeCartaoInput(el);
     else if (el.dataset.pecaCampo) onPecaInput(el);
     else if (el.dataset.terceiroCampo) onTerceiroInput(el);
+    else if (el.dataset.servicoCampo) onServicoInput(el);
+    else if (el.dataset.veiculo) onVeiculoInput(el);
     else if (el.dataset.orc) { if (el.id === 'orc-telefone') mascararTelefone(el, e.inputType || ''); onOrcamentoInput(el); }
   });
 
@@ -3094,6 +3236,8 @@ function ligarEventos() {
     if (ds.fechFormaEntrada && fech) { fech.formaEntrada = ds.fechFormaEntrada; renderFechamento(); return; }
     if (ds.voltarAcr !== undefined) { voltarAcrescimoPeca(Number(ds.voltarAcr)); return; }
     if (ds.removerTerceiro !== undefined) { if (!travado()) removerComDesfazer('terceiro', Number(ds.removerTerceiro)); return; }
+    if (ds.removerServico !== undefined) { if (!travado()) removerComDesfazer('servico', Number(ds.removerServico)); return; }
+    if (ds.combustivel) { escolherCombustivel(ds.combustivel); return; }
     if (ds.formaEntrada && !travado()) { orc.formaEntrada = ds.formaEntrada; gravarRascunho(); renderOrcamento(); return; }
     if (ds.parcelasEntrada && !travado()) { orc.parcelasEntrada = Number(ds.parcelasEntrada); gravarRascunho(); renderOrcamento(); return; }
     if (alvo.id === 'btn-res-tentar') { carregarMes(); return; }
@@ -3122,8 +3266,6 @@ function ligarEventos() {
     }
   });
 
-  $('ir-fechado').addEventListener('click', function () { trocarModo('fechado'); });
-  $('ir-horas').addEventListener('click', function () { trocarModo('horas'); });
   $('ir-pecas-valor').addEventListener('click', function () { trocarModoPecas('valor'); });
   $('ir-pecas-acrescimo').addEventListener('click', function () { trocarModoPecas('acrescimo'); });
   $('btn-novo').addEventListener('click', aoClicarNovo);
@@ -3237,6 +3379,7 @@ function ligarEventos() {
   window.addEventListener('hashchange', function () {
     if (window.location.hash.indexOf('#cfg=') === 0) processarLinkDeConfiguracao();
   });
+  $('btn-adicionar-servico').addEventListener('click', adicionarServico);
   $('btn-adicionar-peca').addEventListener('click', adicionarPeca);
   $('btn-adicionar-terceiro').addEventListener('click', adicionarTerceiro);
   $('btn-entrada').addEventListener('click', abrirEntrada);

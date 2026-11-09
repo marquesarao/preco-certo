@@ -89,26 +89,27 @@ var CAB_TAXAS_ = ['Cartão', 'Débito (%)', '1x (%)', '2x (%)', '3x (%)', '4x (%
   '7x (%)', '8x (%)', '9x (%)', '10x (%)', '11x (%)', '12x (%)'];
 
 /**
- * Aba Orçamentos: colunas A..V (V = Dados em JSON) + W..Y (seção 16: terceiros pagos, entrada, forma da entrada).
+ * Aba Orçamentos: colunas A..V (V = Dados em JSON) + W..Y (seção 16: terceiros pagos, entrada, forma da entrada)
+ * + Z (seção 17: "Itens" = placa, modelo, serviços da oficina, parceiros e peças, para a busca da lista).
  * As colunas novas ficam DEPOIS do JSON, para nenhuma coluna existente mudar de lugar (registros antigos: vazio = 0).
  * A..U e W..Y são escritas pelo servidor a partir do JSON validado.
  */
 var CAB_ORCAMENTOS_ = ['ID', 'Criado em', 'Atualizado em', 'Cliente', 'Telefone', 'Serviço / veículo', 'Situação',
   'Valor orçado (à vista)', 'Data do fechamento', 'Forma de pagamento', 'Parcelas', 'Cartão', 'Valor combinado',
   'Horas', 'Peças pagas', 'Taxa da maquininha', 'Imposto', 'Paga a oficina', 'Vai para a casa', 'Sobra extra',
-  'Motivo', 'Dados (JSON)', 'Terceiros pagos', 'Entrada', 'Forma da entrada'];
+  'Motivo', 'Dados (JSON)', 'Terceiros pagos', 'Entrada', 'Forma da entrada', 'Itens'];
 var COL_ORC_ = {
   id: 1, criadoEm: 2, atualizadoEm: 3, cliente: 4, telefone: 5, servico: 6, situacao: 7, valorOrcado: 8,
   dataFechamento: 9, forma: 10, parcelas: 11, cartao: 12, valorCombinado: 13, horas: 14, pecasPagas: 15,
   taxa: 16, imposto: 17, pagaOficina: 18, vaiParaCasa: 19, sobra: 20, motivo: 21, dados: 22,
-  terceiros: 23, entrada: 24, formaEntrada: 25
+  terceiros: 23, entrada: 24, formaEntrada: 25, itens: 26
 };
 var DINHEIRO_ = '#,##0.00';
 var TEXTO_ = '@';
 /** Formato de cada coluna da aba Orçamentos (datas e IDs em texto, para a planilha não convertê-los). */
 var FORMATOS_ORC_ = [TEXTO_, TEXTO_, TEXTO_, TEXTO_, TEXTO_, TEXTO_, TEXTO_, DINHEIRO_, TEXTO_, TEXTO_, '0', TEXTO_,
   DINHEIRO_, DINHEIRO_, DINHEIRO_, DINHEIRO_, DINHEIRO_, DINHEIRO_, DINHEIRO_, DINHEIRO_, TEXTO_, TEXTO_,
-  DINHEIRO_, DINHEIRO_, TEXTO_];
+  DINHEIRO_, DINHEIRO_, TEXTO_, TEXTO_];
 
 var CAB_MESES_ = ['Mês', 'Gastos da oficina (R$)', 'Gastos da casa (R$)', 'Horas que você pode cobrar', 'Gravado em', 'Origem'];
 var FORMATOS_MESES_ = [TEXTO_, DINHEIRO_, DINHEIRO_, DINHEIRO_, TEXTO_, TEXTO_];
@@ -159,6 +160,13 @@ var MAX_SERVICO_ = 100;
 var MAX_TEXTO_CAMPO_ = 40;
 var MAX_DESCRICAO_PECA_ = 80;
 var MAX_PECAS_ = 30;
+var MAX_SERVICOS_ = 20;        // seção 17: serviços da oficina por orçamento
+var MAX_ID_SERVICO_ = 20;
+var RE_ID_SERVICO_ = /^[A-Za-z0-9_-]+$/;
+var MAX_PLACA_ = 8;            // "ABC-1234"
+var MAX_MODELO_ = 60;
+var COMBUSTIVEIS_ = ['', 'Flex', 'Gasolina', 'Etanol', 'Diesel', 'GNV'];
+var MAX_ITENS_ = 2000;         // coluna Z (texto da busca)
 var MAX_JSON_ORCAMENTO_ = 30000;
 var MAX_CENTAVOS_ = 1e11;      // R$ 1 bilhão
 var MAX_HORAS_ = 10000;
@@ -233,7 +241,7 @@ var PROP_TOKEN_ = 'TOKEN';
 var PROP_PROTECAO_ = 'protecaoAvisoV1';
 
 /** Desempenho: versão do esquema das abas (suba quando configurarPlanilha_ mudar), versão da config e cache. */
-var ESQUEMA_VERSAO_ = '2'; // 2 = seção 16 (colunas W–Y na aba Orçamentos)
+var ESQUEMA_VERSAO_ = '3'; // 2 = seção 16 (colunas W–Y na aba Orçamentos); 3 = seção 17 (coluna Z "Itens", preenchida nas linhas antigas)
 var PROP_ESQUEMA_ = 'esquemaV';
 var PROP_CONFIG_V_ = 'configV';
 var CHAVE_CACHE_DADOS_ = 'dadosConfigV1';
@@ -627,6 +635,9 @@ function testarApi() {
   var id = Utilities.getUuid().toLowerCase();
   try {
     var dados = orcamentoDeTeste_(atuais.parametros, atuais.cartoes);
+    // Seção 17: veículo em campos e a lista de serviços da oficina
+    dados.entrada.veiculo = { placa: 'TST-0001', modelo: 'Carro de teste', ano: '', combustivel: 'Flex' };
+    dados.entrada.servicos = [{ id: 's_teste', descricao: 'Serviço de teste', horasTexto: '', valorTexto: '100' }];
     r = pedir('salvarOrcamento', { orcamento: { id: id, atualizadoEmBase: null, cliente: 'TESTE testarApi', telefone: '', dados: dados } });
     conferir(r.ok === true && r.situacao === 'Aberto' && r.atualizadoEm, 'salvarOrcamento cria o orçamento (Aberto)', r);
     var a1 = r.atualizadoEm;
@@ -638,6 +649,9 @@ function testarApi() {
     conferir(r.ok === false && r.conflito === true && r.erro === MSG_CONFLITO_, 'salvar sobre versão mais nova → conflito', r);
     r = pedir('obterOrcamento', { id: id });
     conferir(r.ok === true && r.orcamento.cliente === 'TESTE testarApi 2', 'obterOrcamento devolve o registro', r);
+    var ent = r.orcamento.dados.entrada;
+    conferir(ent.veiculo && ent.veiculo.placa === 'TST-0001' && ent.servicos && ent.servicos[0].id === 's_teste',
+      'o orçamento guarda o veículo e os serviços da oficina (seção 17)', r);
     var imposto = Math.round(10000 * atuais.parametros.impostoPercentual / 100);
     r = pedir('mudarSituacao', { id: id, atualizadoEmBase: a2, situacao: 'Fechado', fechamento: {
       forma: 'pix', parcelas: null, cartao: '', taxaPct: 0, valorCombinadoC: 10000, data: '2000-01-15',
@@ -647,6 +661,8 @@ function testarApi() {
     r = pedir('listarOrcamentos', { mes: mesDeTeste });
     conferir(r.ok === true && r.meses[mesDeTeste] && r.orcamentos.some(function (o) { return o.id === id && o.valorCombinadoC === 10000; }),
       'listarOrcamentos traz o fechamento e a foto dos gastos do mês', r);
+    conferir(r.orcamentos.some(function (o) { return o.id === id && o.itens.indexOf('TST-0001') >= 0 && o.itens.indexOf('Serviço de teste') >= 0; }),
+      'listarOrcamentos traz os itens da coluna Z para a busca (seção 17)', r);
     r = pedir('mudarSituacao', { id: id, atualizadoEmBase: r.orcamentos.filter(function (o) { return o.id === id; })[0].atualizadoEm, situacao: 'Aberto' });
     conferir(r.ok === true && r.situacao === 'Aberto', 'voltar para Aberto desfaz o fechamento', r);
     r = pedir('mudarSituacao', { id: id, atualizadoEmBase: r.atualizadoEm, situacao: 'Não fechou', motivo: 'Achou caro' });
@@ -826,13 +842,13 @@ function listarOrcamentos_(mes) {
   var sh = aba_(ABA_ORCAMENTOS_);
   var anterior = mesAnterior_(mes);
   var linhas = lerCorpo_(sh, COL_ORC_.motivo);
-  // Seção 16: W..Y (terceiros, entrada) numa leitura estreita à parte (o JSON fica no meio, em V)
-  var extras = linhas.length ? sh.getRange(2, COL_ORC_.terceiros, linhas.length, 3).getValues() : [];
+  // Seções 16 e 17: W..Z (terceiros, entrada, itens) numa leitura estreita à parte (o JSON fica no meio, em V)
+  var extras = linhas.length ? sh.getRange(2, COL_ORC_.terceiros, linhas.length, 4).getValues() : [];
   var escolhidas = [];
   var vistos = {};
   var primeiroMes = null;
   linhas.forEach(function (l, i) {
-    var r = resumoDaLinha_(l, extras[i] || ['', '', '']);
+    var r = resumoDaLinha_(l, extras[i] || ['', '', '', '']);
     if (!r || vistos[r.id]) return; // sem ID válido, ou ID repetido: entra uma vez só
     vistos[r.id] = true;
     var mesCriado = mesDe_(r.criadoEm);
@@ -1128,7 +1144,7 @@ function publicoDoRegistro_(reg) {
   };
 }
 
-/** Linha da planilha (A..V) a partir do registro. As colunas legíveis vêm do JSON. */
+/** Linha da planilha (A..Z) a partir do registro. As colunas legíveis vêm do JSON. */
 function linhaDoRegistro_(reg) {
   var d = reg.dados;
   var f = d.situacao === 'Fechado' ? d.fechamento : null;
@@ -1158,7 +1174,8 @@ function linhaDoRegistro_(reg) {
     JSON.stringify(d),
     reais(f ? (f.terceirosPagarC || 0) : (d.resultado.terceirosPagarC || 0)),
     f && f.forma === 'entrada' ? reais(f.entradaC) : '',
-    f && f.forma === 'entrada' ? FORMAS_ENTRADA_[f.formaEntrada] || '' : ''
+    f && f.forma === 'entrada' ? FORMAS_ENTRADA_[f.formaEntrada] || '' : '',
+    itensDoOrcamento_(d.entrada)
   ];
 }
 
@@ -1169,10 +1186,10 @@ function escreverRegistro_(sh, linha, reg) {
 
 /**
  * Resumo de uma linha lida (colunas A..U), tolerante. Sem ID válido → null.
- * extra (seção 16): as colunas W..Y da mesma linha (lidas à parte no listarOrcamentos); sem extra, vêm da própria linha (A..Y).
+ * extra (seções 16 e 17): as colunas W..Z da mesma linha (lidas à parte no listarOrcamentos); sem extra, vêm da própria linha (A..Z).
  */
 function resumoDaLinha_(l, extra) {
-  var w = extra || [l[COL_ORC_.terceiros - 1], l[COL_ORC_.entrada - 1], l[COL_ORC_.formaEntrada - 1]];
+  var w = extra || [l[COL_ORC_.terceiros - 1], l[COL_ORC_.entrada - 1], l[COL_ORC_.formaEntrada - 1], l[COL_ORC_.itens - 1]];
   var id = String(l[0]).trim();
   if (!RE_ID_.test(id)) return null;
   var centavos = function (v) {
@@ -1207,7 +1224,8 @@ function resumoDaLinha_(l, extra) {
     motivo: textoCelula_(l[COL_ORC_.motivo - 1]).slice(0, MAX_MOTIVO_),
     terceirosPagarC: centavos(w[0]) || 0,
     entradaC: centavos(w[1]),
-    formaEntrada: textoCelula_(w[2]).slice(0, 20)
+    formaEntrada: textoCelula_(w[2]).slice(0, 20),
+    itens: textoCelula_(w[3]).slice(0, MAX_ITENS_) // seção 17
   };
 }
 
@@ -1355,6 +1373,9 @@ function validarEntrada_(e) {
     extraTexto: textoDeCampo_(e.extraTexto, MAX_TEXTO_CAMPO_, 'desconto extra'),
     bandeira: textoDeCampo_(e.bandeira, MAX_NOME_CARTAO_, 'cartão')
   };
+  // Seção 17: veículo em campos e vários serviços da oficina. AUSENTES = orçamento de antes (ficam ausentes).
+  if (e.veiculo !== undefined && e.veiculo !== null) limpo.veiculo = validarVeiculo_(e.veiculo);
+  if (e.servicos !== undefined && e.servicos !== null) limpo.servicos = validarServicos_(e.servicos);
   // Seção 16.9: desconto separado serviço × peças. AUSENTE = orçamento de antes (fica ausente: a tela usa a regra antiga).
   if (e.descontoSeparado !== undefined) {
     if (e.descontoSeparado !== null && e.descontoSeparado !== true && e.descontoSeparado !== false) throw erroApi_('Orçamento inválido: desconto separado.');
@@ -1362,6 +1383,52 @@ function validarEntrada_(e) {
     limpo.descontoPecasTexto = textoOuNulo_(e.descontoPecasTexto, MAX_TEXTO_CAMPO_, 'desconto das peças');
   }
   return limpo;
+}
+
+/** Seção 17: veículo {placa, modelo, ano, combustivel}, tudo opcional (só tamanho e opção; o formato da placa é aviso na tela). */
+function validarVeiculo_(v) {
+  if (typeof v !== 'object' || Array.isArray(v)) throw erroApi_('Orçamento inválido: veículo.');
+  return {
+    placa: textoDeCampo_(v.placa, MAX_PLACA_, 'placa'),
+    modelo: textoDeCampo_(v.modelo, MAX_MODELO_, 'modelo'),
+    ano: textoDeCampo_(v.ano, 4, 'ano'),
+    combustivel: exigirOpcao_(v.combustivel === undefined || v.combustivel === null ? '' : v.combustivel, COMBUSTIVEIS_, 'combustível')
+  };
+}
+
+/** Seção 17: serviços da oficina [{id, descricao, horasTexto, valorTexto}] (id estável, sem repetir). */
+function validarServicos_(lista) {
+  if (!Array.isArray(lista)) throw erroApi_('Orçamento inválido: serviços da oficina.');
+  if (lista.length > MAX_SERVICOS_) throw erroApi_('Serviços da oficina demais: o limite é ' + MAX_SERVICOS_ + '.');
+  var ids = {};
+  return lista.map(function (s, i) {
+    var nome = 'serviço da oficina nº ' + (i + 1);
+    if (!s || typeof s !== 'object' || Array.isArray(s)) throw erroApi_('Orçamento inválido: ' + nome + '.');
+    if (typeof s.id !== 'string' || !s.id || s.id.length > MAX_ID_SERVICO_ || !RE_ID_SERVICO_.test(s.id) || ids[s.id]) throw erroApi_('Orçamento inválido: ' + nome + '.');
+    ids[s.id] = true;
+    return {
+      id: s.id,
+      descricao: textoDeCampo_(s.descricao, MAX_DESCRICAO_PECA_, nome),
+      horasTexto: textoDeCampo_(s.horasTexto, MAX_TEXTO_CAMPO_, nome),
+      valorTexto: textoDeCampo_(s.valorTexto, MAX_TEXTO_CAMPO_, nome)
+    };
+  });
+}
+
+/**
+ * Seção 17: texto da coluna Z "Itens" (só para a busca): placa · modelo · serviços da oficina (ou a descrição antiga)
+ * · parceiros · peças. Sem descrição não entra. Até MAX_ITENS_ letras.
+ */
+function itensDoOrcamento_(entrada) {
+  var e = entrada || {};
+  var partes = [];
+  var add = function (t) { t = String(t === undefined || t === null ? '' : t).trim(); if (t) partes.push(t); };
+  if (e.veiculo && typeof e.veiculo === 'object') { add(e.veiculo.placa); add(e.veiculo.modelo); }
+  if (Array.isArray(e.servicos)) e.servicos.forEach(function (s) { if (s) add(s.descricao); });
+  else add(e.descricao);
+  (Array.isArray(e.terceiros) ? e.terceiros : []).forEach(function (s) { if (s) add(s.descricao); });
+  (Array.isArray(e.pecas) ? e.pecas : []).forEach(function (p) { if (p) add(p.descricao); });
+  return partes.join(' · ').slice(0, MAX_ITENS_);
 }
 
 /** null/ausente → null (segue o padrão); senão, texto de campo. */
@@ -1640,15 +1707,33 @@ function configurarPlanilha_() {
 
 /**
  * Seção 16: na aba Orçamentos que JÁ existe, acrescenta os cabeçalhos W–Y (uma vez). Nada muda de lugar.
+ * Seção 17: acrescenta o cabeçalho Z "Itens" e, NESSA MESMA VEZ, preenche Z de todas as linhas a partir do JSON
+ * (roda só na troca de esquema, dentro do lock; com o cabeçalho Z já lá, não faz nada).
  */
 function garantirColunasOrcamentos_(ss) {
   var sh = ss.getSheetByName(ABA_ORCAMENTOS_);
   if (!sh || sh.getLastRow() < 1) return;
   var n = CAB_ORCAMENTOS_.length;
   if (typeof sh.getMaxColumns === 'function' && sh.getMaxColumns() < n) sh.insertColumnsAfter(sh.getMaxColumns(), n - sh.getMaxColumns());
-  var atual = sh.getRange(1, COL_ORC_.terceiros, 1, 3).getValues()[0];
-  if (String(atual[0]).trim() === CAB_ORCAMENTOS_[COL_ORC_.terceiros - 1]) return;
-  sh.getRange(1, COL_ORC_.terceiros, 1, 3).setValues([CAB_ORCAMENTOS_.slice(COL_ORC_.terceiros - 1)]).setFontWeight('bold').setBackground('#eeeeee');
+  var atual = sh.getRange(1, COL_ORC_.terceiros, 1, 4).getValues()[0];
+  if (String(atual[0]).trim() !== CAB_ORCAMENTOS_[COL_ORC_.terceiros - 1]) {
+    sh.getRange(1, COL_ORC_.terceiros, 1, 3).setValues([CAB_ORCAMENTOS_.slice(COL_ORC_.terceiros - 1, COL_ORC_.itens - 1)]).setFontWeight('bold').setBackground('#eeeeee');
+  }
+  if (String(atual[3]).trim() === CAB_ORCAMENTOS_[COL_ORC_.itens - 1]) return;
+  sh.getRange(1, COL_ORC_.itens, 1, 1).setValues([[CAB_ORCAMENTOS_[COL_ORC_.itens - 1]]]).setFontWeight('bold').setBackground('#eeeeee');
+  preencherItensAntigos_(sh);
+}
+
+/** Seção 17 (migração, uma vez): coluna Z de cada linha a partir do JSON (JSON inválido → vazio). Uma leitura e uma escrita. */
+function preencherItensAntigos_(sh) {
+  var linhas = lerCorpo_(sh, COL_ORC_.dados);
+  if (!linhas.length) return;
+  var itens = linhas.map(function (l, i) {
+    var id = String(l[0]).trim();
+    var dados = id ? lerJsonOrcamento_(l[COL_ORC_.dados - 1], i + 2, id) : null;
+    return [dados ? itensDoOrcamento_(dados.entrada) : ''];
+  });
+  sh.getRange(2, COL_ORC_.itens, itens.length, 1).setNumberFormats(itens.map(function () { return [TEXTO_]; })).setValues(itens);
 }
 
 /**

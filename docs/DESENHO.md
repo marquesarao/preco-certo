@@ -1151,6 +1151,8 @@ Se alguma conta divergir do esperado acima: **parar e reportar** (não ajustar o
     | Oficina não coberta | "Faltam R$ X para pagar a oficina este mês" (âmbar) | "Faltaram R$ X para pagar a oficina" (vermelho discreto) |
 
     Na linha "Oficina não coberta", X = gastos da oficina − livre; o que falta da casa aparece na barra da casa. O mês corrente **nunca** fica vermelho.
+
+    > **Revogado pelo adendo da seção 17 (17.8):** a frase passa a dizer o TOTAL que falta (oficina + casa), com a divisão numa linha menor embaixo.
   - **rodapé discreto:** "Gastos do mês: oficina R$ X · casa R$ Y · Z h" e a comparação com o mês anterior. O link "Usar meus gastos de hoje" sai (12.5).
 - **Quanto falta trabalhar** (só no mês corrente, só se a sobra do mês < 0, só com horas vendidas > 0 e livre > 0):
   - falta = −sobraDoMes (oficina + casa);
@@ -1669,3 +1671,143 @@ Pedido do André: às vezes ele quer dar desconto só na mão de obra, porque a 
 - Link abrir/fechar com a confirmação.
 - WhatsApp nos dois casos.
 - Prints 390/1280.
+
+## 17. Vários serviços da oficina, veículo em campos e WhatsApp separando oficina × parceiros (desenho **aprovado** com os ajustes das decisões 1 e 2; o backend MUDOU; `sw.js` v13)
+Pedido do André:
+1. listar vários serviços de mão de obra no mesmo orçamento (ex.: "Troca do radiador", "Suspensão dianteira");
+2. no WhatsApp, deixar claro o que é serviço da oficina e o que é de parceiros.
+
+Três adendos entraram no mesmo pacote:
+- o veículo em campos separados (17.2);
+- "Com essa entrada fica" (17.7);
+- a frase do mês com o total que falta (17.8).
+
+A etapa B (agrupar peças por serviço e mostrar o preço por serviço, para aprovação parcial) **não** foi implementada. O `id` estável de cada serviço deixa essa etapa possível sem migração: as peças e os parceiros ganham um `servicoId` opcional.
+
+### 17.1 Decisões
+1. **Backend:** `validarEntrada_` passa a aceitar `veiculo` e `servicos`, com limites. A coluna Z "Itens" serve à busca, e o `ESQUEMA_VERSAO_` vira `'3'`.
+   - **Acréscimo aprovado:** a migração para o esquema 3 roda uma vez só, sob lock, e preenche a coluna Z de **todas** as linhas antigas a partir do JSON. As listagens normais não leem o JSON.
+2. **Cada linha mostra Horas e R$ sempre visíveis**, sem botão de modo:
+   - R$ vazio = horas × valor da hora;
+   - R$ preenchido = valor fechado, com horas opcionais (vazias = valor ÷ valor da hora);
+   - o R$ tem o placeholder "Valor fechado (opcional)";
+   - a ajuda "Deixe o R$ vazio para calcular pelas horas." fica embaixo do 1º serviço e aparece só enquanto há **um** serviço e ele está sem valor.
+3. **Campos antigos de reserva:** o orçamento novo também grava `modo:'fechado'`, `valorTexto` = Σ mão de obra e `horasFechadoTexto` = Σ horas, com números completos. Assim um app antigo ainda no cache abre com os mesmos números e não zera a mão de obra.
+
+### 17.2 Tela: card "Serviço"
+- **Topo:** Cliente · Telefone (como antes).
+- **Grupo "Veículo (opcional)":** Placa e Ano lado a lado, Modelo inteiro e Combustível em chips (Flex · Gasolina · Etanol · Diesel · GNV). Tocar no chip marcado desmarca.
+  - **Placa:** maiúsculas automáticas e só letras e números. O padrão antigo ganha o "-" ao digitar (abc1234 → ABC-1234); o Mercosul fica junto (ABC1D23).
+  - O formato errado mostra "Placa no formato ABC-1234 ou ABC1D23." e **não** impede salvar.
+  - **Ano:** só números (4). Fora de 1950 até o ano que vem, avisa sem impedir salvar.
+- **"Serviços da oficina":** em cada linha, Descrição + lixeira em cima e "Horas (h) | R$ Valor fechado (opcional)" embaixo. De 560 a 899 px fica numa linha só.
+  - Embaixo da linha aparece "Mão de obra: R$ 600,00" (por horas) ou "Horas estimadas pelo valor da sua hora: 0,53 horas" (valor fechado sem horas).
+  - Botão "+ Adicionar serviço" (até 20). Lixeira com DESFAZER (6 s): "Serviço removido".
+  - Orçamento novo já começa com 1 linha.
+  - Rodapé: "Total: 6,53 h · Mão de obra R$ 980,00".
+  - Sem valor da hora em Meus gastos: "Coloque quanto você cobra por hora em Meus gastos.".
+- **Saíram:** o campo "Qual serviço / veículo?" e o link "Prefiro digitar o valor fechado" / "Prefiro calcular por horas".
+- **Card de terceiros:** passa a se chamar "Serviços de parceiros (terceiros)", com o botão "+ Adicionar serviço de parceiro". A lixeira avisa "Serviço de parceiro removido".
+- **Trava** (Fechado ou Não fechou): os campos do veículo, os serviços, os chips e as lixeiras também ficam desabilitados.
+
+### 17.3 Cálculo (as regras não mudam)
+- `calcularMaoDeObra` ganhou o modo `'servicos'`. Cada linha {horas, valor} é uma das contas de antes (valor vazio = por horas; valor com horas vazias = estimadas).
+  - Mão de obra = Σ (horas × valor da hora) + Σ valores fechados.
+  - Horas = Σ horas (informadas ou estimadas). Valem para pagaOficina, vaiParaCasa, horas vendidas e pisos.
+  - Uma linha só dá exatamente a conta de antes (0 + x = x).
+- A mão de obra entra na taxa de imposto de **serviço**, como antes. O resto não muda.
+- `lerEntradaOrcamento`: com `servicos`, os campos antigos ficam só de reserva e não entram na conta.
+
+### 17.4 Dados (coluna V, JSON v1 com campos a mais)
+```
+entrada.veiculo:  { placa (≤ 8), modelo (≤ 60), ano (≤ 4), combustivel ('' | Flex | Gasolina | Etanol | Diesel | GNV) }   (só quando tem algo)
+entrada.servicos: [{ id: "s_…" (≤ 20, letras/números/_/-, sem repetir), descricao (≤ 80), horasTexto, valorTexto }]   (até 20)
+entrada.descricao: "ABC-1234 · Saveiro CS 1.6 · Troca do radiador (+1)"  (coluna F; ≤ 100)
+entrada.modo/valorTexto/horasFechadoTexto: reserva para o app antigo (17.1, decisão 3)
+```
+- **Orçamento antigo** (sem `servicos`) abre como **uma** linha, com o veículo vazio. Nenhum número muda.
+  - Modo horas → a linha recebe as horas.
+  - Valor fechado → valor + horas (vazias = estimadas).
+  - Valor fechado **vazio** → "0", porque a mão de obra era 0 e não pode virar horas × valor da hora.
+- O `id` é criado uma vez (`novoIdServico`) e se mantém ao salvar de novo.
+
+### 17.5 WhatsApp (seções vazias e linhas sem descrição não aparecem; SEM valores por item)
+```
+*Orçamento – CliniCar Motors Tech*
+Veículo: Saveiro CS 1.6 · 2014 · ABC-1234        ← só os campos preenchidos (modelo · ano · placa)
+
+🔧 *Serviços da oficina:*
+• Troca do radiador
+• Suspensão dianteira
+
+🤝 *Serviços de parceiros:*
+• Retífica do cabeçote
+
+🔩 *Peças:*
+• 4× Óleo
+• 1× Filtro de óleo
+
+💳 Cartão em até 5x: … / entrada (se houver) / 💵 À vista …   (como antes)
+```
+- Todas as listas usam "•". O combustível não entra na linha do veículo, porque o pedido listou modelo, ano e placa.
+- Continua proibido mostrar valores internos (custo, lucro, sobra, taxa, piso).
+
+### 17.6 Backend (`Codigo.gs`) e busca
+- `validarEntrada_` usa `validarVeiculo_` e `validarServicos_`. Sem os campos (tela antiga), grava como antes.
+- **Coluna Z "Itens"** = placa · modelo · serviços da oficina (ou a descrição antiga) · parceiros · peças (até 2.000 letras). É calculada pelo servidor a cada gravação (`itensDoOrcamento_`).
+- `listarOrcamentos_` lê W..Z numa leitura estreita (era W..Y) e o resumo ganha `itens`.
+- **Esquema 3** (`garantirColunasOrcamentos_`):
+  - acrescenta o cabeçalho Z;
+  - **na mesma vez**, preenche Z de todas as linhas a partir do JSON, com uma leitura e uma escrita (`preencherItensAntigos_`); JSON quebrado → vazio;
+  - com o cabeçalho Z já lá, não faz nada, mesmo se o esquema for forçado de novo.
+- **Busca** (`combinaBusca`): cliente, coluna F e coluna Z, sem acento e sem maiúscula. Com letras **e** números no termo, também compara só letras e números: "abc1234" acha "ABC-1234". O telefone continua só pelos números.
+  - Placeholder: "Buscar cliente, placa, serviço ou peça".
+- **Card de Resultados:** "{placa} · {modelo} · {1º serviço} (+N) · data · valor". Os antigos mostram o texto antigo.
+- `testarApi`: grava veículo + serviços, confere a devolução e confere os itens na listagem.
+
+### 17.7 Adendo (só frontend): "Com essa entrada fica"
+- Com a entrada preenchida e válida, o card "Fica para você neste serviço" ganha "Com essa entrada fica: R$ X" logo abaixo de "No cartão em Nx fica".
+- **X** = casa + sobra (sem casa: a sobra) pela **mesma conta do fechamento "Entrada + cartão"** (`calcularFechamento` com forma `'entrada'`, sobre o resultado do orçamento):
+  - o cliente paga E + R_n;
+  - a maquininha cobra só sobre R_n (+ a taxa do débito sobre E, se a entrada for no débito);
+  - o imposto (taxa efetiva) incide sobre E + R_n;
+  - oficina, casa, peças e parceiros entram como hoje.
+- A cor (verde / âmbar / vermelho) segue a regra de estados do fechamento e vale só para o texto da linha. "Ver detalhes" não muda.
+- **Conferido:** base 1.800 (12 h × 150), Visa 5x 7,57%, desconto 5%, imposto 10%, oficina 3.150, casa 5.500, 130 h.
+  - À vista fica 1.374,27.
+  - Entrada 1.000 no Pix + 5x: R_5 = 894,79 e sobra 839,11 → **R$ 1.346,80**.
+  - Entrada no débito: sobra 825,41 → **R$ 1.333,10**.
+  - Sem entrada: a linha não aparece.
+
+### 17.8 Adendo (só frontend): frase do mês com o TOTAL que falta (revoga a decisão 9 da seção 12)
+
+| Situação | Mês corrente | Linha menor embaixo |
+|---|---|---|
+| Oficina e casa não cobertas | "Faltam R$ (oficina + casa) para pagar a oficina e a sua casa este mês" | "Oficina: faltam R$ X · Casa: faltam R$ Y" |
+| Oficina coberta, casa não | "Faltam R$ Y para pagar a sua casa este mês" | "Oficina ✓ paga · Casa: faltam R$ Y" |
+| Tudo coberto | "Sobrou R$ X além da casa este mês" (como antes) | — |
+| Sem gastos de casa | só a oficina (como antes) | — |
+
+- Meses encerrados: "Faltaram R$ …" com a mesma divisão ("faltaram").
+- "Quanto falta trabalhar" já usava o total e não mudou.
+- O "?" do card explica que "pagar o mês" = oficina + casa (o seu salário).
+- **Exemplo:** oficina 7.562 e casa 6.370, nada coberto → "Faltam R$ 13.932,00 para pagar a oficina e a sua casa este mês" + "Oficina: faltam R$ 7.562,00 · Casa: faltam R$ 6.370,00".
+
+### 17.9 Testes
+- **Cálculo:** 148 casos (140 + 8 novos). P9 (WhatsApp das peças) e Q5 (frases do mês) foram atualizados para o texto aprovado.
+  - SV1: 4 h + 2 h + R$ 80 → mão de obra 980, horas 6,5333, oficina 158,31, casa 276,40, pisos 175,90 / 483,02. É igual a um serviço fechado de 980 com 6,5333 h.
+  - SV2: orçamento antigo (horas; valor fechado com e sem horas; valor fechado vazio) → os mesmos números.
+  - SV3: campos de reserva, descrição da coluna F, ids.
+  - WZ1: WhatsApp.
+  - BV1: busca.
+  - PL1: placa e ano.
+  - EF1: "Com essa entrada fica".
+  - Q7: frase do mês com o total.
+- **Backend:** `check-17.js` 11/11.
+  - Grava e devolve; coluna F e Z.
+  - Limites.
+  - **Migração:** a planilha do esquema 2 com orçamentos antigos ganha Z preenchida, e a busca por peça e por parceiro de um orçamento antigo funciona. A migração não roda de novo, e uma aba vazia ganha só o cabeçalho.
+  - Z regravada ao salvar.
+  - Os testes antigos mudaram só na largura (26 colunas) e no esquema "3".
+- **Tela:** `teste-17.js` (card, placa, desfazer, WhatsApp, gravação, orçamento antigo, Resultados e busca, entrada) e prints 390/1280.
+  - Os testes de tela antigos rodam com um adaptador **só de teste**: os ids antigos apontam para a 1ª linha de serviço.

@@ -12,6 +12,22 @@ Mesmo modelo do app **Pendências**:
 
 ---
 
+## ⚠️ Seção 17 (vários serviços, veículo em campos, WhatsApp separado): o backend MUDOU — ordem obrigatória
+
+Vale para quem já está no pacote 16 + adendo (esquema 2). **Se o pacote 16 ainda não foi publicado**, publique tudo junto com um deploy só deste `Codigo.gs` final, que já contém o pacote 16. Os avisos do pacote 16 (impostos em Ajustes) continuam valendo.
+
+1. **Em cada planilha** (a de teste **e** a do André): Extensões → Apps Script → **copie a sua `URL_DA_API`** → cole o `apps-script/Codigo.gs` novo → recoloque a `URL_DA_API` → salve → **Implantar → Gerenciar implantações → lápis → Versão: Nova versão → Implantar** → rode **`testarApi`** (deve terminar com "Todos os testes da API passaram"; ele agora também confere o veículo, os serviços e os itens da busca).
+   - **Se aparecer pedido de autorização novo:** **pare** e me avise (não era para aparecer; o `appsscript.json` não mudou).
+   - O primeiro pedido depois de colar o código atualiza o esquema (versão 3), **uma vez só**:
+     - acrescenta a coluna **Z "Itens"** na aba Orçamentos (nada muda de lugar);
+     - **preenche a coluna Z de todos os orçamentos que já existem**, a partir dos dados de cada um (descrição antiga, parceiros e peças), para a busca achar também os antigos. É uma leitura e uma escrita só; numa planilha com muitos orçamentos, esse primeiro pedido pode levar alguns segundos a mais.
+2. **Só depois, nas DUAS planilhas:** conferência de segredos e **`git push`** (`sw.js` v13).
+   - **Não inverta a ordem:** se o app novo salvar um orçamento com o backend antigo, a lista de serviços e o veículo **se perdem** (o backend antigo descarta campos que não conhece). O total continua certo, porque o app grava também os campos antigos com o total.
+3. Em cada aparelho: "Nova versão disponível · ATUALIZAR".
+   - Até atualizar, o aparelho antigo continua funcionando. Se ele abrir um orçamento novo, mostra um serviço só com o total (mesmos números). Se salvar esse orçamento, a lista de serviços vira uma linha só com o texto "placa · modelo · 1º serviço (+N)".
+
+---
+
 ## ⚠️ Pacote 16 + adendo dos descontos: o backend MUDOU — UM deploy só, ordem obrigatória
 
 Dois commits locais: o pacote 16 (% por peça, serviços de terceiros, entrada + cartão, imposto separado) e logo depois o adendo dos descontos (serviço × peças). **Os dois são publicados juntos**, com **um único** deploy do `Codigo.gs` (o do commit do adendo, o final) nas duas planilhas. Não publique o pacote 16 sozinho.
