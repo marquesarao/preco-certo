@@ -1811,3 +1811,20 @@ Veículo: Saveiro CS 1.6 · 2014 · ABC-1234        ← só os campos preenchido
   - Os testes antigos mudaram só na largura (26 colunas) e no esquema "3".
 - **Tela:** `teste-17.js` (card, placa, desfazer, WhatsApp, gravação, orçamento antigo, Resultados e busca, entrada) e prints 390/1280.
   - Os testes de tela antigos rodam com um adaptador **só de teste**: os ids antigos apontam para a 1ª linha de serviço.
+
+## 18. Resultados com poucos dados e primeiro mês (ajuste, só frontend)
+
+Caso real (André, dia 9): 1 fechamento de 2,67 h (R$ 437,78) gerava "Faltam cerca de 92 horas (uns 35 serviços como os deste mês)": estatisticamente sem sentido e desanimador. Ele começou a usar o app em 08/11; os serviços de 1º a 7 não estão no app.
+
+**Só frontend.** `apps-script/` sem mudança; `sw.js` v14. Nenhuma conta existente muda.
+
+1. **"Quanto falta trabalhar"** só aparece com dados suficientes no mês: **pelo menos 3 fechamentos E pelo menos 10 horas vendidas** (`MIN_FECHADOS_ESTIMATIVA`, `MIN_HORAS_ESTIMATIVA`). Abaixo disso, quando falta dinheiro no mês corrente, no mesmo lugar: "Ainda há poucos serviços fechados neste mês para estimar quantas horas faltam."
+2. **Orçamentos em aberto como potencial** (só no mês corrente, só se houver orçamentos Aberto **criados no mês**), logo abaixo da faixa acima:
+   - "Em aberto: {N} orçamentos · R$ {soma do à vista oferecido}. Se fecharem, cobrem {X}% do que falta."
+   - X = soma ÷ o total da frase do mês (oficina + casa), inteiro para baixo; abaixo de 1%: "menos de 1%". Se a soma ≥ o que falta: "Se fecharem, cobrem tudo o que falta este mês."
+   - Sem nada faltando: só "Em aberto: N orçamentos · R$ S."
+   - **Não soma ao resultado**: é só informação.
+3. **Primeiro mês de uso**: se o orçamento mais antigo da planilha (`primeiroMes` da listagem) foi criado no mês corrente, um aviso discreto no topo do card, logo abaixo do "dia X de Y": "Você começou a usar o app em {data}. Serviços anteriores não aparecem aqui." A data é a do orçamento mais antigo desse mês.
+4. A frase principal com o total (oficina + casa) continua como no adendo da seção 17.
+
+**Testes:** casos PD1, EA1, PM1; `teste-18.js` na tela.

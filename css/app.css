@@ -541,6 +541,8 @@ body.orc-travado #tela-orcamento #ir-pecas-valor, body.orc-travado #tela-orcamen
 .frase-mes.negativo-discreto { color: #a3352b; }
 .falta-trabalhar { margin: 12px 0 0; }
 .falta-trabalhar strong { display: block; font-size: 15px; }
+.mes-inicio { margin: 6px 0 0; font-style: italic; }
+.mes-em-aberto { margin: 10px 0 0; }
 #mes-dinheiro dt.subtotal, #mes-dinheiro dd.subtotal { font-weight: 700; color: var(--texto); }
 #mes-dinheiro dt.total, #mes-dinheiro dd.total { font-weight: 700; }
 /* Ajustes: corrigir gastos de um mês passado */

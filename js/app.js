@@ -2206,6 +2206,10 @@ function renderResultados() {
   var hoje = new Date();
   $('mes-dia').hidden = !corrente;
   $('mes-dia').textContent = corrente ? 'dia ' + hoje.getDate() + ' de ' + new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).getDate() : '';
+  // Ajuste 18: primeiro mês de uso (o orçamento mais antigo da planilha foi criado neste mês)
+  var inicio = corrente ? avisoPrimeiroMes(r.primeiroMes, mes, r.orcamentos) : '';
+  $('mes-inicio').hidden = !inicio;
+  $('mes-inicio').textContent = inicio;
   var pm = painelDoMes(resumo, corrente);
   $('mes-sem-foto').hidden = !!pm;
   $('mes-com-foto').hidden = !pm;
@@ -2228,11 +2232,16 @@ function renderResultados() {
     $('mes-detalhe').textContent = detalhe;
     $('mes-frase').className = 'frase-mes ' + { verde: 'positivo', ambar: 'ambar', vermelho: 'negativo-discreto' }[pm.frase.tom];
     var q = quantoFaltaTrabalhar(resumo, corrente);
-    $('mes-falta-trabalhar').hidden = !q;
+    var poucos = !q && poucosDadosParaEstimar(resumo, corrente);
+    $('mes-falta-trabalhar').hidden = !q && !poucos;
     $('mes-falta-trabalhar').innerHTML = q
       ? '<strong>Faltam cerca de ' + esc(plural(q.horas, 'hora', 'horas')) + ' de serviço (' + esc(q.servicos === 1 ? 'um serviço' : 'uns ' + q.servicos + ' serviços') + ' como os deste mês).</strong>' +
         'Você ganha uns ' + dinheiroHtml(q.porHoraC) + ' por hora de serviço, já tirando peças, maquininha e imposto.'
-      : '';
+      : poucos ? 'Ainda há poucos serviços fechados neste mês para estimar quantas horas faltam.' : '';
+    // Ajuste 18: orçamentos em aberto do mês como potencial (só informação)
+    var aberto = corrente ? emAbertoDoMes(lista, mes, pm.frase.tipo === 'sobrou' ? 0 : pm.frase.valorC) : null;
+    $('mes-em-aberto').hidden = !aberto;
+    $('mes-em-aberto').textContent = aberto ? textoEmAberto(aberto) : '';
     var cmp = compararMeses(resumo, anterior);
     $('mes-comparacao').hidden = !cmp;
     if (cmp) {

@@ -14,6 +14,13 @@
 
 ## Resultados (09/11/2026)
 
+**Ajuste 18 (Resultados com poucos dados e primeiro mês; só frontend, `sw.js` v14):**
+- **Cálculo:** 151 casos (148 + PD1, EA1, PM1).
+  - PD1: 1 fechamento de 2,67 h (R$ 437,78) → sem estimativa e com a mensagem de poucos dados; 3 fechamentos com 10 h → a estimativa aparece; 3 com 9,99 h ou 2 com 20 h → poucos dados.
+  - EA1: 4 abertos do mês somando 14.600 com falta de 13.538 → "cobrem tudo o que falta este mês"; 5.000 → 36% (para baixo); aberto de outro mês, Fechado e Não fechou não contam; sem abertos → linha ausente.
+  - PM1: orçamento mais antigo em 08/11/2026 → "Você começou a usar o app em 08/11/2026…"; com orçamento de outubro → sem aviso.
+- **Tela:** `teste-18.js` 12/12 (Codigo.gs real na página: caso do André, 3 fechamentos/10 h, abertos 14.600 → "tudo", 2.000 → 24%, aviso do primeiro mês com a data, mês anterior sem nada disso). Os números 7.562 + 6.370 da frase continuam (Q7).
+
 **Seção 17 (vários serviços da oficina, veículo em campos, WhatsApp separado, coluna Z) + adendos ("Com essa entrada fica" e frase do mês com o total); o backend mudou e o D10 confere o hash novo; `sw.js` v13:**
 - **Cálculo:** 148 casos (140 + Q7, SV1–SV3, WZ1, BV1, PL1, EF1). P9 e Q5 foram atualizados para o texto aprovado (WhatsApp com "•"; a frase do mês com o total).
   - SV1: 4 h + 2 h (R$ 150/h) + R$ 80 fechado (horas vazias) → mão de obra 980,00; horas 6,5333 (0,5333 estimadas); oficina 158,31; casa 276,40; pisos 175,90 / 483,02. É idêntico a um serviço fechado de 980 com 6,5333 h.

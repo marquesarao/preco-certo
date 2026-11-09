@@ -1340,8 +1340,13 @@ function detalheDoMes(p) {
   return (p.frase.tipo === 'faltaOficina' ? 'Oficina: ' + falta + formatarCentavos(p.faltaOficinaC) : 'Oficina ✓ paga') + ' · ' + casa;
 }
 
+/** Ajuste 18: a estimativa de "quanto falta trabalhar" só aparece com pelo menos 3 fechamentos E 10 horas vendidas no mês. */
+var MIN_FECHADOS_ESTIMATIVA = 3;
+var MIN_HORAS_ESTIMATIVA = 10;
+
 /**
- * Quanto falta trabalhar (só no mês corrente, só se a sobra do mês for negativa, com horas vendidas e livre > 0):
+ * Quanto falta trabalhar (só no mês corrente, só se a sobra do mês for negativa, com dados suficientes
+ * — pelo menos 3 fechamentos e 10 horas vendidas — e livre > 0):
  * falta = −sobra do mês; ganho livre por hora = livre ÷ horas vendidas;
  * N = ⌈falta ÷ ganho por hora⌉ (conta feita como falta × horas ÷ livre, sem arredondar o R$/h no meio);
  * média = horas vendidas ÷ serviços fechados; M = ⌈N ÷ média⌉.
@@ -1350,6 +1355,7 @@ function detalheDoMes(p) {
 function quantoFaltaTrabalhar(resumo, corrente) {
   var r = resumo.resultado;
   if (!corrente || !r || r.sobraDoMesC >= 0 || !(resumo.horasVendidas > 0) || !(resumo.fechados > 0)) return null;
+  if (resumo.fechados < MIN_FECHADOS_ESTIMATIVA || resumo.horasVendidas < MIN_HORAS_ESTIMATIVA) return null;
   var livreC = r.depoisDaOficinaC + r.gastosOficinaC;
   if (livreC <= 0) return null;
   var faltaC = -r.sobraDoMesC;
@@ -1362,6 +1368,56 @@ function quantoFaltaTrabalhar(resumo, corrente) {
     servicos: Math.ceil(horas / media - 1e-9),
     mediaHoras: media
   };
+}
+
+/**
+ * Ajuste 18: no lugar da estimativa, quando ainda falta dinheiro no mês corrente mas há poucos dados
+ * (menos de 3 fechamentos ou menos de 10 horas vendidas).
+ */
+function poucosDadosParaEstimar(resumo, corrente) {
+  var r = resumo.resultado;
+  if (!corrente || !r || r.sobraDoMesC >= 0) return false;
+  return resumo.fechados < MIN_FECHADOS_ESTIMATIVA || !(resumo.horasVendidas >= MIN_HORAS_ESTIMATIVA);
+}
+
+/**
+ * Ajuste 18: orçamentos Aberto criados no mês, como potencial (só informação; não entra no resultado).
+ * cobertura = soma do à vista oferecido ÷ o que falta (o total da frase do mês), limitada a 100%.
+ * @param faltaC o que falta no mês (0 = nada falta)
+ * @return null sem abertos ou {quantidade, somaC, faltaC, cobreTudo, pct (inteiro, para baixo; null sem falta)}
+ */
+function emAbertoDoMes(lista, mes, faltaC) {
+  var abertos = lista.filter(function (o) { return o.situacao === 'Aberto' && mesDe(o.criadoEm) === mes; });
+  if (!abertos.length) return null;
+  var somaC = abertos.reduce(function (t, o) { return t + (typeof o.valorOrcadoC === 'number' ? o.valorOrcadoC : 0); }, 0);
+  var falta = faltaC > 0 ? faltaC : 0;
+  return {
+    quantidade: abertos.length,
+    somaC: somaC,
+    faltaC: falta,
+    cobreTudo: falta > 0 && somaC >= falta,
+    pct: falta > 0 ? Math.min(Math.floor(somaC * 100 / falta), 100) : null
+  };
+}
+
+/** "Em aberto: 4 orçamentos · R$ 14.600,00. Se fecharem, cobrem tudo o que falta este mês." / "… cobrem 36% do que falta." */
+function textoEmAberto(a) {
+  var t = 'Em aberto: ' + (a.quantidade === 1 ? '1 orçamento' : a.quantidade + ' orçamentos') + ' · ' + formatarCentavos(a.somaC) + '.';
+  if (!(a.faltaC > 0)) return t;
+  if (a.cobreTudo) return t + ' Se fecharem, cobrem tudo o que falta este mês.';
+  return t + ' Se fecharem, cobrem ' + (a.pct < 1 ? 'menos de 1%' : a.pct + '%') + ' do que falta.';
+}
+
+/**
+ * Ajuste 18: primeiro mês de uso. Se o orçamento mais antigo da planilha (primeiroMes da listagem) foi criado
+ * no mês mostrado, a data é a do orçamento mais antigo desse mês na lista.
+ * @return '' ou "Você começou a usar o app em 08/11/2026. Serviços anteriores não aparecem aqui."
+ */
+function avisoPrimeiroMes(primeiroMes, mes, lista) {
+  if (!primeiroMes || primeiroMes !== mes) return '';
+  var datas = lista.map(function (o) { return String(o.criadoEm || ''); }).filter(function (d) { return mesDe(d) === mes; }).sort();
+  if (!datas.length) return '';
+  return 'Você começou a usar o app em ' + dataBR(datas[0]) + '. Serviços anteriores não aparecem aqui.';
 }
 
 /**
@@ -2254,6 +2310,42 @@ function casosDeTeste() {
         return { obtido: [sem.det.totalSeu, sem.ficaComEntrada, pix.entradaCartao.restoC, pix.ficaComEntrada.totalC, pix.ficaComEntrada.sobraC, pix.ficaComEntrada.estado,
                           deb.ficaComEntrada.totalC, deb.ficaComEntrada.sobraC, pix.det.totalSeu],
                  esperado: [137427, null, 89479, 134680, 83911, 'verde', 133310, 82541, 137427] };
+      } },
+    { id: 'PD1', descricao: 'Ajuste 18 (caso do André, dia 9): 1 fechamento de 2,67 h (R$ 437,78), falta → sem estimativa ("92 horas" some) e com a mensagem de poucos dados; 3 fechamentos com 10 h → a estimativa aparece; 3 com 9,99 h ou 2 com 20 h → poucos dados; mês passado ou sem falta → nada',
+      executar: function () {
+        var foto = { oficinaC: 756200, casaC: 637000, horas: 130 };
+        function lista(n, horasCada, valorC) {
+          var l = [];
+          for (var i = 0; i < n; i++) l.push({ criadoEm: '2026-11-0' + (i + 1) + ' 10:00:00', situacao: 'Fechado', dataFechamento: '2026-11-09', valorCombinadoC: valorC, pecasPagarC: 0, taxaC: 0, impostoC: 0, horas: horasCada });
+          return l;
+        }
+        var um = resumoDoMes(lista(1, 2.67, 43778), '2026-11', foto);
+        var tres = resumoDoMes(lista(3, 10 / 3, 43778), '2026-11', foto);
+        var quase = resumoDoMes(lista(3, 3.33, 43778), '2026-11', foto);
+        var dois = resumoDoMes(lista(2, 10, 43778), '2026-11', foto);
+        var q3 = quantoFaltaTrabalhar(tres, true);
+        return { obtido: [um.horasVendidas, quantoFaltaTrabalhar(um, true), poucosDadosParaEstimar(um, true), tres.horasVendidas, q3 !== null, poucosDadosParaEstimar(tres, true),
+                          quantoFaltaTrabalhar(quase, true), poucosDadosParaEstimar(quase, true), quantoFaltaTrabalhar(dois, true), poucosDadosParaEstimar(dois, true),
+                          poucosDadosParaEstimar(um, false), poucosDadosParaEstimar(resumoDoMes(lista(1, 2.67, 2000000), '2026-11', foto), true)],
+                 esperado: [2.67, null, true, 10, true, false, null, true, null, true, false, false] };
+      } },
+    { id: 'EA1', descricao: 'Ajuste 18: 4 abertos do mês somando 14.600 com falta de 13.538 → "cobrem tudo o que falta este mês"; 1 aberto de 5.000 → 36% (para baixo); aberto de outro mês, Fechado e Não fechou não contam; sem abertos → null; sem falta → só a soma',
+      executar: function () {
+        function ab(valorC, criado, situacao) { return { criadoEm: criado || '2026-11-09 10:00:00', situacao: situacao || 'Aberto', valorOrcadoC: valorC }; }
+        var lista = [ab(500000), ab(400000), ab(300000), ab(260000), ab(900000, '2026-10-30 10:00:00'), ab(100000, null, 'Fechado'), ab(100000, null, 'Não fechou')];
+        var a = emAbertoDoMes(lista, '2026-11', 1353800);
+        var b = emAbertoDoMes([ab(500000)], '2026-11', 1353800);
+        return { obtido: [a.quantidade, a.somaC, textoEmAberto(a), textoEmAberto(b), emAbertoDoMes([ab(900000, '2026-10-30 10:00:00')], '2026-11', 1353800),
+                          textoEmAberto(emAbertoDoMes([ab(500000)], '2026-11', 0)), textoEmAberto(emAbertoDoMes([ab(10000)], '2026-11', 1353800))],
+                 esperado: [4, 1460000, 'Em aberto: 4 orçamentos · R$ 14.600,00. Se fecharem, cobrem tudo o que falta este mês.',
+                            'Em aberto: 1 orçamento · R$ 5.000,00. Se fecharem, cobrem 36% do que falta.', null,
+                            'Em aberto: 1 orçamento · R$ 5.000,00.', 'Em aberto: 1 orçamento · R$ 100,00. Se fecharem, cobrem menos de 1% do que falta.'] };
+      } },
+    { id: 'PM1', descricao: 'Ajuste 18: primeiro mês de uso (mais antigo em 08/11/2026) → aviso com a data; planilha com orçamento de outubro → sem aviso',
+      executar: function () {
+        var l = [{ criadoEm: '2026-11-09 08:00:00' }, { criadoEm: '2026-11-08 17:30:00' }, { criadoEm: '2026-11-10 09:00:00' }];
+        return { obtido: [avisoPrimeiroMes('2026-11', '2026-11', l), avisoPrimeiroMes('2026-10', '2026-11', l), avisoPrimeiroMes(null, '2026-11', l)],
+                 esperado: ['Você começou a usar o app em 08/11/2026. Serviços anteriores não aparecem aqui.', '', ''] };
       } },
     { id: 'A1', descricao: 'Alerta do piso (pisos do print 4.158,12 / 4.628,21): 6.315,86 sem alerta; até 5.091,03 (10% acima do piso da casa) âmbar; 5.091,04 sem; abaixo de 4.158,12 vermelho; sem casa: âmbar até 4.573,93',
       executar: function () {
