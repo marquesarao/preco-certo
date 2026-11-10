@@ -2889,7 +2889,7 @@ function gerarPdfDoOrcamento() {
     var c = calcularComFoto(orc, fotoEmUso());
     var doc = documentoDoPdf({ c: c, parametros: estado.dados.parametros, orc: orc, numero: numero, hoje: dataLocal(new Date()), opcoes: opcoes,
       entradaVisivel: ui.entradaAberta && !c.res.semCartoes });
-    return PrecoCertoPdf.gerarPdf(doc, 'icons/logo-clinicar.jpg').then(function (blob) {
+    return PrecoCertoPdf.gerarPdf(doc, 'icons/logo-pdf.png').then(function (blob) {
       pdfAtual = { blob: blob, nome: nomeArquivoPdf(numero, orc.veiculo.placa, orc.cliente), texto: doc.textoCompartilhar, numero: numero };
       statusPdf('');
       $('pdf-opcoes').hidden = true;

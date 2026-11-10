@@ -543,6 +543,8 @@ body.orc-travado #tela-orcamento #ir-pecas-valor, body.orc-travado #tela-orcamen
 .campos-pix { grid-template-columns: 112px minmax(0, 1fr); }
 .pdf-status { min-height: 1.2em; }
 .pdf-pronto-texto { margin: 0 0 10px; font-weight: 600; }
+/* Janela do PDF: 12 px entre os botões empilhados ("Gerar PDF"/"Fechar"; "Enviar"/"Baixar o PDF"/"Fechar"), mesmo com um bloco no meio */
+#pdf-pronto .btn + .btn, #btn-pdf-fechar { margin-top: 12px; }
 #modal-pdf .btn { width: 100%; }
 #btn-compartilhar { margin-top: 10px; }
 .links-fechar { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 20px; margin-top: 12px; }
@@ -574,4 +576,6 @@ body.orc-travado #tela-orcamento #ir-pecas-valor, body.orc-travado #tela-orcamen
 .link-discreto { display: flex; margin: 4px auto 0; font-size: 13px; color: var(--texto-3); }
 
 /* Seção 16.9: links do desconto (mais desconto · desconto diferente nas peças) lado a lado quando cabe */
-.links-desconto { display: flex; flex-wrap: wrap; gap: 0 18px; }
+/* Card à vista: os dois links na MESMA linha de base, ou um embaixo do outro quando não cabem (cada um nunca quebra em duas linhas) */
+.links-desconto { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 18px; }
+.links-desconto .link { white-space: nowrap; }

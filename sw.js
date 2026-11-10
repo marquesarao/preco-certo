@@ -4,7 +4,7 @@
 // aparelhos baixarem a versão nova (o app mostra "Nova versão disponível · ATUALIZAR").
 // Todos os caminhos são relativos à pasta do sw.js (funciona em /preco-certo/ e em localhost).
 
-const VERSAO = 'v17';
+const VERSAO = 'v18';
 const CACHE = `preco-certo-${VERSAO}`;
 
 const CASCA = [
@@ -21,6 +21,7 @@ const CASCA = [
   'js/pwa.js',
   'js/app.js',
   'icons/logo-clinicar.jpg',
+  'icons/logo-pdf.png',
   'icons/icon-192.png',
   'icons/icon-512.png',
   'icons/icon-maskable-512.png',

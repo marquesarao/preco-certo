@@ -12,7 +12,12 @@
 - A comparação dos valores é **exata, em centavos inteiros**, sem tolerância.
 - Os casos T8–T12, do modelo antigo de bandeiras fixas, foram **substituídos** por C1–C8 (cartões cadastráveis).
 
-## Resultados (09/11/2026)
+## Resultados (10/11/2026)
+
+**Acabamento do PDF e da tela de envio (só frontend; `sw.js` v18):**
+- **Cálculo:** 159 casos (158 + PDF5): desconto 0% → uma linha só "Cartão em até 5x (5x de R$ 389,48) ou à vista (Pix, dinheiro ou débito): R$ 1.947,42"; com 5%, as duas linhas de antes; a chave Pix continua depois.
+- **PDF medido (PyMuPDF, `geometria-pdf.py`):** fim de todos os valores (coluna Valor, subtotais, quadro de totais e o cabeçalho "Valor") na mesma x — diferença máxima 0,37 pt (0,13 mm, só a métrica do negrito; antes: 11,3 pt, 4 mm); linhas da tabela todas com 20,98 pt e respiro 6,9 / 6,9 pt acima/abaixo do texto (antes: 0,76 / 11,34 — o "colado na linha de cima"); cabeçalho 6,69 / 6,69; cantos do logo brancos (antes: cinza-escuro, o quadrado).
+- **Tela:** `teste-pdf.js` 26/26 (+ medidas dos dois PDFs e o PDF com desconto 0%); `medir-botoes.js`: 26 pares de botões empilhados em 390 e 1280, nenhum abaixo de 10 px (antes: "Gerar PDF"/"Fechar" e "Baixar o PDF"/"Fechar" com 0 px); links do card à vista na mesma linha de base em 1280 (antes: 6 px de degrau, o 2º quebrava em duas linhas) e um embaixo do outro em 390.
 
 **Onda do PDF (orçamento em PDF, número do orçamento, dados da oficina, WhatsApp do cliente; o backend mudou: `apiVersao` 5; `sw.js` v17):**
 - **Cálculo:** 158 casos (152 + PDF1–PDF4, WA1, WA2). WA2: título do WhatsApp com o número ("*Orçamento nº 186-2026 – Oficina*"); sem número, como antes.

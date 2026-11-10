@@ -80,7 +80,7 @@ App web gratuito para um mecânico que abriu uma oficina e tem pouca familiarida
 /js/pwa.js                     service worker, "Nova versão · ATUALIZAR", instalar
 /js/app.js                     telas, eventos, cache, Desfazer
 /fonts/inter-var.woff2  /fonts/OFL.txt
-/icons/                        logo-clinicar.jpg, icon-192/512, icon-maskable-512, apple-touch-icon
+/icons/                        logo-clinicar.jpg, logo-pdf.png (PDF), icon-192/512, icon-maskable-512, apple-touch-icon
 /apps-script/Codigo.gs         API (colar em cada planilha)
 /apps-script/appsscript.json   manifesto do Apps Script
 /tools/gerar-icones.ps1  /tools/logo-origem.jpg  /tools/LEIA-ME.md
@@ -1889,7 +1889,7 @@ A regra em negrito no topo do DEPLOY: **backend nas DUAS planilhas ANTES do push
 - Montado por `documentoDoPdf` (puro, em `js/calculo.js`) e desenhado por `js/pdf.js` com a **jsPDF 4.2.1** (MIT; `js/vendor/`, 420 KB, carregada só na 1ª vez e guardada no cache do service worker; funciona sem internet; sem terceiros). Helvetica: acentos do português corretos.
 - Cabeçalho (logo + nome, CNPJ/CPF, telefone, endereço, cidade/UF; "Orçamento nº", data, "Válido até" = data + validade) · Cliente (nome, telefone) · Informações básicas do veículo (só o que tiver) ·
   **Serviços** (oficina + parceiros com "(parceiro)"; valor por item se "preço de cada serviço") · **Peças** (quantidade + descrição; valor por item só se "preço de cada peça") · subtotais e caixa **Serviços · Peças · Total** ·
-  **Pagamento** (as mesmas linhas do WhatsApp: cartão até a referência e demais destaques; entrada, se aberta; à vista com o desconto em % ou em R$ quando os descontos de serviço e peças forem diferentes; "Chave Pix (tipo): …") ·
+  **Pagamento** (as mesmas linhas do WhatsApp — exceto com desconto 0%, ver 20.5: cartão até a referência e demais destaques; entrada, se aberta; à vista com o desconto em % ou em R$ quando os descontos de serviço e peças forem diferentes; "Chave Pix (tipo): …") ·
   **Observações** (as do cliente + as padrão) · rodapé "{Cidade}, {data por extenso}" e linhas de assinatura (oficina / cliente; opcional).
 - **Valores por item no PREÇO CHEIO** (o cartão até a parcela de referência): fator = âncora ÷ Σ bases (sem arredondar no meio); subtotal dos serviços = arredondar(Σ bases × fator); peças = âncora − serviços; em cada seção, cada item arredondado e o **último absorve o centavo** → itens = subtotais e Serviços + Peças = Total = âncora, exatos. Sem âncora: fator 1 (total = a base).
 - **Nunca no PDF:** custo, sobra, salário, taxa da maquininha, piso, "ainda pode dar", imposto, lucro (conferido no texto extraído do PDF).
@@ -1907,3 +1907,13 @@ A regra em negrito no topo do DEPLOY: **backend nas DUAS planilhas ANTES do push
 - **Decisões aprovadas:** data/validade = o dia em que o PDF é gerado; orçamento já salvo, numerado e sem mudança gera o PDF sem internet; orçamento fechado: o PDF mostra os preços do orçamento (não o valor combinado); "Nome da oficina" no card "Dados da oficina".
 
 **Testes:** casos PDF1–PDF4 e WA1; `check-20.js` (backend); `teste-pdf.js` (tela, PDF extraído e em imagem) e `teste-pdf.js v4` (trava).
+
+### 20.5 Acabamento do PDF e da tela de envio (só frontend; `sw.js` v18)
+- **Logo do PDF:** `icons/logo-pdf.png` (300 px, **redondo com fundo transparente**, gerado por `tools/gerar-icones.ps1` como os ícones "any"): no PDF não aparece nenhum quadrado em volta da bola preta. O logo do topo do app continua o `logo-clinicar.jpg`.
+- **Tabelas (Serviços e Peças):** toda linha tem a **mesma altura** (7,4 mm; descrição longa acrescenta 4,6 mm por linha extra) com o texto **centralizado na faixa** — o mesmo respiro antes e depois de cada separador; o cabeçalho da tabela também centralizado.
+- **Margem direita única:** a coluna "Valor", os subtotais ("Subtotal serviços", "Subtotal peças") e o quadro de totais (Serviços, Peças, Total) terminam na **mesma coordenada x** (2 mm antes da margem). O rótulo do subtotal fica à esquerda do valor, sem empurrá-lo.
+- **Pagamento com desconto 0%** (à vista = cartão até a referência): **uma linha só** — "Cartão em até 5x (5x de R$ 409,76) ou à vista (Pix, dinheiro ou débito): R$ 2.048,81" (referência em 1x: "Cartão em 1x ou à vista …"). Com desconto, duas linhas como antes. Só no PDF: o texto do WhatsApp não muda.
+- **Tela:** janela "Enviar orçamento em PDF" com **12 px** entre os botões empilhados ("Gerar PDF"/"Fechar"; "Enviar"/"Baixar o PDF"/"Fechar" — antes o "Fechar" ficava colado porque vinha depois de um bloco). Os demais pares empilhados (Copiar / Enviar no WhatsApp do cliente / Enviar orçamento em PDF / Salvar · O cliente fechou?) já tinham 10 px e foram medidos.
+- **Card à vista:** "O cliente pediu mais desconto?" e "Desconto diferente nas peças?" nunca quebram em duas linhas: lado a lado na **mesma linha de base** quando cabem (computador), um embaixo do outro quando não cabem (celular).
+
+**Testes:** caso PDF5; `teste-pdf.js` mede o PDF de verdade (PyMuPDF: fim de todos os valores na mesma x, ±0,5 pt; alturas das linhas iguais; texto centralizado; cantos do logo brancos) e gera o PDF com desconto 0%; `medir-botoes.js` mede o espaço entre botões empilhados (≥ 10 px) e a linha de base dos links, em 390 e 1280.

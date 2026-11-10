@@ -1,4 +1,4 @@
-# Gera os ícones do app a partir de tools/logo-origem.jpg (logo CliniCar, quadrado, fundo preto).
+﻿# Gera os ícones do app a partir de tools/logo-origem.jpg (logo CliniCar, quadrado, fundo preto).
 # Uso (PowerShell, na pasta do projeto):  powershell -ExecutionPolicy Bypass -File tools\gerar-icones.ps1
 # Depois de gerar ícones novos, suba a VERSAO em sw.js antes de publicar.
 
@@ -67,5 +67,6 @@ Gerar-Circulo 512 'icon-512.png'
 Gerar-Cheio 512 0.80 'icon-maskable-512.png'   # área segura do maskable: círculo de 80%
 Gerar-Cheio 180 0.94 'apple-touch-icon.png'     # o iOS arredonda os cantos sozinho
 Gerar-LogoTopo 256 'logo-clinicar.jpg'
+Gerar-Circulo 300 'logo-pdf.png'     # logo do PDF: redondo, fundo transparente (nada em volta da bola)
 $origem.Dispose()
 Get-ChildItem $pastaIcones | ForEach-Object { '{0,-24} {1,8} bytes' -f $_.Name, $_.Length }

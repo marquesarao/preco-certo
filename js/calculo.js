@@ -1717,7 +1717,15 @@ function distribuirNoPreco(itens, alvoC) {
 function linhasPagamentoPdf(c, entradaVisivel, parametros) {
   var linhas = [];
   var cartao = 'Cartão' + (c.res.cartaoNoTexto ? ' ' + c.res.cartaoNoTexto : '');
+  var preco = c.preco;
+  // Desconto 0% (à vista = cartão de referência): uma linha só, "Cartão em até 5x (5x de R$ …) ou à vista (…): R$ …"
+  var unir = preco.temAncora && preco.ancora && preco.precoCentavos === preco.ancora.totalCentavos;
   c.res.destaques.forEach(function (op) {
+    if (unir && op.parcelas === preco.ancora.parcelas) {
+      linhas.push((op.parcelas === 1 ? cartao + ' em 1x' : cartao + ' em até ' + op.parcelas + 'x (' + op.parcelas + 'x de ' + formatarCentavos(op.parcelaCentavos) + ')') +
+        ' ou à vista (Pix, dinheiro ou débito): ' + formatarCentavos(preco.precoCentavos));
+      return;
+    }
     linhas.push(op.parcelas === 1 ? cartao + ' em 1x: ' + formatarCentavos(op.totalCentavos)
       : cartao + ' em até ' + op.parcelas + 'x: ' + formatarCentavos(op.totalCentavos) + ' (' + op.parcelas + 'x de ' + formatarCentavos(op.parcelaCentavos) + ')');
   });
@@ -1726,11 +1734,10 @@ function linhasPagamentoPdf(c, entradaVisivel, parametros) {
     linhas.push('Entrada de ' + formatarCentavos(en.entradaC) + (c.lido.formaEntrada === 'debito' ? ' no débito' : ' no Pix') + ' + ' + en.parcelas + 'x de ' +
       formatarCentavos(en.parcelaC) + ' no cartão (total ' + formatarCentavos(en.totalC) + ')');
   }
-  var preco = c.preco;
   var comDesconto = preco.temAncora && preco.descontoTotal > 0;
   var rotulo = preco.temAncora ? 'À vista (Pix, dinheiro ou débito)' : 'À vista (Pix/dinheiro)';
   var emReais = comDesconto && preco.descontosIguais === false;
-  linhas.push(rotulo + ': ' + formatarCentavos(preco.precoCentavos) +
+  if (!unir) linhas.push(rotulo + ': ' + formatarCentavos(preco.precoCentavos) +
     (emReais ? ' (' + formatarCentavos(preco.descontoReaisCentavos) + ' de desconto)' : comDesconto ? ' — ' + formatarPercentual(preco.descontoTotal) + ' de desconto' : ''));
   var chave = textoLimpo(parametros.chavePix);
   if (chave) linhas.push('Chave Pix' + (parametros.tipoChavePix ? ' (' + parametros.tipoChavePix + ')' : '') + ': ' + chave);
@@ -2674,6 +2681,14 @@ function casosDeTeste() {
                  esperado: ['Orcamento-186-2026-ABC-1234.pdf', 'Orcamento-7-2026-Joao-da-Conceicao.pdf', 'Orcamento-7-2026.pdf',
                             '1 de março de 2026', '2027-01-04', 'Caxias do Sul', 'Bento Gonçalves', 'Gramado',
                             '12.345.678/0001-90', '123.456.789-09', '123.4', 'CPF 123.456.789-09'] };
+      } },
+    { id: 'PDF5', descricao: 'Acabamento do PDF: desconto 0% (à vista = cartão em 5x) → uma linha só "Cartão em até 5x (5x de R$ 389,48) ou à vista (Pix, dinheiro ou débito): R$ 1.947,42"; com 5%, duas linhas como antes; a chave Pix continua depois',
+      executar: function () {
+        var par = completarParametrosPdf({ chavePix: '12.345.678/0001-90', tipoChavePix: 'CNPJ' });
+        var l = function (d) { return linhasPagamentoPdf(cenarioServicos([['Serviço', '12', '']], { descontoTexto: d }).calc, false, par); };
+        return { obtido: [l('0'), l('5')],
+                 esperado: [['Cartão em até 5x (5x de R$ 389,48) ou à vista (Pix, dinheiro ou débito): R$ 1.947,42', 'Chave Pix (CNPJ): 12.345.678/0001-90'],
+                            ['Cartão em até 5x: R$ 1.947,42 (5x de R$ 389,48)', 'À vista (Pix, dinheiro ou débito): R$ 1.850,05 — 5% de desconto', 'Chave Pix (CNPJ): 12.345.678/0001-90']] };
       } },
     { id: 'WA2', descricao: 'WhatsApp: com número, o título é "*Orçamento nº 186-2026 – Oficina*" (sem nome: "*Orçamento nº 186-2026*"); sem número, como antes',
       executar: function () {

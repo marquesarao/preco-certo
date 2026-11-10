@@ -113,63 +113,72 @@ var PrecoCertoPdf = (function () {
     }
 
     // ---- Tabelas ----
+    // Uma margem direita só (XV) para a coluna "Valor", os subtotais e o quadro de totais.
+    // Linhas da tabela com altura fixa (LINHA_MIN) e o texto centralizado na faixa: o mesmo respiro antes e depois de cada separador.
+    var XV = R - 2;
+    var CAP = function (tam) { return tam * 0.3528 * 0.718; }; // altura das maiúsculas da Helvetica, em mm
+    var ENTRE = 4.6, LINHA_MIN = 7.4, CAB = 7;
     function cabecalhoTabela(colunas) {
-      garantir(14);
-      pdf.setFillColor(FUNDO[0], FUNDO[1], FUNDO[2]); pdf.rect(L, y - 4.6, W, 7, 'F');
+      var topo = y - 4.6;
+      if (topo + CAB + LINHA_MIN > FIM) { novaPagina(); topo = y; }
+      pdf.setFillColor(FUNDO[0], FUNDO[1], FUNDO[2]); pdf.rect(L, topo, W, CAB, 'F');
       fonte('bold', 9); cor(SUAVE);
-      colunas.forEach(function (c) { pdf.text(c.t, c.x, y, c.alinhar ? { align: c.alinhar } : undefined); });
-      y += 6.5;
+      var base = topo + (CAB + CAP(9)) / 2;
+      colunas.forEach(function (c) { pdf.text(c.t, c.x, base, c.alinhar ? { align: c.alinhar } : undefined); });
+      y = topo + CAB; // daqui para baixo, y = topo da próxima linha
     }
-    /** Linha da tabela: descrição quebrada; os outros campos na 1ª linha. */
+    /** Linha da tabela (y = topo da linha): descrição quebrada; os outros campos na 1ª linha; separador embaixo. */
     function linhaTabela(campos, xDesc, larguraDesc, descricao) {
       fonte('normal', 10);
       var linhas = pdf.splitTextToSize(descricao, larguraDesc);
-      var h = linhas.length * 4.6 + 2.2;
-      garantir(h);
+      var h = LINHA_MIN + (linhas.length - 1) * ENTRE;
+      if (y + h > FIM) novaPagina();
+      var base = y + (LINHA_MIN + CAP(10)) / 2;
       cor(TEXTO);
-      linhas.forEach(function (l, i) { pdf.text(l, xDesc, y + i * 4.6); });
-      campos.forEach(function (c) { pdf.text(c.t, c.x, y, c.alinhar ? { align: c.alinhar } : undefined); });
-      y += h - 2.2;
-      pdf.setDrawColor(LINHA[0], LINHA[1], LINHA[2]); pdf.setLineWidth(0.15); pdf.line(L, y - 2.8 + 2.2, R, y - 2.8 + 2.2);
-      y += 2.2;
+      linhas.forEach(function (l, i) { pdf.text(l, xDesc, base + i * ENTRE); });
+      campos.forEach(function (c) { pdf.text(c.t, c.x, base, c.alinhar ? { align: c.alinhar } : undefined); });
+      y += h;
+      pdf.setDrawColor(LINHA[0], LINHA[1], LINHA[2]); pdf.setLineWidth(0.15); pdf.line(L, y, R, y);
     }
+    /** Subtotal (y = topo): valor na margem XV; o rótulo à esquerda dele, sem empurrá-lo. */
     function subtotal(rotulo, valor) {
-      garantir(8);
+      if (y + LINHA_MIN > FIM) novaPagina();
       fonte('bold', 10); cor(TEXTO);
-      pdf.text(rotulo, R - 40, y + 1, { align: 'right' });
-      pdf.text(valor, R, y + 1, { align: 'right' });
-      y += 7;
+      var base = y + (LINHA_MIN + CAP(10)) / 2;
+      pdf.text(valor, XV, base, { align: 'right' });
+      pdf.text(rotulo, Math.min(XV - 30, XV - pdf.getTextWidth(valor) - 5), base, { align: 'right' });
+      y += LINHA_MIN + 3;
     }
 
     if (doc.servicos.length) {
       tituloSecao('Serviços');
-      cabecalhoTabela([{ t: 'Descrição', x: L + 2 }].concat(doc.precoServico ? [{ t: 'Valor', x: R - 2, alinhar: 'right' }] : []));
+      cabecalhoTabela([{ t: 'Descrição', x: L + 2 }].concat(doc.precoServico ? [{ t: 'Valor', x: XV, alinhar: 'right' }] : []));
       doc.servicos.forEach(function (it) {
-        linhaTabela(doc.precoServico ? [{ t: it.valor, x: R - 2, alinhar: 'right' }] : [], L + 2, doc.precoServico ? W - 42 : W - 4, it.descricao);
+        linhaTabela(doc.precoServico ? [{ t: it.valor, x: XV, alinhar: 'right' }] : [], L + 2, doc.precoServico ? W - 42 : W - 4, it.descricao);
       });
       subtotal('Subtotal serviços', doc.subtotalServicos);
     }
     if (doc.pecas.length) {
       tituloSecao('Peças');
-      cabecalhoTabela([{ t: 'Qtd', x: L + 2 }, { t: 'Descrição', x: L + 18 }].concat(doc.precoPeca ? [{ t: 'Valor', x: R - 2, alinhar: 'right' }] : []));
+      cabecalhoTabela([{ t: 'Qtd', x: L + 2 }, { t: 'Descrição', x: L + 18 }].concat(doc.precoPeca ? [{ t: 'Valor', x: XV, alinhar: 'right' }] : []));
       doc.pecas.forEach(function (it) {
-        var campos = [{ t: it.qtd, x: L + 2 }].concat(doc.precoPeca ? [{ t: it.valor, x: R - 2, alinhar: 'right' }] : []);
+        var campos = [{ t: it.qtd, x: L + 2 }].concat(doc.precoPeca ? [{ t: it.valor, x: XV, alinhar: 'right' }] : []);
         linhaTabela(campos, L + 18, doc.precoPeca ? W - 58 : W - 20, it.descricao);
       });
       subtotal('Subtotal peças', doc.subtotalPecas);
     }
 
-    // ---- Totais ----
-    garantir(26);
-    y += 1;
+    // ---- Totais (valores na mesma margem XV da coluna "Valor") ----
+    var topoCaixa = y - 2.5;
+    if (topoCaixa + 22 > FIM) { novaPagina(); topoCaixa = y; }
     var xCaixa = R - 78;
-    pdf.setFillColor(FUNDO[0], FUNDO[1], FUNDO[2]); pdf.rect(xCaixa, y - 4.5, 78, 22, 'F');
+    pdf.setFillColor(FUNDO[0], FUNDO[1], FUNDO[2]); pdf.rect(xCaixa, topoCaixa, 78, 22, 'F');
     fonte('normal', 10); cor(TEXTO);
-    pdf.text('Serviços', xCaixa + 4, y + 0.5); pdf.text(doc.subtotalServicos, R - 4, y + 0.5, { align: 'right' });
-    pdf.text('Peças', xCaixa + 4, y + 6); pdf.text(doc.subtotalPecas, R - 4, y + 6, { align: 'right' });
+    pdf.text('Serviços', xCaixa + 3, topoCaixa + 5.5); pdf.text(doc.subtotalServicos, XV, topoCaixa + 5.5, { align: 'right' });
+    pdf.text('Peças', xCaixa + 3, topoCaixa + 11); pdf.text(doc.subtotalPecas, XV, topoCaixa + 11, { align: 'right' });
     fonte('bold', 12.5); cor(MARCA);
-    pdf.text('Total', xCaixa + 4, y + 13.2); pdf.text(doc.total, R - 4, y + 13.2, { align: 'right' });
-    y += 24;
+    pdf.text('Total', xCaixa + 3, topoCaixa + 18.2); pdf.text(doc.total, XV, topoCaixa + 18.2, { align: 'right' });
+    y = topoCaixa + 28.5;
 
     // ---- Pagamento ----
     tituloSecao('Pagamento');
