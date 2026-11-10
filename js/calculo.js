@@ -29,7 +29,10 @@ var LIMITES_PARAMETROS = {
   impostoServicoPercentual: { min: 0, max: MAX_TAXA },
   acrescimoTerceirosPadrao: { min: 0, max: MAX_ACRESCIMO },
   // Seção 16.9 (opcional: planilha antiga não tem; vale o descontoAVistaPadrao)
-  descontoPecasPadrao: { min: 0, max: 99 }
+  descontoPecasPadrao: { min: 0, max: 99 },
+  // Onda do PDF (inteiros)
+  validadeOrcamentoDias: { min: 1, max: 365, inteiro: true },
+  proximoNumero: { min: 1, max: 999999, inteiro: true }
 };
 var LIMITE_TAXA = { min: 0, max: MAX_TAXA };
 var LIMITE_VALOR_GASTO = { min: 0, max: MAX_VALOR };
@@ -49,7 +52,9 @@ var MENSAGENS_PARAMETROS = {
   impostoPecasPercentual: 'Use um número de 0 a 99.',
   impostoServicoPercentual: 'Use um número de 0 a 99.',
   acrescimoTerceirosPadrao: 'Use um número de 0 a 1000.',
-  descontoPecasPadrao: 'Use um número de 0 a 99.'
+  descontoPecasPadrao: 'Use um número de 0 a 99.',
+  validadeOrcamentoDias: 'Use um número inteiro de 1 a 365.',
+  proximoNumero: 'Use um número inteiro de 1 a 999999.'
 };
 var MENSAGEM_NAO_NUMERO = 'Digite só números. Ex.: 150,50';
 
@@ -1486,12 +1491,12 @@ function placasNoTexto(texto) {
 /**
  * A busca da lista: cliente, serviço (coluna F) e itens (coluna Z: placa, modelo, serviços, parceiros e peças) sem
  * acento/maiúscula; placa com ou sem hífen ("abc1234" acha "ABC-1234"); placa antiga e Mercosul são a mesma
- * ("abc2b22" acha "ABC-2122" e vice-versa); telefone só pelos números.
+ * ("abc2b22" acha "ABC-2122" e vice-versa); número do orçamento ("186-2026" ou "186"); telefone só pelos números.
  */
 function combinaBusca(o, termo) {
   var t = chaveNome(termo);
   if (!t) return true;
-  var textos = [o.cliente, o.servico, o.itens].map(chaveNome);
+  var textos = [o.cliente, o.servico, o.itens, o.numero].map(chaveNome); // onda do PDF: + número do orçamento
   if (textos.some(function (x) { return x.indexOf(t) >= 0; })) return true;
   var junto = function (x) { return x.replace(/[^a-z0-9]/g, ''); };
   var tj = junto(t);
@@ -1526,7 +1531,9 @@ function textoWhatsApp(res, parametros, descricao, preco, pecas, extras) {
   extras = extras || {};
   var linhas = [];
   var nome = String(parametros.nomeOficina || '').trim();
-  linhas.push(nome ? '*Orçamento – ' + nome + '*' : '*Orçamento*');
+  // Onda do PDF (pendência 4): com número, o título leva o número: "*Orçamento nº 186-2026 – Oficina*"; sem número, como antes.
+  var titulo = 'Orçamento' + (extras.numero ? ' nº ' + extras.numero : '');
+  linhas.push(nome ? '*' + titulo + ' – ' + nome + '*' : '*' + titulo + '*');
   // Seção 17: "Veículo: …" (só os campos preenchidos) e as seções na ordem oficina → parceiros → peças, todas com "•",
   // sem valores por item; seção vazia não aparece. Sem a lista de serviços (chamada antiga), a descrição é o serviço.
   var veiculo = textoVeiculo(extras.veiculo);
@@ -1572,6 +1579,240 @@ function textoWhatsApp(res, parametros, descricao, preco, pecas, extras) {
     (emReais ? ' (' + formatarCentavos(preco.descontoReaisCentavos) + ' de desconto)'
       : comDesconto ? ' — ' + formatarPercentual(preco.descontoTotal) + ' de desconto' : ''));
   return linhas.join('\n');
+}
+
+// ---------------------------------------------------------------------
+// Onda do PDF: dados da oficina, número do orçamento, PDF e WhatsApp do cliente (DESENHO seção 20)
+// ---------------------------------------------------------------------
+
+/** Dados da oficina e do PDF: padrão de fábrica (planilha antiga ou cache antigo sem as chaves). Espelho do parametrosPadrao_. */
+var PARAMETROS_PDF_PADRAO = {
+  cnpjCpf: '', telefoneOficina: '', enderecoOficina: '', cidadeUf: '', chavePix: '', tipoChavePix: '',
+  validadeOrcamentoDias: 7, observacoesPdf: '', pdfPrecoServico: 'sim', pdfPrecoPeca: 'nao', proximoNumero: 1
+};
+/** Tamanhos dos textos (espelho de PARAMETROS_TEXTO_ do Codigo.gs). */
+var MAX_TEXTOS_OFICINA = { cnpjCpf: 18, telefoneOficina: 20, enderecoOficina: 100, cidadeUf: 60, chavePix: 100, observacoesPdf: 300 };
+var TIPOS_CHAVE_PIX = ['CNPJ', 'CPF', 'E-mail', 'Telefone', 'Aleatória'];
+var MAX_OBS_CLIENTE = 300;
+/** Link do WhatsApp com o texto: até este tamanho (texto codificado) vai no link; acima, copia o texto e abre só a conversa. */
+var LIMITE_TEXTO_WHATSAPP = 1800;
+/** Palavras e assuntos internos que NUNCA podem ir para o PDF do cliente (conferido nos testes). */
+var PALAVRAS_PROIBIDAS_PDF = ['custo', 'sobra', 'salário', 'salario', 'maquininha', 'taxa', 'piso', 'ainda pode', 'imposto', 'lucro',
+  'paga a oficina', 'vai para a casa', 'fica para você', 'mínimo'];
+
+/** Completa os parâmetros do PDF que faltam (cache de versão anterior / planilha antiga). Não mexe nos que existem. */
+function completarParametrosPdf(p) {
+  Object.keys(PARAMETROS_PDF_PADRAO).forEach(function (k) {
+    var v = p[k];
+    var padrao = PARAMETROS_PDF_PADRAO[k];
+    if (typeof padrao === 'number' ? typeof v !== 'number' : typeof v !== 'string') p[k] = padrao;
+  });
+  return p;
+}
+
+/** Máscara de CNPJ/CPF enquanto digita: até 11 números = CPF "000.000.000-00"; 12 a 14 = CNPJ "00.000.000/0000-00". */
+function formatarCnpjCpf(t) {
+  var d = soNumeros(t).slice(0, 14);
+  if (!d) return '';
+  if (d.length <= 11) {
+    return d.replace(/^(\d{3})(\d)/, '$1.$2').replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3').replace(/\.(\d{3})(\d{1,2})$/, '.$1-$2');
+  }
+  return d.replace(/^(\d{2})(\d)/, '$1.$2').replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3').replace(/\.(\d{3})(\d)/, '.$1/$2').replace(/(\d{4})(\d{1,2})$/, '$1-$2');
+}
+
+/** "CNPJ 12.345.678/0001-90" / "CPF 123.456.789-09" (pelo número de dígitos); outro tamanho → o texto como está. */
+function documentoDaOficina(t) {
+  var x = textoLimpo(t);
+  if (!x) return '';
+  var n = soNumeros(x).length;
+  return n === 14 ? 'CNPJ ' + x : n === 11 ? 'CPF ' + x : x;
+}
+
+/** "aaaa-mm-dd" + n dias → "aaaa-mm-dd" (calendário, sem fuso). */
+function somarDias(data, n) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(data || ''));
+  if (!m) return '';
+  var d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + n));
+  return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
+}
+
+/** "2026-11-09" → "9 de novembro de 2026". */
+function dataPorExtenso(data) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(data || ''));
+  if (!m) return '';
+  return Number(m[3]) + ' de ' + NOMES_MESES[Number(m[2]) - 1].toLowerCase() + ' de ' + m[1];
+}
+
+/** "Caxias do Sul/RS" ou "Caxias do Sul - RS" → "Caxias do Sul". */
+function cidadeDe(cidadeUf) {
+  return textoLimpo(String(cidadeUf || '').split(/\s*[\/–-]\s*[A-Za-z]{2}\s*$/)[0]);
+}
+
+/**
+ * Itens do PDF com o valor BASE de cada um (o que o cliente paga antes do cartão, sem arredondar):
+ * serviços da oficina (mão de obra de cada linha), serviços de parceiros (pago × (1 + %), com "(parceiro)") e peças
+ * (qtd × valor × (1 + %)). Peças pelo "valor total direto" → uma linha "Peças". Linha sem descrição e sem valor não entra.
+ * @param c resultado de calcularComFoto
+ */
+function itensDoPdf(c) {
+  var servicos = [], pecas = [];
+  var linhas = c.res.servicosLinhas || [];
+  var lista = c.lido.servicos || [];
+  if (lista.length) {
+    lista.forEach(function (sv, i) {
+      var base = linhas[i] ? linhas[i].maoDeObra : 0;
+      var d = textoLimpo(sv.descricao);
+      if (d || base > 0) servicos.push({ descricao: d || 'Serviço', base: base });
+    });
+  } else if (c.res.maoDeObra > 0) {
+    servicos.push({ descricao: 'Mão de obra', base: c.res.maoDeObra });
+  }
+  (c.lido.terceiros || []).forEach(function (t) {
+    var pago = typeof t.valor === 'number' && t.valor > 0 ? t.valor : 0;
+    var base = pago * (1 + (t.acrescimo || 0) / 100);
+    var d = textoLimpo(t.descricao);
+    if (d || base > 0) servicos.push({ descricao: (d || 'Serviço') + ' (parceiro)', base: base, parceiro: true });
+  });
+  if ((c.lido.pecas || []).length) {
+    c.lido.pecas.forEach(function (p) {
+      var base = totalPecasItens([p]) * (1 + (p.acrescimo || 0) / 100);
+      var d = textoLimpo(p.descricao);
+      if (d || base > 0) pecas.push({ descricao: d || 'Peça', qtd: typeof p.qtd === 'number' && p.qtd > 0 ? p.qtd : null, base: base });
+    });
+  } else if (c.res.pecasCobrar > 0) {
+    pecas.push({ descricao: 'Peças', qtd: null, base: c.res.pecasCobrar });
+  }
+  return { servicos: servicos, pecas: pecas };
+}
+
+/**
+ * Valor de cada item NO PREÇO CHEIO (o total do PDF = a âncora, o cartão até a parcela de referência; sem âncora = a base):
+ * fator = alvo ÷ Σ bases (sem arredondar no meio); subtotal dos serviços = arredondar(Σ bases dos serviços × fator) e o das
+ * peças = alvo − serviços; em cada seção, cada item = arredondar(base × fator) e o ÚLTIMO absorve o centavo
+ * (os itens somam o subtotal e os subtotais somam o alvo, exatamente). Tudo em centavos.
+ * @return {servicos:[…{valorC}], pecas:[…{valorC}], subtotalServicosC, subtotalPecasC, totalC}
+ */
+function distribuirNoPreco(itens, alvoC) {
+  var soma = function (l) { return l.reduce(function (t, it) { return t + (it.base > 0 ? it.base : 0); }, 0); };
+  var baseTotal = soma(itens.servicos) + soma(itens.pecas);
+  var fator = baseTotal > 0 ? alvoC / baseTotal : 0; // centavos por real de base
+  var subServ = !itens.pecas.length ? (itens.servicos.length ? alvoC : 0) : !itens.servicos.length ? 0 : Math.round(soma(itens.servicos) * fator);
+  var subPec = itens.pecas.length ? alvoC - subServ : 0;
+  function secao(lista, subtotal) {
+    var acumulado = 0;
+    return lista.map(function (it, i) {
+      var v = i === lista.length - 1 ? subtotal - acumulado : Math.round((it.base > 0 ? it.base : 0) * fator);
+      acumulado += v;
+      var r = {}; Object.keys(it).forEach(function (k) { r[k] = it[k]; }); r.valorC = v;
+      return r;
+    });
+  }
+  return { servicos: secao(itens.servicos, subServ), pecas: secao(itens.pecas, subPec), subtotalServicosC: subServ, subtotalPecasC: subPec, totalC: subServ + subPec };
+}
+
+/**
+ * Linhas do bloco "Pagamento" (os MESMOS números do WhatsApp, sem emojis): cartão até a referência e as demais parcelas em
+ * destaque; a entrada (se houver); o à vista com o desconto (em % ou, com descontos diferentes, em R$); a chave Pix.
+ */
+function linhasPagamentoPdf(c, entradaVisivel, parametros) {
+  var linhas = [];
+  var cartao = 'Cartão' + (c.res.cartaoNoTexto ? ' ' + c.res.cartaoNoTexto : '');
+  c.res.destaques.forEach(function (op) {
+    linhas.push(op.parcelas === 1 ? cartao + ' em 1x: ' + formatarCentavos(op.totalCentavos)
+      : cartao + ' em até ' + op.parcelas + 'x: ' + formatarCentavos(op.totalCentavos) + ' (' + op.parcelas + 'x de ' + formatarCentavos(op.parcelaCentavos) + ')');
+  });
+  var en = entradaVisivel ? c.entradaCartao : null;
+  if (en && !en.erro && en.entradaC > 0) {
+    linhas.push('Entrada de ' + formatarCentavos(en.entradaC) + (c.lido.formaEntrada === 'debito' ? ' no débito' : ' no Pix') + ' + ' + en.parcelas + 'x de ' +
+      formatarCentavos(en.parcelaC) + ' no cartão (total ' + formatarCentavos(en.totalC) + ')');
+  }
+  var preco = c.preco;
+  var comDesconto = preco.temAncora && preco.descontoTotal > 0;
+  var rotulo = preco.temAncora ? 'À vista (Pix, dinheiro ou débito)' : 'À vista (Pix/dinheiro)';
+  var emReais = comDesconto && preco.descontosIguais === false;
+  linhas.push(rotulo + ': ' + formatarCentavos(preco.precoCentavos) +
+    (emReais ? ' (' + formatarCentavos(preco.descontoReaisCentavos) + ' de desconto)' : comDesconto ? ' — ' + formatarPercentual(preco.descontoTotal) + ' de desconto' : ''));
+  var chave = textoLimpo(parametros.chavePix);
+  if (chave) linhas.push('Chave Pix' + (parametros.tipoChavePix ? ' (' + parametros.tipoChavePix + ')' : '') + ': ' + chave);
+  return linhas;
+}
+
+/**
+ * O documento do PDF (só dados; quem desenha é js/pdf.js). Nada interno vai para cá: só o que o cliente vê.
+ * @param a {c (calcularComFoto), parametros (de hoje), orc {cliente, telefone, veiculo, observacoesCliente}, numero,
+ *           hoje "aaaa-mm-dd", opcoes {precoServico, precoPeca, assinaturas}, entradaVisivel}
+ */
+function documentoDoPdf(a) {
+  var p = a.parametros, c = a.c, orc = a.orc, op = a.opcoes || {};
+  var alvoC = c.preco.temAncora ? c.preco.ancora.totalCentavos : c.res.aVista.totalCentavos;
+  var dist = distribuirNoPreco(itensDoPdf(c), alvoC);
+  var v = orc.veiculo || {};
+  var veiculo = [['Modelo', v.modelo], ['Placa', v.placa], ['Ano', v.ano], ['Combustível', v.combustivel]]
+    .map(function (x) { return [x[0], textoLimpo(x[1])]; }).filter(function (x) { return x[1]; });
+  var validade = typeof p.validadeOrcamentoDias === 'number' && p.validadeOrcamentoDias >= 1 ? p.validadeOrcamentoDias : PARAMETROS_PDF_PADRAO.validadeOrcamentoDias;
+  var cidade = cidadeDe(p.cidadeUf);
+  var nomeOficina = textoLimpo(p.nomeOficina);
+  return {
+    oficina: { nome: nomeOficina, documento: documentoDaOficina(p.cnpjCpf), telefone: textoLimpo(p.telefoneOficina),
+      endereco: textoLimpo(p.enderecoOficina), cidadeUf: textoLimpo(p.cidadeUf) },
+    titulo: 'Orçamento nº ' + a.numero,
+    numero: a.numero,
+    data: dataBR(a.hoje),
+    validoAte: dataBR(somarDias(a.hoje, validade)),
+    cliente: { nome: textoLimpo(orc.cliente), telefone: formatarTelefone(orc.telefone || '') },
+    veiculo: veiculo,
+    precoServico: op.precoServico !== false,
+    precoPeca: op.precoPeca === true,
+    servicos: dist.servicos.map(function (it) { return { descricao: it.descricao, valor: formatarCentavos(it.valorC) }; }),
+    pecas: dist.pecas.map(function (it) { return { qtd: it.qtd === null ? '' : numeroParaCampo(it.qtd, false), descricao: it.descricao, valor: formatarCentavos(it.valorC) }; }),
+    subtotalServicos: formatarCentavos(dist.subtotalServicosC),
+    subtotalPecas: formatarCentavos(dist.subtotalPecasC),
+    total: formatarCentavos(dist.totalC),
+    totalC: dist.totalC,
+    pagamento: linhasPagamentoPdf(c, a.entradaVisivel, p),
+    observacoes: [textoLimpo(orc.observacoesCliente), textoLimpo(p.observacoesPdf)].filter(function (t) { return t; }),
+    rodape: (cidade ? cidade + ', ' : '') + dataPorExtenso(a.hoje),
+    assinaturas: op.assinaturas !== false,
+    assinaturaOficina: nomeOficina || 'Oficina',
+    textoCompartilhar: 'Orçamento nº ' + a.numero + (nomeOficina ? ' – ' + nomeOficina : '')
+  };
+}
+
+/** Todos os textos que o documento mostra (na ordem), respeitando as opções de exibição. Para os testes. */
+function textosDoDocumento(doc) {
+  var t = [doc.oficina.nome, doc.oficina.documento, doc.oficina.telefone, doc.oficina.endereco, doc.oficina.cidadeUf, doc.titulo, doc.data, doc.validoAte,
+    doc.cliente.nome, doc.cliente.telefone];
+  doc.veiculo.forEach(function (x) { t.push(x[0], x[1]); });
+  doc.servicos.forEach(function (it) { t.push(it.descricao); if (doc.precoServico) t.push(it.valor); });
+  doc.pecas.forEach(function (it) { t.push(it.qtd, it.descricao); if (doc.precoPeca) t.push(it.valor); });
+  t.push(doc.subtotalServicos, doc.subtotalPecas, doc.total);
+  t = t.concat(doc.pagamento, doc.observacoes, [doc.rodape]);
+  return t.filter(function (x) { return x; });
+}
+
+/** "Orcamento-186-2026-ABC-1234.pdf" (placa; sem placa, o cliente; sem acentos nem espaços). */
+function nomeArquivoPdf(numero, placa, cliente) {
+  var limpa = function (x) {
+    return String(x || '').normalize('NFD').replace(RE_ACENTOS, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '');
+  };
+  var extra = limpa(placa) || limpa(cliente);
+  return 'Orcamento-' + limpa(numero) + (extra ? '-' + extra : '') + '.pdf';
+}
+
+/**
+ * Link do WhatsApp do cliente: https://wa.me/55{DDD+número}?text={texto codificado}. Telefone com 10 ou 11 números
+ * (sem o 55; "+55" na frente é tirado); senão null. Texto codificado acima de LIMITE_TEXTO_WHATSAPP → cabe:false (o link
+ * vai sem o texto; o app copia o texto para colar).
+ * @return null | {url, conversa (sem texto), cabe, numero}
+ */
+function linkWhatsApp(telefone, texto) {
+  var d = digitosDoTelefone(telefone);
+  if (d.length !== 10 && d.length !== 11) return null;
+  var conversa = 'https://wa.me/55' + d;
+  if (!texto) return { url: conversa, conversa: conversa, cabe: true, numero: '55' + d };
+  var cod = encodeURIComponent(texto);
+  var cabe = cod.length <= LIMITE_TEXTO_WHATSAPP;
+  return { url: cabe ? conversa + '?text=' + cod : conversa, conversa: conversa, cabe: cabe, numero: '55' + d };
 }
 
 // ---------------------------------------------------------------------
@@ -2382,6 +2623,73 @@ function casosDeTeste() {
         var l = [{ criadoEm: '2026-11-09 08:00:00' }, { criadoEm: '2026-11-08 17:30:00' }, { criadoEm: '2026-11-10 09:00:00' }];
         return { obtido: [avisoPrimeiroMes('2026-11', '2026-11', l), avisoPrimeiroMes('2026-10', '2026-11', l), avisoPrimeiroMes(null, '2026-11', l)],
                  esperado: ['Você começou a usar o app em 08/11/2026. Serviços anteriores não aparecem aqui.', '', ''] };
+      } },
+    { id: 'PDF1', descricao: 'Onda do PDF: fator de escala — base 4.578 (serviços 1.500 + 1.050, parceiro 138, peças 900 + 990), âncora 5.010,40 → itens somam exatamente 5.010,40; Serviços + Peças = Total; o último item de cada seção absorve o centavo',
+      executar: function () {
+        var d = distribuirNoPreco({ servicos: [{ base: 1500 }, { base: 1050 }, { base: 138 }], pecas: [{ base: 900 }, { base: 990 }] }, 501040);
+        var f = 501040 / 4578;
+        var v = function (l) { return l.map(function (x) { return x.valorC; }); };
+        var soma = function (l) { return l.reduce(function (t, x) { return t + x.valorC; }, 0); };
+        return { obtido: [v(d.servicos), v(d.pecas), d.subtotalServicosC, d.subtotalPecasC, d.totalC, soma(d.servicos) + soma(d.pecas),
+                          d.subtotalServicosC === Math.round(2688 * f), d.servicos[0].valorC === Math.round(1500 * f), d.servicos[2].valorC !== Math.round(138 * f), d.pecas[1].valorC !== Math.round(990 * f)],
+                 esperado: [[164168, 114917, 15104], [98501, 108350], 294189, 206851, 501040, 501040, true, true, true, true] };
+      } },
+    { id: 'PDF2', descricao: 'Onda do PDF: sem âncora (sem cartões) fator 1 — itens = os valores de sempre; só serviços → total = serviços; só peças → total = peças; sem nada → 0',
+      executar: function () {
+        var v = function (d) { return [d.servicos.map(function (x) { return x.valorC; }), d.pecas.map(function (x) { return x.valorC; }), d.subtotalServicosC, d.subtotalPecasC, d.totalC]; };
+        return { obtido: [v(distribuirNoPreco({ servicos: [{ base: 1000 }], pecas: [{ base: 500.5 }] }, 150050)), v(distribuirNoPreco({ servicos: [{ base: 10 }, { base: 20 }], pecas: [] }, 3000)),
+                          v(distribuirNoPreco({ servicos: [], pecas: [{ base: 7 }] }, 700)), v(distribuirNoPreco({ servicos: [], pecas: [] }, 0))],
+                 esperado: [[[100000], [50050], 100000, 50050, 150050], [[1000, 2000], [], 3000, 0, 3000], [[], [700], 0, 700, 700], [[], [], 0, 0, 0]] };
+      } },
+    { id: 'PDF3', descricao: 'Onda do PDF: documento de um orçamento real (2 serviços, 1 parceiro, 2 peças, Visa 5x, desconto 5%) — total = âncora; itens somam; pagamento igual ao WhatsApp; preço por peça desligado não mostra valor de peça; NADA interno (custo, sobra, salário, maquininha, taxa, piso, imposto, lucro…) nem os valores internos',
+      executar: function () {
+        var cen = cenarioServicos([['Troca do radiador', '', '1500'], ['Suspensão dianteira', '7', '']], {
+          terceiros: [{ descricao: 'Retífica', valorTexto: '138', acrescimoTexto: '0' }],
+          pecas: [{ descricao: 'Pastilha de freio', qtdTexto: '3', valorTexto: '300', acrescimoTexto: '0' }, { descricao: 'Óleo câmbio', qtdTexto: '1', valorTexto: '990', acrescimoTexto: '0' }] });
+        var c = cen.calc;
+        var par = completarParametrosPdf({ nomeOficina: 'CliniCar Motors Tech', cnpjCpf: '12.345.678/0001-90', cidadeUf: 'Caxias do Sul/RS', chavePix: '12.345.678/0001-90', tipoChavePix: 'CNPJ', observacoesPdf: 'Garantia de 90 dias.' });
+        var orc = { cliente: 'João Conceição', telefone: '54999990000', veiculo: { placa: 'ABC-1234', modelo: 'Saveiro CS 1.6', ano: '2014', combustivel: 'Flex' }, observacoesCliente: 'Trazer às 8h.' };
+        var doc = documentoDoPdf({ c: c, parametros: par, orc: orc, numero: '186-2026', hoje: '2026-11-09', opcoes: { precoServico: true, precoPeca: false, assinaturas: true } });
+        var textos = textosDoDocumento(doc).join(' | ');
+        var baixo = textos.toLowerCase();
+        var proibidas = PALAVRAS_PROIBIDAS_PDF.filter(function (w) { return baixo.indexOf(w) >= 0; });
+        var internos = [c.det.sobra, c.det.totalSeu, c.det.pagaOficina, c.res.pecasPagar * 100, c.det.imposto].filter(function (x) { return typeof x === 'number' && x > 0; })
+          .map(function (x) { return formatarCentavos(Math.round(x)); }).filter(function (t) { return textos.indexOf(t) >= 0; });
+        var zap = textoWhatsApp(c.res, par, '', c.preco, [], {}).split('\n').filter(function (l) { return /Cartão|À vista/.test(l); }).map(function (l) { return l.replace(/[💳💵*]/gu, '').trim(); });
+        var totalItens = doc.servicos.concat(doc.pecas).reduce(function (t, it) { return t + Math.round(lerNumeroBR(it.valor) * 100); }, 0);
+        return { obtido: [doc.titulo, doc.data, doc.validoAte, doc.total === formatarCentavos(c.preco.ancora.totalCentavos), totalItens === c.preco.ancora.totalCentavos,
+                          doc.servicos.map(function (x) { return x.descricao; }), doc.pecas.map(function (x) { return x.qtd + ' ' + x.descricao; }),
+                          doc.pagamento.slice(0, 2).join(' / ') === zap.join(' / '), doc.pagamento[2], doc.veiculo.map(function (x) { return x.join(': '); }).join(' · '),
+                          proibidas, internos, textos.indexOf(doc.pecas[0].valor) >= 0, doc.rodape, doc.observacoes, doc.oficina.documento],
+                 esperado: ['Orçamento nº 186-2026', '09/11/2026', '16/11/2026', true, true,
+                            ['Troca do radiador', 'Suspensão dianteira', 'Retífica (parceiro)'], ['3 Pastilha de freio', '1 Óleo câmbio'],
+                            true, 'Chave Pix (CNPJ): 12.345.678/0001-90', 'Modelo: Saveiro CS 1.6 · Placa: ABC-1234 · Ano: 2014 · Combustível: Flex',
+                            [], [], false, 'Caxias do Sul, 9 de novembro de 2026', ['Trazer às 8h.', 'Garantia de 90 dias.'], 'CNPJ 12.345.678/0001-90'] };
+      } },
+    { id: 'PDF4', descricao: 'Onda do PDF: nome do arquivo sem acentos/espaços (placa; sem placa, o cliente); data por extenso; validade; cidade; CNPJ/CPF com máscara',
+      executar: function () {
+        return { obtido: [nomeArquivoPdf('186-2026', 'ABC-1234', 'João'), nomeArquivoPdf('7-2026', '', 'João da Conceição'), nomeArquivoPdf('7-2026', '', ''),
+                          dataPorExtenso('2026-03-01'), somarDias('2026-12-28', 7), cidadeDe('Caxias do Sul/RS'), cidadeDe('Bento Gonçalves - RS'), cidadeDe('Gramado'),
+                          formatarCnpjCpf('12345678000190'), formatarCnpjCpf('12345678909'), formatarCnpjCpf('123.4'), documentoDaOficina('123.456.789-09')],
+                 esperado: ['Orcamento-186-2026-ABC-1234.pdf', 'Orcamento-7-2026-Joao-da-Conceicao.pdf', 'Orcamento-7-2026.pdf',
+                            '1 de março de 2026', '2027-01-04', 'Caxias do Sul', 'Bento Gonçalves', 'Gramado',
+                            '12.345.678/0001-90', '123.456.789-09', '123.4', 'CPF 123.456.789-09'] };
+      } },
+    { id: 'WA2', descricao: 'WhatsApp: com número, o título é "*Orçamento nº 186-2026 – Oficina*" (sem nome: "*Orçamento nº 186-2026*"); sem número, como antes',
+      executar: function () {
+        var c = cenarioServicos([['Serviço', '2', '']]).calc;
+        var t = function (nome, numero) { return textoWhatsApp(c.res, { nomeOficina: nome }, '', c.preco, [], { numero: numero }).split(String.fromCharCode(10))[0]; };
+        return { obtido: [t('CliniCar Motors Tech', '186-2026'), t('', '186-2026'), t('CliniCar Motors Tech', ''), t('', undefined)],
+                 esperado: ['*Orçamento nº 186-2026 – CliniCar Motors Tech*', '*Orçamento nº 186-2026*', '*Orçamento – CliniCar Motors Tech*', '*Orçamento*'] };
+      } },
+    { id: 'WA1', descricao: 'WhatsApp do cliente: link wa.me com 55 + só os números; acentos/emojis codificados (UTF-8); +55 na frente não duplica; sem telefone ou incompleto → null; texto acima de 1.800 codificados → só a conversa (copiar e colar)',
+      executar: function () {
+        var a = linkWhatsApp('(54) 99999-0000', 'Orçamento ✓ 💳 R$ 1.000,00');
+        var longo = linkWhatsApp('5433334444', 'ç'.repeat(400));
+        return { obtido: [a.url, a.cabe, linkWhatsApp('+55 54 99999-0000', '').url, linkWhatsApp('', 'x'), linkWhatsApp('(54) 9999', 'x'),
+                          longo.cabe, longo.url, decodeURIComponent(a.url.split('?text=')[1])],
+                 esperado: ['https://wa.me/5554999990000?text=Or%C3%A7amento%20%E2%9C%93%20%F0%9F%92%B3%20R%24%201.000%2C00', true, 'https://wa.me/5554999990000', null, null,
+                            false, 'https://wa.me/555433334444', 'Orçamento ✓ 💳 R$ 1.000,00'] };
       } },
     { id: 'A1', descricao: 'Alerta do piso (pisos do print 4.158,12 / 4.628,21): 6.315,86 sem alerta; até 5.091,03 (10% acima do piso da casa) âmbar; 5.091,04 sem; abaixo de 4.158,12 vermelho; sem casa: âmbar até 4.573,93',
       executar: function () {

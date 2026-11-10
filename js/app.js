@@ -122,6 +122,9 @@ function aplicarDados(dados, url, atualizadoEm) {
   estado.dados.parametros.impostoServicoPercentual = imp.servico;
   if (typeof estado.dados.parametros.acrescimoTerceirosPadrao !== 'number') estado.dados.parametros.acrescimoTerceirosPadrao = 0;
   estado.dados.parametros.descontoPecasPadrao = descontoPecasPadraoDosParametros(estado.dados.parametros); // 16.9
+  completarParametrosPdf(estado.dados.parametros); // onda do PDF (cache de versão anterior)
+  ui.proximoMinimo = estado.dados.parametros.proximoNumero;
+  ui.proximoEditado = false;
   if (url) estado.urlPlanilha = url;
   estado.atualizadoEm = atualizadoEm || null;
   invalidos = {};
@@ -232,6 +235,8 @@ function montarEnvio() {
   d.gastos.forEach(function (g) { g.descricao = String(g.descricao || '').trim(); });
   d.parametros.nomeOficina = String(d.parametros.nomeOficina || '').trim();
   d.parametros.impostoPercentual = d.parametros.impostoServicoPercentual; // seção 16: a chave antiga (aparelhos não atualizados) = o imposto do serviço
+  if (!ui.proximoEditado) delete d.parametros.proximoNumero; // onda do PDF: o servidor numera; a tela só manda quando ele mudou
+  ['cnpjCpf', 'telefoneOficina', 'enderecoOficina', 'cidadeUf', 'chavePix', 'observacoesPdf'].forEach(function (k) { d.parametros[k] = String(d.parametros[k] || '').trim(); });
   d.cartoes.forEach(function (c) { c.nome = String(c.nome || '').trim(); });
   return d;
 }
@@ -538,7 +543,8 @@ function orcamentoVazio() {
     entradaTexto: '', formaEntrada: 'pix', parcelasEntrada: null, // seção 16: entrada + resto no cartão (parcelas null = a de referência)
     bandeira: NAO_SEI,
     cliente: '', telefone: '',
-    // Orçamento salvo: {id, criadoEm, atualizadoEm, situacao, motivo, fechamento, foto, recalcular, assinatura}
+    observacoesCliente: '',                // onda do PDF: vai no PDF
+    // Orçamento salvo: {id, criadoEm, atualizadoEm, situacao, motivo, fechamento, foto, recalcular, assinatura, numero}
     vinculo: null
   };
 }
@@ -1173,6 +1179,12 @@ function renderResumoSituacao(situacao, f) {
 /** Botões por situação: Aberto (Copiar · Salvar · O cliente fechou?), Fechado (Copiar · Mudar situação · Duplicar), Não fechou (Voltar para Aberto · Duplicar). */
 function renderBotoesOrcamento(situacao) {
   $('btn-copiar').hidden = situacao === 'Não fechou';
+  // Onda do PDF: "Enviar no WhatsApp do cliente" só com telefone válido (10 ou 11 números)
+  var comTelefone = !!linkWhatsApp(orc.telefone, '');
+  $('botoes-envio').hidden = situacao === 'Não fechou';
+  $('btn-zap-cliente').disabled = !comTelefone;
+  $('btn-zap-cliente').title = comTelefone ? '' : 'Preencha o telefone do cliente';
+  $('dica-zap-cliente').hidden = comTelefone || situacao === 'Não fechou';
   $('botoes-aberto').hidden = situacao !== 'Aberto';
   $('botoes-fechado').hidden = situacao !== 'Fechado';
   $('botoes-nao-fechou').hidden = situacao !== 'Não fechou';
@@ -1382,6 +1394,8 @@ function chipSituacao(s) { return '<span class="chip-situacao ' + classeSituacao
 
 function renderVinculo() {
   var v = orc.vinculo;
+  $('orc-numero').hidden = !(v && v.numero);
+  $('orc-numero').textContent = v && v.numero ? 'Orçamento nº ' + v.numero : '';
   $('faixa-vinculo').hidden = !v;
   $('vinculo-foto').hidden = true;
   $('faixa-travado').hidden = true;
@@ -1468,6 +1482,9 @@ function entradaDoRascunho() {
     e.veiculo = { placa: textoCampo(String(v.placa || '').trim(), MAX_PLACA), modelo: textoCampo(String(v.modelo || '').trim(), MAX_MODELO),
       ano: textoCampo(String(v.ano || '').trim(), 4), combustivel: v.combustivel || '' };
   }
+  // Onda do PDF: observações para o cliente (só quando tem)
+  var obs = String(orc.observacoesCliente || '').trim();
+  if (obs) e.observacoesCliente = obs.slice(0, MAX_OBS_CLIENTE);
   // Seção 16: só entram quando usados (um orçamento sem eles grava exatamente como antes)
   if (orc.terceiros.length) {
     e.terceiros = orc.terceiros.slice(0, MAX_TERCEIROS).map(function (s) {
@@ -1558,8 +1575,10 @@ function salvarOrcamento(op) {
     orc.vinculo = {
       id: r.id, criadoEm: r.criadoEm, atualizadoEm: r.atualizadoEm, situacao: r.situacao,
       motivo: manter ? antigo.motivo : '', fechamento: manter ? antigo.fechamento : null,
-      foto: manter ? antigo.foto : foto, recalcular: false, assinatura: assinatura
+      foto: manter ? antigo.foto : foto, recalcular: false, assinatura: assinatura,
+      numero: r.numero || (antigo && !novo ? antigo.numero || '' : '')
     };
+    anotarProximoNumero(r.proximoNumero);
     gravarRascunho();
     renderOrcamento();
     resultadosMudaram();
@@ -1638,11 +1657,12 @@ function rascunhoDoSalvo(o, comoCopia) {
   // 16.9: orçamento salvo antes do adendo (sem a chave) abre com a regra antiga (igual ao de antes)
   if (e.descontoSeparado === undefined) { r.descontoSeparado = undefined; r.descontoPecasTexto = null; }
   else { r.descontoSeparado = e.descontoSeparado === true ? true : e.descontoSeparado === false ? false : null; r.descontoPecasTexto = textoOuNulo(e.descontoPecasTexto); }
+  r.observacoesCliente = typeof e.observacoesCliente === 'string' ? e.observacoesCliente : '';
   r.cliente = o.cliente || '';
   r.telefone = formatarTelefone(o.telefone || ''); // telefone antigo sem máscara: aparece formatado (e vai formatado no próximo salvamento)
   if (!comoCopia) {
     r.vinculo = { id: o.id, criadoEm: o.criadoEm, atualizadoEm: o.atualizadoEm, situacao: o.situacao, motivo: o.motivo || '',
-      fechamento: o.dados.fechamento || null, foto: o.dados.foto, recalcular: false, assinatura: '' };
+      fechamento: o.dados.fechamento || null, foto: o.dados.foto, recalcular: false, assinatura: '', numero: o.numero || o.dados.numero || '' };
   }
   return r;
 }
@@ -2305,7 +2325,7 @@ function renderListaResultados(doMes, mes) {
     var outroMes = mesDe(o.criadoEm) !== mes ? ' · orçado em ' + dataBR(o.criadoEm, true) : '';
     return '<div class="item-orc' + (aberto ? ' aberto' : '') + '">' +
       '<button type="button" class="item-orc-topo" data-item="' + esc(o.id) + '" aria-expanded="' + aberto + '">' +
-        '<span class="item-linha1"><span class="item-cliente">' + esc(o.cliente || 'Sem nome') + '</span>' + chipSituacao(o.situacao) + '</span>' +
+        '<span class="item-linha1"><span class="item-cliente">' + esc(o.cliente || 'Sem nome') + '</span>' + (o.numero ? '<span class="item-numero">nº ' + esc(o.numero) + '</span>' : '') + chipSituacao(o.situacao) + '</span>' +
         '<span class="item-linha2">' + esc([o.servico || 'Serviço sem descrição', dataBR(dataDe(o), true), typeof valor === 'number' ? formatarCentavos(valor) : ''].filter(Boolean).join(' · ')) + esc(outroMes) + '</span>' +
       '</button>' +
       (aberto ? '<div class="item-acoes">' +
@@ -2473,6 +2493,7 @@ function textoAtual() {
   // Seção 17: veículo e serviços da oficina (só as descrições)
   extras.veiculo = orc.veiculo;
   extras.servicos = orc.servicos;
+  extras.numero = orc.vinculo && orc.vinculo.numero ? orc.vinculo.numero : ''; // onda do PDF: o número no título
   return textoWhatsApp(ultimoResultado, estado.dados.parametros, '', ultimoPreco,
     orc.pecasModo === 'acrescimo' ? ultimasPecas : [], extras);
 }
@@ -2696,7 +2717,8 @@ function preencherParametros() {
   var p = estado.dados.parametros;
   document.querySelectorAll('[data-param]').forEach(function (el) {
     var chave = el.dataset.param;
-    if (chave === 'nomeOficina' || chave === 'parcelasDestaque') el.value = p[chave] || '';
+    if (el.type === 'checkbox') el.checked = p[chave] === 'sim';
+    else if (chave === 'nomeOficina' || chave === 'parcelasDestaque' || TEXTOS_AJUSTES.indexOf(chave) >= 0) el.value = p[chave] || '';
     else el.value = numeroParaCampo(p[chave], el.dataset.formato === 'dinheiro');
     mostrarErroCampo(el, '');
   });
@@ -2724,6 +2746,28 @@ function onParametroInput(el) {
     alterou();
     return;
   }
+  // Onda do PDF: dados da oficina e exibição no PDF
+  if (el.type === 'checkbox') { p[chave] = el.checked ? 'sim' : 'nao'; alterou(); return; }
+  if (TEXTOS_AJUSTES.indexOf(chave) >= 0) {
+    if (chave === 'cnpjCpf') el.value = formatarCnpjCpf(el.value);
+    if (chave === 'telefoneOficina') el.value = formatarTelefone(el.value);
+    var max = MAX_TEXTOS_OFICINA[chave];
+    var longo = max && el.value.trim().length > max ? 'Muito longo (máx. ' + max + ' letras).' : '';
+    marcarCampo(el, 'p:' + chave, longo);
+    if (!longo) { p[chave] = el.value; alterou(); } else atualizarStatusSalvamento();
+    return;
+  }
+  if (chave === 'validadeOrcamentoDias' || chave === 'proximoNumero') {
+    var ri = validarNumeroCampo(el.value, LIMITES_PARAMETROS[chave], { vazioPermitido: false, mensagem: MENSAGENS_PARAMETROS[chave] });
+    var erroI = ri.erro || (Math.floor(ri.valor) !== ri.valor ? MENSAGENS_PARAMETROS[chave] : '');
+    if (!erroI && chave === 'proximoNumero' && ri.valor < ui.proximoMinimo) erroI = 'Só pode aumentar: o próximo número já é ' + ui.proximoMinimo + '.';
+    marcarCampo(el, 'p:' + chave, erroI);
+    if (erroI) { atualizarStatusSalvamento(); return; }
+    p[chave] = ri.valor;
+    if (chave === 'proximoNumero') ui.proximoEditado = true;
+    alterou();
+    return;
+  }
 
   // Regra: valor válido entra no estado e chama alterou() (que segura o envio se houver
   // qualquer campo inválido); valor inválido só marca o campo e atualiza o status.
@@ -2745,6 +2789,156 @@ function onParametroInput(el) {
   atualizarResultadosGastos();
   renderOrcamento();
   if (mudou) alterou(); else atualizarStatusSalvamento();
+}
+
+// ---------------- Onda do PDF: número, WhatsApp do cliente e PDF ----------------
+var TEXTOS_AJUSTES = ['cnpjCpf', 'telefoneOficina', 'enderecoOficina', 'cidadeUf', 'chavePix', 'tipoChavePix', 'observacoesPdf'];
+
+/** O servidor numerou: o "próximo número" dos Ajustes acompanha (sem voltar para trás). */
+function anotarProximoNumero(n) {
+  if (typeof n !== 'number' || !estado.dados || !(n > estado.dados.parametros.proximoNumero)) return;
+  estado.dados.parametros.proximoNumero = n;
+  ui.proximoMinimo = Math.max(ui.proximoMinimo || 1, n);
+  salvarCache();
+  var el = $('p-proximoNumero');
+  if (el && document.activeElement !== el) { el.value = numeroParaCampo(n, false); mostrarErroCampo(el, ''); delete invalidos['p:proximoNumero']; }
+}
+
+/** Abre um link fora do app (wa.me). Separado para os testes. */
+function abrirLink(url) {
+  try { window.open(url, '_blank', 'noopener'); } catch (e) { location.href = url; }
+}
+
+/**
+ * "Enviar no WhatsApp do cliente": abre a conversa dele com o MESMO texto do "Copiar para WhatsApp".
+ * Texto grande demais para o link: copia o texto e abre só a conversa ("é só colar"). Depois salva (como o Copiar).
+ */
+function enviarNoZapDoCliente() {
+  var texto = textoAtual();
+  if (!texto) return;
+  var link = linkWhatsApp(orc.telefone, texto);
+  if (!link) { mostrarAviso('Preencha o telefone do cliente.', 'alerta'); return; }
+  var copia = link.cabe ? Promise.resolve('ok') : copiarTexto(texto); // copia antes de o WhatsApp abrir por cima
+  abrirLink(link.url);
+  copia.then(function (r) {
+    var antes = link.cabe ? 'WhatsApp aberto' : (r === 'ok' ? 'Texto copiado — é só colar na conversa' : 'Copie o texto e cole na conversa');
+    var p = salvarOrcamento({});
+    if (salvandoOrc) mostrarAviso(antes + ' · Salvando…', 'fixo'); else mostrarAviso(antes);
+    p.then(function (x) {
+      if (x.r === 'salvo' || x.r === 'semMudanca') mostrarAviso(antes + ' · Orçamento salvo ✓');
+      else avisarSalvamento(x, false);
+    });
+  });
+}
+
+var pdfAtual = { blob: null, nome: '', texto: '', numero: '' };
+
+function statusPdf(t) { $('pdf-status').textContent = t || ''; }
+
+function abrirModalPdf() {
+  if (!ultimoCalc || !estado.dados) return;
+  var p = estado.dados.parametros;
+  $('pdf-preco-servico').checked = p.pdfPrecoServico !== 'nao';
+  $('pdf-preco-peca').checked = p.pdfPrecoPeca === 'sim';
+  $('pdf-assinaturas').checked = true;
+  pdfAtual = { blob: null, nome: '', texto: '', numero: '' };
+  $('pdf-opcoes').hidden = false;
+  $('pdf-pronto').hidden = true;
+  $('btn-pdf-gerar').hidden = false;
+  $('btn-pdf-gerar').disabled = false;
+  statusPdf('');
+  $('modal-pdf').hidden = false;
+}
+
+function fecharModalPdf() { $('modal-pdf').hidden = true; }
+
+/** Mensagem quando o salvar antes do PDF não deu certo. */
+function motivoSemPdf(x) {
+  if (x.r === 'versao') return x.msg;
+  if (x.r === 'semConexao') return 'Sem conexão: o PDF precisa do número do orçamento, que vem da planilha. Tente de novo com internet.';
+  if (x.r === 'invalido') return 'Orçamento não salvo: ' + x.msg;
+  if (x.r === 'conflito' || x.r === 'excluido') return 'O PDF não foi gerado: o orçamento mudou em outro aparelho.';
+  return 'Não foi salvo, e o PDF precisa do orçamento salvo. Tente de novo.' + (x.msg ? ' (' + x.msg + ')' : '');
+}
+
+/**
+ * Gera o PDF: salva o orçamento (para ter número; sem conexão ou planilha antiga → avisa e não gera), pega o número se
+ * for um orçamento antigo, monta o documento e desenha. O envio fica num segundo toque ("Enviar"), que o compartilhamento exige.
+ */
+function gerarPdfDoOrcamento() {
+  if (!conexao || navigator.onLine === false) { statusPdf(motivoSemPdf({ r: 'semConexao' })); return; }
+  $('btn-pdf-gerar').disabled = true;
+  statusPdf('Salvando o orçamento…');
+  var opcoes = { precoServico: $('pdf-preco-servico').checked, precoPeca: $('pdf-preco-peca').checked, assinaturas: $('pdf-assinaturas').checked };
+  salvarOrcamento({}).then(function (x) {
+    if (x.r !== 'salvo' && x.r !== 'semMudanca') throw new Error(motivoSemPdf(x));
+    if (!orc.vinculo) throw new Error('O PDF precisa do orçamento salvo.');
+    if (orc.vinculo.numero) return orc.vinculo.numero;
+    statusPdf('Pegando o número do orçamento…');
+    var id = orc.vinculo.id;
+    return PrecoCertoApi.pedir(conexao, 'numerarOrcamento', { id: id }).then(function (r) {
+      anotarProximoNumero(r.proximoNumero);
+      if (orc.vinculo && orc.vinculo.id === id) { orc.vinculo.numero = r.numero; gravarRascunho(); renderVinculo(); }
+      return r.numero;
+    }, function (e) {
+      if (e && e.tipo === 'acesso') perdeuAcesso();
+      throw new Error(e && e.tipo === 'rede' ? motivoSemPdf({ r: 'semConexao' }) : e && e.tipo === 'excluido' ? 'Esse orçamento foi excluído em outro aparelho.' : mensagemDoErro(e));
+    });
+  }).then(function (numero) {
+    statusPdf('Montando o PDF…');
+    var c = calcularComFoto(orc, fotoEmUso());
+    var doc = documentoDoPdf({ c: c, parametros: estado.dados.parametros, orc: orc, numero: numero, hoje: dataLocal(new Date()), opcoes: opcoes,
+      entradaVisivel: ui.entradaAberta && !c.res.semCartoes });
+    return PrecoCertoPdf.gerarPdf(doc, 'icons/logo-clinicar.jpg').then(function (blob) {
+      pdfAtual = { blob: blob, nome: nomeArquivoPdf(numero, orc.veiculo.placa, orc.cliente), texto: doc.textoCompartilhar, numero: numero };
+      statusPdf('');
+      $('pdf-opcoes').hidden = true;
+      $('btn-pdf-gerar').hidden = true;
+      $('pdf-pronto-texto').textContent = 'PDF pronto: Orçamento nº ' + numero;
+      $('pdf-pronto').hidden = false;
+      $('btn-pdf-enviar').focus();
+    });
+  }).catch(function (e) {
+    $('btn-pdf-gerar').disabled = false;
+    statusPdf(mensagemDoErro(e));
+  });
+}
+
+function baixarPdf() {
+  if (!pdfAtual.blob) return;
+  var url = URL.createObjectURL(pdfAtual.blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = pdfAtual.nome; a.rel = 'noopener';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
+}
+
+/**
+ * "Enviar": com compartilhamento de arquivos (celular; Windows com Chrome) abre a janela do sistema com o PDF e o texto
+ * curto. Sem isso: baixa o PDF e, com telefone, abre a conversa do cliente ("arraste o arquivo para a conversa").
+ */
+function enviarPdf() {
+  if (!pdfAtual.blob) return;
+  var arquivo = null;
+  try { arquivo = new File([pdfAtual.blob], pdfAtual.nome, { type: 'application/pdf' }); } catch (e) { arquivo = null; }
+  var podeArquivo = arquivo && typeof navigator.share === 'function' && typeof navigator.canShare === 'function' && navigator.canShare({ files: [arquivo] });
+  if (podeArquivo) {
+    navigator.share({ files: [arquivo], text: pdfAtual.texto, title: pdfAtual.texto }).then(function () {
+      mostrarAviso('PDF enviado ✓');
+    }, function (e) {
+      if (e && e.name === 'AbortError') return; // ele só fechou a janela
+      enviarPdfSemCompartilhar();
+    });
+    return;
+  }
+  enviarPdfSemCompartilhar();
+}
+
+function enviarPdfSemCompartilhar() {
+  baixarPdf();
+  var link = linkWhatsApp(orc.telefone, pdfAtual.texto);
+  if (link) { abrirLink(link.url); mostrarAviso('PDF baixado. Arraste o arquivo para a conversa do WhatsApp.'); }
+  else mostrarAviso('PDF baixado.');
 }
 
 // ---------------- Ajustes ----------------
@@ -3296,6 +3490,13 @@ function ligarEventos() {
     });
   });
   $('btn-salvar-orc').addEventListener('click', aoClicarSalvar);
+  // Onda do PDF
+  $('btn-zap-cliente').addEventListener('click', enviarNoZapDoCliente);
+  $('btn-pdf').addEventListener('click', abrirModalPdf);
+  $('btn-pdf-gerar').addEventListener('click', gerarPdfDoOrcamento);
+  $('btn-pdf-enviar').addEventListener('click', enviarPdf);
+  $('btn-pdf-baixar').addEventListener('click', function () { baixarPdf(); mostrarAviso('PDF baixado.'); });
+  $('btn-pdf-fechar').addEventListener('click', fecharModalPdf);
   $('btn-mudar-situacao').addEventListener('click', function () { if (orc.vinculo) abrirMenuSituacao(alvoDoRascunho()); });
   $('btn-fechou').addEventListener('click', clienteFechou);
   $('btn-duplicar-fechado').addEventListener('click', duplicarRascunho);

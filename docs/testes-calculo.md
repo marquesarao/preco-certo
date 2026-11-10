@@ -14,6 +14,15 @@
 
 ## Resultados (09/11/2026)
 
+**Onda do PDF (orçamento em PDF, número do orçamento, dados da oficina, WhatsApp do cliente; o backend mudou: `apiVersao` 5; `sw.js` v17):**
+- **Cálculo:** 158 casos (152 + PDF1–PDF4, WA1, WA2). WA2: título do WhatsApp com o número ("*Orçamento nº 186-2026 – Oficina*"); sem número, como antes.
+  - PDF1 (fator de escala): base 4.578 (serviços 1.500 + 1.050, parceiro 138, peças 900 + 990), âncora 5.010,40 → serviços 1.641,68 + 1.149,17 + 151,04 = 2.941,89; peças 985,01 + 1.083,50 = 2.068,51; total 5.010,40 exato; o último item de cada seção absorve o centavo.
+  - PDF2: sem âncora → fator 1; só serviços / só peças / nada.
+  - PDF3: documento de um orçamento real — total = âncora; itens somam; pagamento igual ao WhatsApp; sem preço por peça não mostra valor de peça; nenhuma palavra nem valor interno.
+  - PDF4: nome do arquivo, data por extenso, validade, cidade, máscara de CNPJ/CPF. WA1: link wa.me (55 + número; acentos e emojis em UTF-8; +55 não duplica; sem telefone → null; texto > 1.800 codificados → só a conversa).
+- **Backend:** `check-20.js` 14/14: "próximo número" 186 → 186-ANO, 187-ANO (JSON, AA, resposta, aba); dois aparelhos com o lock → 1, 2, 3; só aumenta (tela velha não volta; inteiro); virada de ano → 1; aba mexida à mão → olha a AA e não repete; antigo sem número ganha ao salvar e no `numerarOrcamento` (sem mudar "Atualizado em"; outro aparelho salva e o número fica; o número do aparelho é ignorado; fechado também); dados da oficina gravam, tela antiga não apaga, validação e leitura tolerante; observações do cliente; `apiVersao` 5 em toda resposta. Os verificadores antigos mudaram só na versão (5), na AA (número), na ação nova e nas chaves novas dos Ajustes; o `testarApi` roda inteiro no simulador e devolve a numeração.
+- **Tela:** `teste-pdf.js` 23/23 (+ o número no título do Copiar e do Enviar no WhatsApp do cliente depois de salvo) (Ajustes "Dados da oficina" com máscaras e gravação; WhatsApp do cliente: desabilitado sem telefone, link com o mesmo texto do Copiar, texto longo → copiar + conversa; PDF: gerar, compartilhar arquivo, nome, texto curto; texto do PDF extraído do arquivo pelo PyMuPDF (cabeçalho, acentos, nada interno, itens = subtotais = total = âncora); sem preço por peça; baixar + abrir a conversa; orçamento antigo numerado ao gerar; sem conexão com mudança → não gera) e `teste-pdf.js v4` 2/2 (backend v4: trava, não gera).
+
 **Busca de placa: antiga = Mercosul (só frontend; `sw.js` v16):**
 - **Cálculo:** 152 casos (151 + BV2): "abc2b22" e "ABC 2B22" acham "ABC-2122"; "ABC-2122" e "abc2122" acham "ABC2B22"; "abc2c22" não acha "ABC-2122"; Mercosul com letra K–Z (XYZ1K23) só acha ela mesma; placa no meio do texto de um orçamento antigo também é achada; trecho ("abc2") continua como antes.
 - **Tela:** `teste-placa.js` 2/2 na lista de Resultados (Codigo.gs real na página).

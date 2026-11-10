@@ -16,7 +16,8 @@
  *   { token, action: "listarOrcamentos", mes }         → { ok:true, mes, mesAnterior, primeiroMes, orcamentos:[resumo],
  *                                                          meses:{ mes: foto|null, mesAnterior: foto|null }, gastosHoje }
  *   { token, action: "obterOrcamento", id }            → { ok:true, orcamento } | { ok:false, excluido:true, erro }
- *   { token, action: "salvarOrcamento", orcamento }    → { ok:true, id, criadoEm, atualizadoEm, situacao }
+ *   { token, action: "salvarOrcamento", orcamento }    → { ok:true, id, criadoEm, atualizadoEm, situacao, numero, proximoNumero? }
+ *   { token, action: "numerarOrcamento", id }          → { ok:true, numero, proximoNumero? } (onda do PDF: orçamento antigo sem número)
  *   { token, action: "mudarSituacao", id, atualizadoEmBase, situacao, fechamento?, motivo? }
  *                                                       → { ok:true, atualizadoEm, situacao, mesGravado }
  *   { token, action: "excluirOrcamento", id, atualizadoEmBase } → { ok:true } | { ok:true, jaExcluido:true }
@@ -25,6 +26,7 @@
  *   excluído em outro aparelho                          → { ok:false, excluido:true, erro }
  *   qualquer erro                                       → { ok:false, erro: "mensagem em português" }
  *   GET                                                 → { ok:false, erro: "Acesso não autorizado" }
+ *   TODA resposta traz apiVersao (API_VERSAO_): o app não grava orçamentos com uma planilha de versão menor.
  *
  * SEGURANÇA
  * - O token fica nas Propriedades do script (chave TOKEN). Nenhum segredo neste arquivo.
@@ -141,12 +143,27 @@ var ORDEM_PARAMETROS_ = [
   'descontoAVistaPadrao',
   'descontoPecasPadrao',
   'parcelasDestaque',
-  'nomeOficina'
+  'nomeOficina',
+  // Onda do PDF: dados da oficina, validade, observações e exibição no PDF; numeração dos orçamentos
+  'cnpjCpf',
+  'telefoneOficina',
+  'enderecoOficina',
+  'cidadeUf',
+  'chavePix',
+  'tipoChavePix',
+  'validadeOrcamentoDias',
+  'observacoesPdf',
+  'pdfPrecoServico',
+  'pdfPrecoPeca',
+  'proximoNumero',
+  'anoProximoNumero'
 ];
 
 var MAX_GASTOS_ = 200;
 var MAX_DESCRICAO_ = 100;
 var MAX_NOME_OFICINA_ = 60;
+var MAX_NUMERO_ORCAMENTO_ = 999999;
+var MAX_OBS_CLIENTE_ = 300;     // onda do PDF: "Observações para o cliente" do orçamento
 var MAX_VALOR_ = 1e9;
 var MAX_TAXA_ = 99;
 var MAX_ACRESCIMO_ = 1000;
@@ -196,15 +213,39 @@ var LIMITES_PARAMETROS_ = {
   impostoServicoPercentual: { nome: 'Imposto sobre serviço (%)', min: 0, max: MAX_TAXA_ },
   acrescimoTerceirosPadrao: { nome: 'Acréscimo padrão em serviços de terceiros (%)', min: 0, max: MAX_ACRESCIMO_ },
   // Seção 16.9
-  descontoPecasPadrao:      { nome: 'Desconto padrão nas peças (%)', min: 0, max: MAX_DESCONTO_ }
+  descontoPecasPadrao:      { nome: 'Desconto padrão nas peças (%)', min: 0, max: MAX_DESCONTO_ },
+  // Onda do PDF
+  validadeOrcamentoDias:    { nome: 'Validade do orçamento (dias)', min: 1, max: 365, inteiro: true },
+  proximoNumero:            { nome: 'Próximo número do orçamento', min: 1, max: MAX_NUMERO_ORCAMENTO_, inteiro: true },
+  // Interno (o servidor cuida): ano do "próximo número". Nunca vem da tela.
+  anoProximoNumero:         { nome: 'Ano do próximo número', min: 0, max: 9999, inteiro: true, interno: true }
 };
-var PARAMETROS_NUMERICOS_ = Object.keys(LIMITES_PARAMETROS_);
+var PARAMETROS_NUMERICOS_ = Object.keys(LIMITES_PARAMETROS_).filter(function (k) { return !LIMITES_PARAMETROS_[k].interno; });
+
+/**
+ * Onda do PDF: parâmetros de TEXTO dos dados da oficina e da exibição no PDF (opcionais; a tela antiga não manda e não apaga).
+ * max = tamanho; opcoes = valores aceitos (o 1º é o padrão).
+ */
+var PARAMETROS_TEXTO_ = {
+  cnpjCpf:         { nome: 'CNPJ ou CPF', max: 18 },
+  telefoneOficina: { nome: 'Telefone/WhatsApp da oficina', max: 20 },
+  enderecoOficina: { nome: 'Endereço', max: 100 },
+  cidadeUf:        { nome: 'Cidade/UF', max: 60 },
+  chavePix:        { nome: 'Chave Pix', max: 100 },
+  tipoChavePix:    { nome: 'Tipo da chave Pix', opcoes: ['', 'CNPJ', 'CPF', 'E-mail', 'Telefone', 'Aleatória'] },
+  observacoesPdf:  { nome: 'Observações padrão do PDF', max: 300 },
+  pdfPrecoServico: { nome: 'No PDF, mostrar preço de cada serviço', opcoes: ['sim', 'nao'] },
+  pdfPrecoPeca:    { nome: 'No PDF, mostrar preço de cada peça', opcoes: ['nao', 'sim'] }
+};
 
 /**
  * Parâmetros que a tela ANTIGA (de antes da fase 10) não manda. Ausente no salvarDados → mantém o valor da aba.
  * Sem isso, um celular que ainda não tocou em ATUALIZAR não conseguiria salvar os gastos depois da troca do backend.
  */
-var PARAMETROS_OPCIONAIS_ = ['descontoAVistaPadrao', 'impostoPecasPercentual', 'impostoServicoPercentual', 'acrescimoTerceirosPadrao', 'descontoPecasPadrao'];
+var PARAMETROS_OPCIONAIS_ = ['descontoAVistaPadrao', 'impostoPecasPercentual', 'impostoServicoPercentual', 'acrescimoTerceirosPadrao', 'descontoPecasPadrao',
+  // Onda do PDF (a tela antiga não manda: mantém o que está na aba)
+  'cnpjCpf', 'telefoneOficina', 'enderecoOficina', 'cidadeUf', 'chavePix', 'tipoChavePix', 'validadeOrcamentoDias', 'observacoesPdf',
+  'pdfPrecoServico', 'pdfPrecoPeca', 'proximoNumero', 'anoProximoNumero'];
 /**
  * Imposto LEGADO (seção 16): a chave antiga impostoPercentual continua na aba para os aparelhos não atualizados
  * (a tela nova grava nela o imposto do serviço). Ela só vale para os impostos novos quando eles ainda NÃO têm linha na aba
@@ -250,7 +291,7 @@ var ESQUEMA_VERSAO_ = '4'; // 2 = seção 16 (W–Y); 3 = seção 17 (Z "Itens")
  * de orçamento se a planilha responder sem ela ou com uma versão menor: evita que um backend antigo descarte campos novos.
  * Suba junto com o app quando a gravação ganhar campos que um backend antigo perderia.
  */
-var API_VERSAO_ = 4;
+var API_VERSAO_ = 5; // 4 = trava + colunas AA–AG; 5 = onda do PDF (número do orçamento, dados da oficina, observações)
 var PROP_ESQUEMA_ = 'esquemaV';
 var PROP_CONFIG_V_ = 'configV';
 var CHAVE_CACHE_DADOS_ = 'dadosConfigV1';
@@ -377,6 +418,9 @@ var ACOES_ = {
   },
   mudarSituacao: function (req) {
     return mudarSituacao_(validarPedidoSituacao_(req));
+  },
+  numerarOrcamento: function (req) {
+    return numerarOrcamento_(validarId_(req.id));
   },
   excluirOrcamento: function (req) {
     return excluirOrcamento_(validarId_(req.id), validarBase_(req.atualizadoEmBase, true));
@@ -646,6 +690,8 @@ function testarApi() {
   var mesDeTeste = '2000-01';
   var tinhaMesDeTeste = !!acharLinhaMes_(ss.getSheetByName(ABA_MESES_), mesDeTeste);
   var id = Utilities.getUuid().toLowerCase();
+  // Onda do PDF: o orçamento de teste ganha um número; no fim a numeração volta a ser como era (sem pular número)
+  var numeracaoAntes = lerNumeracaoNaAba_(ss);
   try {
     var dados = orcamentoDeTeste_(atuais.parametros, atuais.cartoes);
     // Seção 17: veículo em campos e a lista de serviços da oficina
@@ -655,14 +701,17 @@ function testarApi() {
     r = pedir('salvarOrcamento', { orcamento: { id: id, atualizadoEmBase: null, cliente: 'TESTE testarApi', telefone: '', dados: dados } });
     conferir(r.ok === true && r.situacao === 'Aberto' && r.atualizadoEm, 'salvarOrcamento cria o orçamento (Aberto)', r);
     conferir(r.apiVersao === API_VERSAO_, 'salvarOrcamento traz apiVersao ' + API_VERSAO_, r);
+    conferir(/^\d+-\d{4}$/.test(r.numero) && r.numero.slice(-4) === String(anoCorrente_()) && r.proximoNumero === Number(r.numero.split('-')[0]) + 1,
+      'o orçamento novo ganha número "{n}-{ano}" do servidor (onda do PDF): ' + r.numero, r);
+    var numeroDoTeste = r.numero;
     var abaOrc = ss.getSheetByName(ABA_ORCAMENTOS_);
     var cols = abaOrc.getRange(acharLinhaOrcamento_(abaOrc, id), COL_ORC_.numero, 1, COL_ORC_.horasServicos - COL_ORC_.numero + 1).getValues()[0]
       .map(function (x) { return String(x); });
     var cab = abaOrc.getRange(1, COL_ORC_.numero, 1, COL_ORC_.horasServicos - COL_ORC_.numero + 1).getValues()[0].join(' | ');
     conferir(cab === 'Número do orçamento | Placa | Modelo | Ano | Combustível | Serviços da oficina | Horas por serviço',
       'cabeçalhos AA–AG na aba Orçamentos (esquema 4)', cab);
-    conferir(JSON.stringify(cols) === JSON.stringify(['', 'TST-0001', 'Carro de teste', '2015', 'Flex', 'Serviço de teste · Outro serviço', '— · 1,5']),
-      'colunas AB–AG preenchidas a partir do JSON (AA reservada, vazia)', cols);
+    conferir(JSON.stringify(cols) === JSON.stringify([numeroDoTeste, 'TST-0001', 'Carro de teste', '2015', 'Flex', 'Serviço de teste · Outro serviço', '— · 1,5']),
+      'colunas AA–AG preenchidas (AA = número do orçamento; AB–AG a partir do JSON)', cols);
     var a1 = r.atualizadoEm;
     r = pedir('salvarOrcamento', { orcamento: { id: id, atualizadoEmBase: a1, cliente: 'TESTE testarApi 2', telefone: '', dados: dados } });
     conferir(r.ok === true && r.atualizadoEm !== a1, 'salvar de novo (mesmo ID) atualiza o mesmo registro', r);
@@ -672,9 +721,12 @@ function testarApi() {
     conferir(r.ok === false && r.conflito === true && r.erro === MSG_CONFLITO_, 'salvar sobre versão mais nova → conflito', r);
     r = pedir('obterOrcamento', { id: id });
     conferir(r.ok === true && r.orcamento.cliente === 'TESTE testarApi 2', 'obterOrcamento devolve o registro', r);
+    conferir(r.orcamento.numero === numeroDoTeste, 'salvar de novo mantém o número (' + numeroDoTeste + ')', r);
     var ent = r.orcamento.dados.entrada;
     conferir(ent.veiculo && ent.veiculo.placa === 'TST-0001' && ent.servicos && ent.servicos[0].id === 's_teste',
       'o orçamento guarda o veículo e os serviços da oficina (seção 17)', r);
+    r = pedir('numerarOrcamento', { id: id });
+    conferir(r.ok === true && r.numero === numeroDoTeste, 'numerarOrcamento de um orçamento já numerado devolve o mesmo número', r);
     var imposto = Math.round(10000 * atuais.parametros.impostoPercentual / 100);
     r = pedir('mudarSituacao', { id: id, atualizadoEmBase: a2, situacao: 'Fechado', fechamento: {
       forma: 'pix', parcelas: null, cartao: '', taxaPct: 0, valorCombinadoC: 10000, data: '2000-01-15',
@@ -701,10 +753,23 @@ function testarApi() {
   } finally {
     var linha = acharLinhaOrcamento_(ss.getSheetByName(ABA_ORCAMENTOS_), id);
     if (linha) ss.getSheetByName(ABA_ORCAMENTOS_).deleteRow(linha);
+    gravarParametroNaAba_(ss, 'proximoNumero', numeracaoAntes.proximoNumero);
+    gravarParametroNaAba_(ss, 'anoProximoNumero', numeracaoAntes.anoProximoNumero);
+    apagarCacheDados_();
     var linhaMes = acharLinhaMes_(ss.getSheetByName(ABA_MESES_), mesDeTeste);
     if (linhaMes && !tinhaMesDeTeste) ss.getSheetByName(ABA_MESES_).deleteRow(linhaMes);
   }
   Logger.log('Todos os testes da API passaram (o orçamento de teste foi apagado).');
+}
+
+/** Onda do PDF (testarApi): o "próximo número" e o ano como estão na aba (null = sem linha). */
+function lerNumeracaoNaAba_(ss) {
+  var r = { proximoNumero: null, anoProximoNumero: null };
+  lerCorpo_(ss.getSheetByName(ABA_PARAMETROS_), 2).forEach(function (l) {
+    var k = String(l[0]).trim();
+    if (k in r && r[k] === null) r[k] = lerNumeroBR_(l[1]);
+  });
+  return r;
 }
 
 /** Dados mínimos e válidos de um orçamento de teste (para o testarApi). */
@@ -769,7 +834,7 @@ function obterDados_(forcar) {
   var d = dadosDaConfig_(forcar);
   return {
     gastos: d.gastos,
-    parametros: d.parametros,
+    parametros: parametrosParaApp_(d.parametros),
     parametrosAusentes: d.parametrosAusentes || [],
     cartoes: d.cartoes,
     atualizadoEm: propsDoPedido_()[PROP_ATUALIZADO_EM_] || null,
@@ -794,13 +859,17 @@ function salvarDados_(limpo) {
   regravarCorpo_(aba_(ABA_GASTOS_), CAB_GASTOS_.length, linhasGastos);
 
   var faltando = PARAMETROS_OPCIONAIS_.filter(function (k) { return limpo.parametros[k] === undefined; });
-  if (faltando.length) {
-    var ausentesNaAba = [];
-    var naAba = lerParametros_(ss, ausentesNaAba);
-    faltando.forEach(function (k) {
-      if (ausentesNaAba.indexOf(k) < 0) limpo.parametros[k] = naAba[k]; // senão: continua sem a linha (migração depois)
-    });
-  }
+  var ausentesNaAba = [];
+  var naAba = lerParametros_(ss, ausentesNaAba);
+  faltando.forEach(function (k) {
+    if (ausentesNaAba.indexOf(k) < 0) limpo.parametros[k] = naAba[k]; // senão: continua sem a linha (migração depois)
+  });
+  // Onda do PDF: o "próximo número" só aumenta (uma tela aberta há tempo não volta a numeração para trás) e vale no ano corrente.
+  var ano = anoCorrente_();
+  var atual = proximoDoAno_(naAba, ano);
+  var pedido = typeof limpo.parametros.proximoNumero === 'number' ? limpo.parametros.proximoNumero : atual;
+  limpo.parametros.proximoNumero = Math.max(atual, pedido);
+  limpo.parametros.anoProximoNumero = ano;
   var shParametros = aba_(ABA_PARAMETROS_);
   shParametros.getRange('B:B').setNumberFormat('@');
   var linhasParam = linhasParametros_(limpo.parametros);
@@ -834,6 +903,28 @@ function salvarDados_(limpo) {
   return { atualizadoEm: atualizadoEm, fotoMes: fotoMes };
 }
 
+/** Onda do PDF: o que o app recebe — proximoNumero já valendo para o ano corrente (virada de ano: 1); sem o ano interno. */
+function parametrosParaApp_(p) {
+  var c = {};
+  Object.keys(p).forEach(function (k) { c[k] = p[k]; });
+  c.proximoNumero = proximoDoAno_(p, anoCorrente_());
+  delete c.anoProximoNumero;
+  return c;
+}
+
+/**
+ * Próximo número valendo no ano pedido: o guardado, se for do mesmo ano (ou sem ano ainda: 0 = nunca numerou);
+ * de outro ano → 1 (a numeração recomeça na virada).
+ */
+function proximoDoAno_(p, ano) {
+  var a = Number(p.anoProximoNumero) || 0;
+  return (a === ano || a === 0) && p.proximoNumero >= 1 ? p.proximoNumero : 1;
+}
+
+function anoCorrente_() {
+  return Number(hojeTexto_(Date.now()).slice(0, 4));
+}
+
 /** Grava a linha do mês corrente com os totais de hoje, se ela não existe ou está diferente. Quem chama segura o lock. */
 function atualizarFotoDoMesCorrente_(hoje) {
   var mes = mesCorrente_();
@@ -865,13 +956,13 @@ function listarOrcamentos_(mes) {
   var sh = aba_(ABA_ORCAMENTOS_);
   var anterior = mesAnterior_(mes);
   var linhas = lerCorpo_(sh, COL_ORC_.motivo);
-  // Seções 16 e 17: W..Z (terceiros, entrada, itens) numa leitura estreita à parte (o JSON fica no meio, em V)
-  var extras = linhas.length ? sh.getRange(2, COL_ORC_.terceiros, linhas.length, 4).getValues() : [];
+  // Seções 16, 17 e onda do PDF: W..AA (terceiros, entrada, itens, número) numa leitura estreita à parte (o JSON fica no meio, em V)
+  var extras = linhas.length ? sh.getRange(2, COL_ORC_.terceiros, linhas.length, 5).getValues() : [];
   var escolhidas = [];
   var vistos = {};
   var primeiroMes = null;
   linhas.forEach(function (l, i) {
-    var r = resumoDaLinha_(l, extras[i] || ['', '', '', '']);
+    var r = resumoDaLinha_(l, extras[i] || ['', '', '', '', '']);
     if (!r || vistos[r.id]) return; // sem ID válido, ou ID repetido: entra uma vez só
     vistos[r.id] = true;
     var mesCriado = mesDe_(r.criadoEm);
@@ -966,9 +1057,12 @@ function salvarOrcamento_(pedido) {
     novo.dados.situacao = 'Aberto';
     novo.dados.fechamento = null;
     novo.dados.motivo = '';
+    var numeroNovo = gerarNumeroOrcamento_(sh);
+    novo.dados.numero = numeroNovo.numero;
     var ultima = Math.max(sh.getLastRow(), 1);
     escreverRegistro_(sh, ultima + 1, novo);
-    return { ok: true, id: novo.id, criadoEm: novo.criadoEm, atualizadoEm: novo.atualizadoEm, situacao: 'Aberto' };
+    return { ok: true, id: novo.id, criadoEm: novo.criadoEm, atualizadoEm: novo.atualizadoEm, situacao: 'Aberto',
+      numero: novo.dados.numero, proximoNumero: numeroNovo.proximo };
   }
 
   var reg = lerRegistroDaLinha_(sh, linha);
@@ -977,15 +1071,20 @@ function salvarOrcamento_(pedido) {
 
   reg.cliente = pedido.cliente;
   reg.telefone = pedido.telefone;
+  var numero = reg.dados.numero || ''; // o número é do servidor: o que o aparelho manda não vale
   if (reg.dados.situacao === 'Aberto') {
     pedido.dados.situacao = 'Aberto';
     pedido.dados.fechamento = null;
     pedido.dados.motivo = '';
     reg.dados = pedido.dados;
   }
+  var gerado = numero ? null : gerarNumeroOrcamento_(sh); // orçamento de antes da onda do PDF: ganha número agora
+  reg.dados.numero = numero || gerado.numero;
   reg.atualizadoEm = carimbo_(agora, reg.atualizadoEm);
   escreverRegistro_(sh, linha, reg);
-  return { ok: true, id: reg.id, criadoEm: reg.criadoEm, atualizadoEm: reg.atualizadoEm, situacao: reg.dados.situacao };
+  var resp = { ok: true, id: reg.id, criadoEm: reg.criadoEm, atualizadoEm: reg.atualizadoEm, situacao: reg.dados.situacao, numero: reg.dados.numero };
+  if (gerado) resp.proximoNumero = gerado.proximo;
+  return resp;
 }
 
 /**
@@ -1022,6 +1121,68 @@ function mudarSituacao_(p) {
   reg.atualizadoEm = carimbo_(Date.now(), reg.atualizadoEm);
   escreverRegistro_(sh, linha, reg);
   return { ok: true, atualizadoEm: reg.atualizadoEm, situacao: p.situacao, mesGravado: mesGravado };
+}
+
+/**
+ * Onda do PDF: dá número a um orçamento que ainda não tem (de antes da onda), sem mudar "Atualizado em"
+ * (os outros aparelhos não entram em conflito; ao salvarem, o servidor mantém o número). Já numerado → devolve o mesmo.
+ */
+function numerarOrcamento_(id) {
+  var sh = aba_(ABA_ORCAMENTOS_);
+  var linha = acharLinhaOrcamento_(sh, id);
+  if (!linha) return { ok: false, excluido: true, erro: MSG_EXCLUIDO_ };
+  var reg = lerRegistroDaLinha_(sh, linha);
+  if (!reg) throw erroApi_(MSG_DEFEITO_);
+  if (reg.dados.numero) return { ok: true, numero: reg.dados.numero };
+  var gerado = gerarNumeroOrcamento_(sh);
+  reg.dados.numero = gerado.numero;
+  escreverRegistro_(sh, linha, reg);
+  return { ok: true, numero: gerado.numero, proximoNumero: gerado.proximo };
+}
+
+/**
+ * Onda do PDF: o próximo número "{n}-{ano}" (sequencial por ano). Quem chama segura o lock (gravações).
+ * n = o maior entre: o "próximo número" da aba Parâmetros (do ano corrente; virada de ano → 1) e o maior n do ano já
+ * gravado na coluna AA + 1 (mesmo com a aba mexida à mão, nunca repete). Grava o próximo (n + 1) e o ano na aba Parâmetros
+ * e apaga o cache dos dados. Lê a aba Parâmetros direto (não o cache) para nunca usar um valor velho.
+ * @return {numero: "186-2026", proximo: 187}
+ */
+function gerarNumeroOrcamento_(shOrc) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ano = anoCorrente_();
+  var p = lerParametros_(ss);
+  var n = proximoDoAno_(p, ano);
+  var ultima = shOrc.getLastRow();
+  if (ultima >= 2) {
+    var sufixo = '-' + ano;
+    shOrc.getRange(2, COL_ORC_.numero, ultima - 1, 1).getValues().forEach(function (l) {
+      var t = String(l[0]).trim();
+      if (t.length > sufixo.length && t.slice(-sufixo.length) === sufixo) {
+        var k = Number(t.slice(0, -sufixo.length));
+        if (Math.floor(k) === k && k >= n) n = k + 1;
+      }
+    });
+  }
+  if (n > MAX_NUMERO_ORCAMENTO_) throw erroApi_('A numeração dos orçamentos chegou ao limite. Ajuste o "Próximo número" em Ajustes.');
+  gravarParametroNaAba_(ss, 'proximoNumero', n + 1);
+  gravarParametroNaAba_(ss, 'anoProximoNumero', ano);
+  apagarCacheDados_();
+  return { numero: n + '-' + ano, proximo: n + 1 };
+}
+
+/** Grava UMA chave da aba Parâmetros (acha a linha pela chave; sem linha → acrescenta). valor null → apaga o valor da linha. */
+function gravarParametroNaAba_(ss, chave, valor) {
+  var sh = ss.getSheetByName(ABA_PARAMETROS_);
+  if (!sh) return;
+  var chaves = lerCorpo_(sh, 1);
+  var linha = 0;
+  for (var i = 0; i < chaves.length; i++) if (String(chaves[i][0]).trim() === chave) { linha = i + 2; break; }
+  var texto = valor === null ? '' : LIMITES_PARAMETROS_.hasOwnProperty(chave) ? formatarNumeroBR_(valor) : String(valor);
+  if (!linha) {
+    if (valor === null) return;
+    linha = Math.max(sh.getLastRow(), 1) + 1;
+  }
+  sh.getRange(linha, 1, 1, 2).setNumberFormats([['@', '@']]).setValues([[chave, texto]]);
 }
 
 /** Apaga a linha. ID que já não existe → ok (nada a fazer). Base diferente → conflito. */
@@ -1163,6 +1324,7 @@ function publicoDoRegistro_(reg) {
     telefone: reg.telefone,
     situacao: reg.dados.situacao,
     motivo: reg.dados.motivo || '',
+    numero: reg.dados.numero || '',
     dados: reg.dados
   };
 }
@@ -1199,7 +1361,7 @@ function linhaDoRegistro_(reg) {
     f && f.forma === 'entrada' ? reais(f.entradaC) : '',
     f && f.forma === 'entrada' ? FORMAS_ENTRADA_[f.formaEntrada] || '' : '',
     itensDoOrcamento_(d.entrada)
-  ].concat(colunasDoVeiculo_(d.entrada));
+  ].concat(colunasDoVeiculo_(d.entrada, d.numero));
 }
 
 /** Escreve UMA linha (formatos + valores). Nunca regrava a aba inteira. */
@@ -1212,7 +1374,7 @@ function escreverRegistro_(sh, linha, reg) {
  * extra (seções 16 e 17): as colunas W..Z da mesma linha (lidas à parte no listarOrcamentos); sem extra, vêm da própria linha (A..Z).
  */
 function resumoDaLinha_(l, extra) {
-  var w = extra || [l[COL_ORC_.terceiros - 1], l[COL_ORC_.entrada - 1], l[COL_ORC_.formaEntrada - 1], l[COL_ORC_.itens - 1]];
+  var w = extra || [l[COL_ORC_.terceiros - 1], l[COL_ORC_.entrada - 1], l[COL_ORC_.formaEntrada - 1], l[COL_ORC_.itens - 1], l[COL_ORC_.numero - 1]];
   var id = String(l[0]).trim();
   if (!RE_ID_.test(id)) return null;
   var centavos = function (v) {
@@ -1248,7 +1410,8 @@ function resumoDaLinha_(l, extra) {
     terceirosPagarC: centavos(w[0]) || 0,
     entradaC: centavos(w[1]),
     formaEntrada: textoCelula_(w[2]).slice(0, 20),
-    itens: textoCelula_(w[3]).slice(0, MAX_ITENS_) // seção 17
+    itens: textoCelula_(w[3]).slice(0, MAX_ITENS_), // seção 17
+    numero: textoCelula_(w[4]).slice(0, 20)         // onda do PDF
   };
 }
 
@@ -1396,6 +1559,8 @@ function validarEntrada_(e) {
     extraTexto: textoDeCampo_(e.extraTexto, MAX_TEXTO_CAMPO_, 'desconto extra'),
     bandeira: textoDeCampo_(e.bandeira, MAX_NOME_CARTAO_, 'cartão')
   };
+  // Onda do PDF: observações para o cliente (opcional; ausente = orçamento de antes)
+  if (e.observacoesCliente !== undefined && e.observacoesCliente !== null) limpo.observacoesCliente = textoDeCampo_(e.observacoesCliente, MAX_OBS_CLIENTE_, 'observações');
   // Seção 17: veículo em campos e vários serviços da oficina. AUSENTES = orçamento de antes (ficam ausentes).
   if (e.veiculo !== undefined && e.veiculo !== null) limpo.veiculo = validarVeiculo_(e.veiculo);
   if (e.servicos !== undefined && e.servicos !== null) limpo.servicos = validarServicos_(e.servicos);
@@ -1456,10 +1621,10 @@ function itensDoOrcamento_(entrada) {
 
 /**
  * Esquema 4: colunas AA..AG da aba Orçamentos a partir da entrada (só para leitura na planilha; a fonte da verdade é o JSON):
- * [número (reservado: vazio), placa, modelo, ano, combustível, serviços da oficina (" · "), horas por serviço (" · ", "—" sem horas)].
+ * [número do orçamento (onda do PDF; sem número: vazio), placa, modelo, ano, combustível, serviços da oficina (" · "), horas por serviço (" · ", "—" sem horas)].
  * Orçamento de antes da seção 17 (sem "servicos"): veículo vazio; serviço = a descrição antiga; horas = as do modo usado.
  */
-function colunasDoVeiculo_(entrada) {
+function colunasDoVeiculo_(entrada, numero) {
   var e = entrada || {};
   var v = e.veiculo && typeof e.veiculo === 'object' ? e.veiculo : {};
   var t = function (x) { return String(x === undefined || x === null ? '' : x).trim(); };
@@ -1473,7 +1638,7 @@ function colunasDoVeiculo_(entrada) {
     var h = e.modo === 'fechado' ? t(e.horasFechadoTexto) : t(e.horasTexto);
     horas = servicos || h ? (h || '—') : '';
   }
-  return ['', t(v.placa), t(v.modelo), t(v.ano), t(v.combustivel), servicos.slice(0, MAX_ITENS_), horas.slice(0, MAX_ITENS_)];
+  return [t(numero), t(v.placa), t(v.modelo), t(v.ano), t(v.combustivel), servicos.slice(0, MAX_ITENS_), horas.slice(0, MAX_ITENS_)];
 }
 
 /** null/ausente → null (segue o padrão); senão, texto de campo. */
@@ -1781,7 +1946,7 @@ function preencherVeiculoAntigos_(sh) {
   var valores = linhas.map(function (l, i) {
     var id = String(l[0]).trim();
     var dados = id ? lerJsonOrcamento_(l[COL_ORC_.dados - 1], i + 2, id) : null;
-    return dados ? colunasDoVeiculo_(dados.entrada) : ['', '', '', '', '', '', '']; // AA (número) ainda não existe: vazia
+    return dados ? colunasDoVeiculo_(dados.entrada, dados.numero) : ['', '', '', '', '', '', ''];
   });
   var formatos = valores.map(function () { var r = []; for (var k = 0; k < largura; k++) r.push(TEXTO_); return r; });
   sh.getRange(2, COL_ORC_.numero, valores.length, largura).setNumberFormats(formatos).setValues(valores);
@@ -1907,7 +2072,19 @@ function parametrosPadrao_() {
     descontoAVistaPadrao: 5,
     descontoPecasPadrao: 5,
     parcelasDestaque: '5,10',
-    nomeOficina: 'CliniCar Motors Tech'
+    nomeOficina: 'CliniCar Motors Tech',
+    cnpjCpf: '',
+    telefoneOficina: '',
+    enderecoOficina: '',
+    cidadeUf: '',
+    chavePix: '',
+    tipoChavePix: '',
+    validadeOrcamentoDias: 7,
+    observacoesPdf: '',
+    pdfPrecoServico: 'sim',
+    pdfPrecoPeca: 'nao',
+    proximoNumero: 1,
+    anoProximoNumero: 0
   };
 }
 
@@ -1967,9 +2144,12 @@ function parametrosDasLinhas_(valores, ausentes) {
     vistos[chave] = true;
     if (LIMITES_PARAMETROS_.hasOwnProperty(chave)) {
       var n = lerNumeroBR_(l[1]);
-      p[chave] = dentroDoLimite_(n, LIMITES_PARAMETROS_[chave]) ? n : padrao[chave];
+      var lim = LIMITES_PARAMETROS_[chave];
+      p[chave] = dentroDoLimite_(n, lim) && (!lim.inteiro || Math.floor(n) === n) ? n : padrao[chave];
     } else if (chave === 'parcelasDestaque') {
       p[chave] = normalizarParcelas_(String(l[1])).texto; // descarta itens inválidos
+    } else if (PARAMETROS_TEXTO_.hasOwnProperty(chave)) {
+      p[chave] = textoParametroLido_(chave, l[1]);
     } else {
       p[chave] = String(l[1]).trim().slice(0, MAX_NOME_OFICINA_).trim();
     }
@@ -1980,6 +2160,14 @@ function parametrosDasLinhas_(valores, ausentes) {
   // horasPorDia já está no limite (> 0); ao limitar por ele, horasCobradasPorDia continua > 0.
   if (p.horasCobradasPorDia > p.horasPorDia) p.horasCobradasPorDia = p.horasPorDia;
   return p;
+}
+
+/** Onda do PDF: parâmetro de texto lido da aba (tolerante): fora das opções → padrão; longo demais → cortado. */
+function textoParametroLido_(chave, v) {
+  var def = PARAMETROS_TEXTO_[chave];
+  var t = String(v === null || v === undefined ? '' : v).trim();
+  if (def.opcoes) return def.opcoes.indexOf(t) >= 0 ? t : def.opcoes[0];
+  return t.slice(0, def.max).trim();
 }
 
 /**
@@ -2069,6 +2257,18 @@ function validarParametros_(p) {
     var lim = LIMITES_PARAMETROS_[chave];
     if (PARAMETROS_OPCIONAIS_.indexOf(chave) >= 0 && (p[chave] === null || p[chave] === undefined)) return;
     limpo[chave] = exigirNumero_(p[chave], lim.nome, lim);
+    if (lim.inteiro && Math.floor(limpo[chave]) !== limpo[chave]) throw new Error(lim.nome + ': use um número inteiro.');
+  });
+  // Onda do PDF: textos dos dados da oficina (ausente = tela antiga: fica de fora e a aba mantém o que tem)
+  Object.keys(PARAMETROS_TEXTO_).forEach(function (chave) {
+    var def = PARAMETROS_TEXTO_[chave];
+    var v = p[chave];
+    if (v === null || v === undefined) return;
+    if (typeof v !== 'string') throw new Error(def.nome + ': valor inválido.');
+    v = v.trim();
+    if (def.opcoes && def.opcoes.indexOf(v) < 0) throw new Error(def.nome + ': valor inválido.');
+    if (def.max && v.length > def.max) throw new Error(def.nome + ': muito longo (máx. ' + def.max + ' letras).');
+    limpo[chave] = v;
   });
   if (limpo.horasCobradasPorDia > limpo.horasPorDia) {
     throw new Error('As horas que você cobra por dia não podem ser maiores que as horas de trabalho por dia.');

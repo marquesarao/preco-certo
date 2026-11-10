@@ -106,6 +106,7 @@
             <h2 class="card-titulo">Serviço</h2>
             <button type="button" class="link link-inline link-novo" id="btn-novo">+ Novo orçamento</button>
           </div>
+          <p class="numero-orc" id="orc-numero" hidden></p>
           <!-- Orçamento salvo: situação, cliente, de quando são os valores -->
           <div class="faixa-vinculo" id="faixa-vinculo" hidden>
             <span id="vinculo-texto"></span>
@@ -165,6 +166,12 @@
           </button>
           <div class="total-linha servicos-totais" id="servicos-totais" hidden></div>
           <p class="info" id="info-servicos"></p>
+          <!-- Onda do PDF: vai no PDF, junto com as observações padrão da oficina -->
+          <div class="campo campo-obs">
+            <label for="orc-observacoes">Observações para o cliente (opcional)</label>
+            <div class="entrada"><textarea id="orc-observacoes" data-orc="observacoesCliente" maxlength="300" rows="2" placeholder="Ex.: Prazo de 2 dias úteis. Trazer o carro às 8h."></textarea></div>
+            <p class="ajuda">Vai no orçamento em PDF.</p>
+          </div>
         </div>
 
         <div class="card">
@@ -352,6 +359,16 @@
           <button type="button" class="btn btn-primario" id="btn-copiar">
             <svg class="ic" aria-hidden="true"><use href="#i-mensagem"/></svg>Copiar para WhatsApp
           </button>
+          <!-- Onda do PDF: direto na conversa do cliente; orçamento em PDF -->
+          <div class="botoes-linha" id="botoes-envio">
+            <button type="button" class="btn btn-fantasma" id="btn-zap-cliente">
+              <svg class="ic" aria-hidden="true"><use href="#i-mensagem"/></svg>Enviar no WhatsApp do cliente
+            </button>
+            <button type="button" class="btn btn-fantasma" id="btn-pdf">
+              <svg class="ic" aria-hidden="true"><use href="#i-compartilhar"/></svg>Enviar orçamento em PDF
+            </button>
+          </div>
+          <p class="ajuda dica-zap" id="dica-zap-cliente" hidden>Preencha o telefone do cliente para enviar direto no WhatsApp dele.</p>
           <div class="botoes-linha" id="botoes-aberto">
             <button type="button" class="btn btn-fantasma" id="btn-salvar-orc">
               <svg class="ic" aria-hidden="true"><use href="#i-salvar"/></svg>Salvar
@@ -686,6 +703,75 @@
         </div>
 
         <div class="coluna">
+          <div class="card" id="card-dados-oficina">
+            <h2 class="card-titulo" id="titulo-dados-oficina">Dados da oficina</h2>
+            <p class="ajuda" style="margin:0 0 16px">Aparecem no orçamento em PDF que vai para o cliente.</p>
+            <div class="campo">
+              <label for="p-nomeOficina">Nome da oficina</label>
+              <div class="entrada"><input id="p-nomeOficina" type="text" data-param="nomeOficina" maxlength="60" autocomplete="off"></div>
+              <p class="erro"></p>
+              <p class="ajuda">Aparece no PDF e no texto do WhatsApp.</p>
+            </div>
+            <div class="campos-lado campos-largos">
+              <div class="campo">
+                <label for="p-cnpjCpf">CNPJ ou CPF</label>
+                <div class="entrada"><input id="p-cnpjCpf" type="text" inputmode="numeric" data-param="cnpjCpf" maxlength="18" autocomplete="off" placeholder="00.000.000/0000-00"></div>
+                <p class="erro"></p>
+              </div>
+              <div class="campo">
+                <label for="p-telefoneOficina">Telefone/WhatsApp</label>
+                <div class="entrada"><input id="p-telefoneOficina" type="tel" inputmode="tel" data-param="telefoneOficina" maxlength="20" autocomplete="off" placeholder="(DDD) número"></div>
+                <p class="erro"></p>
+              </div>
+            </div>
+            <div class="campo">
+              <label for="p-enderecoOficina">Endereço</label>
+              <div class="entrada"><input id="p-enderecoOficina" type="text" data-param="enderecoOficina" maxlength="100" autocomplete="off" placeholder="Rua, número – bairro"></div>
+              <p class="erro"></p>
+            </div>
+            <div class="campo">
+              <label for="p-cidadeUf">Cidade/UF</label>
+              <div class="entrada"><input id="p-cidadeUf" type="text" data-param="cidadeUf" maxlength="60" autocomplete="off" placeholder="Ex.: Caxias do Sul/RS"></div>
+              <p class="erro"></p>
+            </div>
+            <div class="campos-lado campos-pix">
+              <div class="campo">
+                <label for="p-tipoChavePix">Tipo da chave Pix</label>
+                <div class="entrada"><select id="p-tipoChavePix" data-param="tipoChavePix">
+                  <option value="">—</option><option>CNPJ</option><option>CPF</option><option>E-mail</option><option>Telefone</option><option>Aleatória</option>
+                </select></div>
+              </div>
+              <div class="campo">
+                <label for="p-chavePix">Chave Pix</label>
+                <div class="entrada"><input id="p-chavePix" type="text" data-param="chavePix" maxlength="100" autocomplete="off"></div>
+                <p class="erro"></p>
+              </div>
+            </div>
+            <div class="campos-lado">
+              <div class="campo">
+                <label for="p-validadeOrcamentoDias">Validade do orçamento</label>
+                <div class="entrada com-sufixo">
+                  <input id="p-validadeOrcamentoDias" class="num" type="text" inputmode="numeric" data-param="validadeOrcamentoDias" autocomplete="off">
+                  <span class="sufixo">dias</span>
+                </div>
+                <p class="erro"></p>
+              </div>
+              <div class="campo">
+                <label for="p-proximoNumero">Próximo número do orçamento</label>
+                <div class="entrada"><input id="p-proximoNumero" class="num" type="text" inputmode="numeric" data-param="proximoNumero" autocomplete="off"></div>
+                <p class="erro"></p>
+              </div>
+            </div>
+            <p class="ajuda ajuda-numero" id="ajuda-proximo-numero">Para continuar a numeração do sistema antigo (ex.: 186 → "186-2026"). Só pode aumentar. Na virada do ano recomeça em 1.</p>
+            <div class="campo">
+              <label for="p-observacoesPdf">Observações padrão do PDF</label>
+              <div class="entrada"><textarea id="p-observacoesPdf" data-param="observacoesPdf" maxlength="300" rows="2" placeholder="Ex.: Garantia de 90 dias para os serviços."></textarea></div>
+              <p class="erro"></p>
+            </div>
+            <label class="opcao-check"><input type="checkbox" id="p-pdfPrecoServico" data-param="pdfPrecoServico"> No PDF, mostrar o preço de cada serviço</label>
+            <label class="opcao-check"><input type="checkbox" id="p-pdfPrecoPeca" data-param="pdfPrecoPeca"> No PDF, mostrar o preço de cada peça</label>
+          </div>
+
           <div class="card">
             <h2 class="card-titulo">Outros ajustes</h2>
             <div class="campo">
@@ -749,12 +835,6 @@
               <div class="entrada"><input id="p-parcelasDestaque" type="text" inputmode="decimal" data-param="parcelasDestaque" autocomplete="off" placeholder="Ex.: 5,10"></div>
               <p class="erro"></p>
               <p class="ajuda">Ex.: 5,10. Deixe vazio para não destacar nenhuma.</p>
-            </div>
-            <div class="campo">
-              <label for="p-nomeOficina">Nome da oficina</label>
-              <div class="entrada"><input id="p-nomeOficina" type="text" data-param="nomeOficina" maxlength="60" autocomplete="off"></div>
-              <p class="erro"></p>
-              <p class="ajuda">Aparece no texto do WhatsApp.</p>
             </div>
             <details class="corrigir-mes" id="corrigir-mes">
               <summary>Corrigir gastos de um mês passado<svg class="ic" aria-hidden="true"><use href="#i-seta"/></svg></summary>
@@ -881,9 +961,32 @@
   </div>
 </div>
 
+<div id="modal-pdf" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-pdf-titulo" hidden>
+  <div class="modal-corpo">
+    <p id="modal-pdf-titulo" class="dialogo-titulo">Enviar orçamento em PDF</p>
+    <div id="pdf-opcoes">
+      <label class="opcao-check"><input type="checkbox" id="pdf-preco-servico"> Mostrar o preço de cada serviço</label>
+      <label class="opcao-check"><input type="checkbox" id="pdf-preco-peca"> Mostrar o preço de cada peça</label>
+      <label class="opcao-check"><input type="checkbox" id="pdf-assinaturas"> Mostrar as linhas de assinatura</label>
+      <p class="ajuda">Valem só para este PDF. O padrão fica em Ajustes → Dados da oficina.</p>
+    </div>
+    <p class="ajuda pdf-status" id="pdf-status" role="status"></p>
+    <button type="button" class="btn btn-primario" id="btn-pdf-gerar">Gerar PDF</button>
+    <div id="pdf-pronto" hidden>
+      <p class="pdf-pronto-texto" id="pdf-pronto-texto"></p>
+      <button type="button" class="btn btn-primario" id="btn-pdf-enviar">
+        <svg class="ic" aria-hidden="true"><use href="#i-compartilhar"/></svg>Enviar
+      </button>
+      <button type="button" class="btn btn-fantasma" id="btn-pdf-baixar">Baixar o PDF</button>
+    </div>
+    <button type="button" class="btn btn-fantasma" id="btn-pdf-fechar">Fechar</button>
+  </div>
+</div>
+
 <script src="js/calculo.js"></script>
 <script src="js/config.js"></script>
 <script src="js/api.js"></script>
+<script src="js/pdf.js"></script>
 <script src="js/pwa.js"></script>
 <script src="js/app.js"></script>
 </body>

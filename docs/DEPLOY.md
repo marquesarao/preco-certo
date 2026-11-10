@@ -15,11 +15,27 @@ Mesmo modelo do app **Pendências**:
 > Colar o código e salvar **não basta**: sem _Nova versão_, o endereço /exec continua rodando o código antigo.
 >
 > **Como confirmar que a planilha está na versão certa:** a **primeira linha** do registro do `testarApi` diz a versão, por exemplo:
-> `Preço Certo – código da API versão 4 · esquema 4 (colunas até "Horas por serviço")`.
+> `Preço Certo – código da API versão 5 · esquema 4 (colunas até "Horas por serviço")`.
 > Ela precisa bater com a versão deste pacote, e o `testarApi` precisa terminar com "Todos os testes da API passaram". Os itens da versão aparecem no registro (ex.: "as respostas trazem apiVersao 4", "colunas AB–AG preenchidas…").
 > Rode o `testarApi` pelo editor **depois** de criar a Nova versão; ele roda o código salvo no editor. Para conferir o /exec de verdade, abra o app: se a planilha estiver antiga, aparece a faixa **"A planilha está com uma versão antiga. Atualize o código da planilha antes de salvar."** e o app **não salva** orçamentos.
 >
-> **Desde o esquema 4 há uma trava:** o app novo só salva ou muda a situação de orçamentos se a planilha responder com `apiVersao` 4 ou mais. Se você inverter a ordem, o app avisa e não perde nada (antes da trava, um backend antigo descartava em silêncio os campos novos, como o veículo e a lista de serviços).
+> **Desde o esquema 4 há uma trava:** o app novo só salva, muda a situação ou numera orçamentos se a planilha responder com a `apiVersao` que ele exige (hoje: **5**). Se você inverter a ordem, o app avisa e não perde nada (antes da trava, um backend antigo descartava em silêncio os campos novos, como o veículo e a lista de serviços).
+
+---
+
+## ⚠️ Onda do PDF (orçamento em PDF, número do orçamento, dados da oficina, WhatsApp do cliente): o backend MUDOU — versão 5
+
+Vale para quem já está no esquema 4. **Se o esquema 4 ainda não foi publicado numa planilha, este `Codigo.gs` já contém tudo:** um deploy só.
+
+1. **Em cada planilha** (a de teste **e** a do André): Extensões → Apps Script → **copie a sua `URL_DA_API`** → cole o `apps-script/Codigo.gs` novo → recoloque a `URL_DA_API` → salve → **Implantar → Gerenciar implantações → lápis → Versão: Nova versão → Implantar** → rode **`testarApi`**.
+   - A **1ª linha** do registro deve ser: **`Preço Certo – código da API versão 5 · esquema 4 (colunas até "Horas por serviço")`**, e o final: "Todos os testes da API passaram".
+   - O `testarApi` agora também confere o número do orçamento ("o orçamento novo ganha número…", "salvar de novo mantém o número"). O orçamento de teste usa um número e, no fim, **a numeração volta a ser como era** (não pula número).
+   - **Se aparecer pedido de autorização novo:** **pare** e me avise (o `appsscript.json` não mudou).
+   - Nada muda de lugar na planilha. A aba **Parâmetros** ganha as linhas novas (dados da oficina, validade, observações, exibição no PDF, próximo número) na primeira vez que alguém salvar os Ajustes; até lá valem os padrões. A coluna **AA "Número do orçamento"** passa a ser preenchida.
+2. **Só depois, nas DUAS planilhas:** conferência de segredos e **`git push`** (`sw.js` v17; arquivos novos: `js/pdf.js` e `js/vendor/jspdf.umd.min.js` + `js/vendor/jspdf.LICENSE.txt`).
+   - Se inverter: o app novo mostra a faixa "A planilha está com uma versão antiga…" e **não salva** orçamentos nem gera PDF até a planilha ser atualizada (nada se perde).
+3. Em cada aparelho: "Nova versão disponível · ATUALIZAR".
+4. **Antes do primeiro orçamento novo do André:** em **Ajustes → Dados da oficina**, preencha os dados (CNPJ, telefone, endereço, cidade, chave Pix…) e o **"Próximo número do orçamento"** para continuar a numeração do sistema antigo (ex.: 186). Se ficar em 1, o primeiro orçamento vira "1-2026" (e o número só pode aumentar depois).
 
 ---
 

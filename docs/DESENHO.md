@@ -1863,3 +1863,47 @@ Depois da Z, sem mover as existentes (ordem final):
 A regra em negrito no topo do DEPLOY: **backend nas DUAS planilhas ANTES do push**, com _Nova versão_; a 1ª linha do registro do `testarApi` mostra a versão ("código da API versão 4 · esquema 4").
 
 **Testes:** `check-19.js` (backend), V1 em todos os verificadores, `teste-trava.js` (backend antigo e novo), `teste-reabrir.js`.
+
+## 20. Orçamento em PDF, número do orçamento, dados da oficina e WhatsApp do cliente (onda do PDF)
+
+**Referência visual:** o orçamento do sistema que o André usava (cabeçalho com a oficina, "Orçamento 186-2026", cliente e telefone, "Informações básicas" do veículo, tabela de serviços com preço, peças com quantidade, subtotais Serviços/Peças/Total, "Pagamento" com a chave Pix, observações, cidade/data e assinaturas).
+
+**O backend muda:** `API_VERSAO_` = **5** e `APP_EXIGE_API` = **5** (a trava da seção 19 impede o app novo de gravar ou gerar PDF numa planilha antiga). O esquema das abas continua **4** (nenhuma coluna nova: a AA já estava reservada).
+
+### 20.1 Dados da oficina (Ajustes → "Dados da oficina")
+- Chaves novas na aba **Parâmetros** (opcionais: a tela antiga não manda e não apaga; leitura tolerante; validação de tamanho/opções):
+  `cnpjCpf` (18, máscara CPF/CNPJ pelo nº de dígitos) · `telefoneOficina` (20, máscara) · `enderecoOficina` (100) · `cidadeUf` (60) · `chavePix` (100) ·
+  `tipoChavePix` ("", CNPJ, CPF, E-mail, Telefone, Aleatória) · `validadeOrcamentoDias` (inteiro 1–365; padrão 7) · `observacoesPdf` (300) ·
+  `pdfPrecoServico` ("sim"/"nao"; padrão sim) · `pdfPrecoPeca` ("sim"/"nao"; padrão nao) · `proximoNumero` (inteiro 1–999999; padrão 1) ·
+  `anoProximoNumero` (**interno**: só o servidor grava; nunca vem da tela).
+- O "Nome da oficina" passou para este card (continua no WhatsApp). Logo: o já embutido no app (CliniCar); sem upload.
+
+### 20.2 Número do orçamento ("{n}-{ano}", coluna AA)
+- Gerado pelo **servidor, sob o lock**, no **primeiro salvamento** (e, nos orçamentos de antes desta onda, no próximo salvamento ou ao gerar o PDF, pela ação nova `numerarOrcamento`, que **não** muda "Atualizado em"). Guardado no JSON (`dados.numero`) e na coluna AA. O número que o aparelho mandar é ignorado; ao salvar, o servidor mantém o que já existe.
+- n = o maior entre o "próximo número" do **ano corrente** (aba Parâmetros; outro ano → 1: **a numeração recomeça na virada**) e o maior n do ano já gravado na coluna AA + 1 (nunca repete, mesmo com a aba mexida à mão). Depois grava n + 1 e o ano.
+- **Ajustes → "Próximo número do orçamento"**: para continuar a numeração do sistema antigo; **só aumenta** (a tela avisa ao tentar diminuir; o servidor guarda o maior). A tela só manda essa chave quando ele mexeu nela (uma tela aberta há tempo não volta a numeração).
+- **DECIDIDO:** orçamentos existentes **não** são numerados na migração.
+- O número aparece no card Serviço ("Orçamento nº 186-2026"), na lista de Resultados ("nº 186-2026") e é pesquisável ("186").
+
+### 20.3 Conteúdo do PDF (A4 retrato)
+- Montado por `documentoDoPdf` (puro, em `js/calculo.js`) e desenhado por `js/pdf.js` com a **jsPDF 4.2.1** (MIT; `js/vendor/`, 420 KB, carregada só na 1ª vez e guardada no cache do service worker; funciona sem internet; sem terceiros). Helvetica: acentos do português corretos.
+- Cabeçalho (logo + nome, CNPJ/CPF, telefone, endereço, cidade/UF; "Orçamento nº", data, "Válido até" = data + validade) · Cliente (nome, telefone) · Informações básicas do veículo (só o que tiver) ·
+  **Serviços** (oficina + parceiros com "(parceiro)"; valor por item se "preço de cada serviço") · **Peças** (quantidade + descrição; valor por item só se "preço de cada peça") · subtotais e caixa **Serviços · Peças · Total** ·
+  **Pagamento** (as mesmas linhas do WhatsApp: cartão até a referência e demais destaques; entrada, se aberta; à vista com o desconto em % ou em R$ quando os descontos de serviço e peças forem diferentes; "Chave Pix (tipo): …") ·
+  **Observações** (as do cliente + as padrão) · rodapé "{Cidade}, {data por extenso}" e linhas de assinatura (oficina / cliente; opcional).
+- **Valores por item no PREÇO CHEIO** (o cartão até a parcela de referência): fator = âncora ÷ Σ bases (sem arredondar no meio); subtotal dos serviços = arredondar(Σ bases × fator); peças = âncora − serviços; em cada seção, cada item arredondado e o **último absorve o centavo** → itens = subtotais e Serviços + Peças = Total = âncora, exatos. Sem âncora: fator 1 (total = a base).
+- **Nunca no PDF:** custo, sobra, salário, taxa da maquininha, piso, "ainda pode dar", imposto, lucro (conferido no texto extraído do PDF).
+- Data e validade: a data em que o PDF é gerado.
+
+### 20.4 Geração e envio
+- Botões **"Enviar no WhatsApp do cliente"** e **"Enviar orçamento em PDF"** junto do "Copiar para WhatsApp" (não aparecem em "Não fechou").
+- PDF: modal com as 3 opções (preço de cada serviço, de cada peça, linhas de assinatura; marcadas pelo padrão; valem só para aquele PDF) → **Gerar PDF**: salva o orçamento (sem conexão com mudança não salva, planilha antiga (trava) ou erro → avisa e não gera) e pega o número (`numerarOrcamento` se for antigo) → monta e desenha.
+  Orçamento já salvo, numerado e sem mudança: gera mesmo sem internet (não há o que gravar).
+- **Enviar** (segundo toque: o compartilhamento exige o toque da pessoa): com `navigator.share` + arquivos (celular; Windows com Chrome) → janela do sistema com o PDF e o texto curto "Orçamento nº {n} – {oficina}". Sem isso → baixa o PDF e, com telefone, abre a conversa do cliente (wa.me com o texto curto) e avisa "PDF baixado. Arraste o arquivo para a conversa do WhatsApp." **Baixar o PDF** sempre disponível.
+- Nome do arquivo: "Orcamento-186-2026-{placa ou cliente}.pdf" (sem acentos nem espaços).
+- **WhatsApp do cliente (texto):** telefone válido (10 ou 11 números) → `https://wa.me/55{DDD+número}?text={o MESMO texto do Copiar, codificado em UTF-8}`; sem telefone → botão desabilitado ("Preencha o telefone do cliente"; o Copiar continua). Texto codificado acima de **1.800** caracteres → copia o texto e abre a conversa sem o texto ("Texto copiado — é só colar na conversa"). Como o Copiar: abre primeiro e salva em seguida.
+- **Observações para o cliente** (card Serviço, até 300 letras): no JSON (`entrada.observacoesCliente`, opcional) e no PDF.
+- **Número no texto do WhatsApp** (aprovado): com o orçamento já numerado, o título do "Copiar para WhatsApp" e do "Enviar no WhatsApp do cliente" é "*Orçamento nº 186-2026 – {oficina}*" (sem oficina: "*Orçamento nº 186-2026*"); sem número (orçamento novo ainda não salvo), como antes.
+- **Decisões aprovadas:** data/validade = o dia em que o PDF é gerado; orçamento já salvo, numerado e sem mudança gera o PDF sem internet; orçamento fechado: o PDF mostra os preços do orçamento (não o valor combinado); "Nome da oficina" no card "Dados da oficina".
+
+**Testes:** casos PDF1–PDF4 e WA1; `check-20.js` (backend); `teste-pdf.js` (tela, PDF extraído e em imagem) e `teste-pdf.js v4` (trava).

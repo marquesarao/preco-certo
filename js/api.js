@@ -17,9 +17,9 @@ var PrecoCertoApi = (function () {
   var TEMPO_LIMITE_MS = 30000;
   var MSG_SEM_ACESSO = 'Acesso não autorizado'; // igual ao backend (MSG_SEM_ACESSO_)
   /** Versão mínima da API para gravar orçamentos. Suba junto com API_VERSAO_ do Codigo.gs nas próximas ondas. */
-  var APP_EXIGE_API = 4;
+  var APP_EXIGE_API = 5; // 5 = onda do PDF (número do orçamento, dados da oficina, observações)
   var MSG_VERSAO_ANTIGA = 'A planilha está com uma versão antiga. Atualize o código da planilha antes de salvar.';
-  var ACOES_COM_VERSAO = { salvarOrcamento: true, mudarSituacao: true };
+  var ACOES_COM_VERSAO = { salvarOrcamento: true, mudarSituacao: true, numerarOrcamento: true };
   var versoes = {};   // endereço /exec → última apiVersao vista (0 = resposta sem apiVersao)
   var ouvintes = [];
 

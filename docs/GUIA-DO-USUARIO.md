@@ -137,6 +137,26 @@ O texto mostra só o que o cliente precisa ver: as **peças inclusas** (só nome
 
 Ao copiar, o app **guarda o orçamento sozinho** (aparece **"Copiado ✓ · Orçamento salvo ✓"**). Sem internet, o texto é copiado do mesmo jeito, mas aparece em vermelho **"Sem conexão: orçamento NÃO foi salvo."**: toque em **Salvar** quando a internet voltar.
 
+### Direto na conversa do cliente
+- **Enviar no WhatsApp do cliente:** abre a conversa do cliente (pelo telefone do orçamento) com o **mesmo texto** do "Copiar para WhatsApp", pronto para enviar. No computador com o WhatsApp instalado, abre o próprio WhatsApp; no celular, abre o app.
+  - Sem telefone (ou incompleto), o botão fica apagado: **"Preencha o telefone do cliente"**. O "Copiar" continua funcionando.
+  - Texto muito grande para o link (muitas peças): o app **copia o texto** e abre a conversa vazia — **é só colar**.
+  - Como o Copiar, ele **salva o orçamento** sozinho.
+
+### Orçamento em PDF
+- **Enviar orçamento em PDF** monta um documento profissional (A4): logo e dados da oficina, **"Orçamento nº 186-2026"**, data e validade, cliente, veículo, serviços (os de parceiros com "(parceiro)"), peças com a quantidade, os totais (**Serviços · Peças · Total**, no preço do cartão), o pagamento (cartão, entrada, à vista com o desconto e a **chave Pix**), as observações, a cidade e a data e as linhas de assinatura.
+  - Na hora de gerar você escolhe: **mostrar o preço de cada serviço**, **o preço de cada peça** (sem isso, as peças aparecem só com a quantidade e o subtotal) e **as linhas de assinatura**. Já vêm marcados pelo seu padrão (Ajustes → Dados da oficina) e valem só para aquele PDF.
+  - Toque em **Gerar PDF**: o app salva o orçamento antes (é assim que ele ganha o número). Depois toque em **Enviar**: no celular abre a lista de apps (escolha o WhatsApp e a conversa do cliente); no computador, o PDF é baixado e a conversa do cliente abre — **arraste o arquivo para a conversa**. **Baixar o PDF** guarda o arquivo no aparelho.
+  - Sem internet, com mudança não salva, o PDF não é gerado (ele precisa do número, que vem da planilha).
+  - O PDF **nunca** mostra os seus custos, a sobra, o salário, a taxa da maquininha, o piso, o imposto nem quanto você ainda pode dar.
+- **Observações para o cliente** (no fim do card **Serviço**): vão no PDF, junto com as observações padrão da oficina.
+
+### Número do orçamento
+- Todo orçamento salvo ganha um número: **"186-2026"** (o número e o ano). Quem dá o número é a planilha, então dois aparelhos nunca pegam o mesmo.
+- Aparece no topo do card **Serviço** ("Orçamento nº 186-2026"), na lista de **Resultados** (dá para buscar por ele: "186") e no título do texto do WhatsApp: **"*Orçamento nº 186-2026 – CliniCar Motors Tech*"** (orçamento novo, antes de salvar: sem o número).
+- Para **continuar a numeração do sistema antigo**, ponha o número em **Ajustes → Dados da oficina → Próximo número do orçamento**. Ele só pode aumentar. Na virada do ano a numeração recomeça em 1.
+- Orçamentos de antes desta versão ganham número quando você salvar de novo ou gerar o PDF.
+
 Para começar outro, toque em **"+ Novo orçamento"**, no topo do card **Serviço**. Se o que está na tela não foi salvo, o app pergunta antes: **Salvar e começar novo**, **Começar sem salvar** ou **Cancelar**.
 
 ---
@@ -178,6 +198,12 @@ Para começar outro, toque em **"+ Novo orçamento"**, no topo do card **Serviç
 - Mexeu nos gastos ou ajustes **direto na planilha** e o app ainda mostra o valor antigo? Em **Ajustes**, toque em **"Recarregar da planilha"** (embaixo, discreto).
 - **Não edite as abas "Orçamentos" e "Meses" na planilha.** A planilha avisa se você tentar. Apagar uma linha lá = excluir o orçamento.
 - **Dois aparelhos** (você no celular, alguém no computador): se os dois mexerem no **mesmo** orçamento, quem salvar depois vê **"Esse orçamento foi alterado em outro aparelho."** e escolhe entre **"Ver a versão nova"** ou **"Salvar as minhas como um novo orçamento"**. Nada se perde sem aviso.
+
+---
+
+## 4.2 Dados da oficina (Ajustes)
+
+Em **Ajustes → Dados da oficina** (atrás da engrenagem e do PIN): nome da oficina, **CNPJ ou CPF**, **telefone/WhatsApp**, **endereço**, **cidade/UF**, **chave Pix** (e o tipo: CNPJ, CPF, e-mail, telefone ou aleatória), **validade do orçamento** (dias; padrão 7), **próximo número do orçamento**, **observações padrão do PDF** (ex.: garantia) e o padrão de **mostrar o preço de cada serviço** (ligado) e **de cada peça** (desligado) no PDF. Tudo fica na sua planilha e vale para todos os aparelhos.
 
 ---
 
