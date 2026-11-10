@@ -32,7 +32,7 @@ Vale para quem já está no esquema 4. **Se o esquema 4 ainda não foi publicado
    - O `testarApi` agora também confere o número do orçamento ("o orçamento novo ganha número…", "salvar de novo mantém o número"). O orçamento de teste usa um número e, no fim, **a numeração volta a ser como era** (não pula número).
    - **Se aparecer pedido de autorização novo:** **pare** e me avise (o `appsscript.json` não mudou).
    - Nada muda de lugar na planilha. A aba **Parâmetros** ganha as linhas novas (dados da oficina, validade, observações, exibição no PDF, próximo número) na primeira vez que alguém salvar os Ajustes; até lá valem os padrões. A coluna **AA "Número do orçamento"** passa a ser preenchida.
-2. **Só depois, nas DUAS planilhas:** conferência de segredos e **`git push`** (`sw.js` v18, com o acabamento do PDF; arquivos novos: `js/pdf.js`, `js/vendor/jspdf.umd.min.js` + `js/vendor/jspdf.LICENSE.txt` e `icons/logo-pdf.png`).
+2. **Só depois, nas DUAS planilhas:** conferência de segredos e **`git push`** (`sw.js` v19, com o acabamento do PDF e o número na lista; arquivos novos: `js/pdf.js`, `js/vendor/jspdf.umd.min.js` + `js/vendor/jspdf.LICENSE.txt` e `icons/logo-pdf.png`).
    - Se inverter: o app novo mostra a faixa "A planilha está com uma versão antiga…" e **não salva** orçamentos nem gera PDF até a planilha ser atualizada (nada se perde).
 3. Em cada aparelho: "Nova versão disponível · ATUALIZAR".
 4. **Antes do primeiro orçamento novo do André:** em **Ajustes → Dados da oficina**, preencha os dados (CNPJ, telefone, endereço, cidade, chave Pix…) e o **"Próximo número do orçamento"** para continuar a numeração do sistema antigo (ex.: 186). Se ficar em 1, o primeiro orçamento vira "1-2026" (e o número só pode aumentar depois).

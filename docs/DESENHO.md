@@ -1917,3 +1917,13 @@ A regra em negrito no topo do DEPLOY: **backend nas DUAS planilhas ANTES do push
 - **Card à vista:** "O cliente pediu mais desconto?" e "Desconto diferente nas peças?" nunca quebram em duas linhas: lado a lado na **mesma linha de base** quando cabem (computador), um embaixo do outro quando não cabem (celular).
 
 **Testes:** caso PDF5; `teste-pdf.js` mede o PDF de verdade (PyMuPDF: fim de todos os valores na mesma x, ±0,5 pt; alturas das linhas iguais; texto centralizado; cantos do logo brancos) e gera o PDF com desconto 0%; `medir-botoes.js` mede o espaço entre botões empilhados (≥ 10 px) e a linha de base dos links, em 390 e 1280.
+
+### 20.6 Número do orçamento na lista de Resultados (ajuste visual, só frontend; `sw.js` v19)
+- **Linha 1 do card da lista:** nome do cliente à esquerda (reticências se for longo); à **direita**, um grupo "**Nº 5-2026**" + chip da situação, nessa ordem, com 8 px entre eles.
+- **Mesma coluna em todos os cards:** o número tem largura reservada (7,4 em, alinhado à direita) e o chip tem largura mínima (a de "Não fechou"): o fim do número fica na mesma x, seja "Nº 5-2026" ou "Nº 1234-2026", com qualquer situação.
+- **Destaque:** peso 600, 15 px (o nome tem 16 px), cor do texto principal (antes: 12 px cinza claro). "Nº" com N maiúsculo e "º".
+- **Sem número** (orçamento antigo, ainda não salvo de novo): só o chip, encostado na direita (sem buraco).
+- **Celular:** se o nome não deixar espaço, número + chip descem juntos para uma 2ª linha, alinhados à direita (o número nunca quebra no meio). A partir de 560 px de largura ficam sempre na linha do nome (o nome ganha reticências).
+- **Card Serviço:** "Orçamento nº 5-2026" com o mesmo destaque (peso 600, 15 px, cor do texto principal; antes laranja 14 px).
+
+**Testes:** `teste-lista-numero.js` (390 e 1280: fim do número na mesma x em todos os cards; chip encostado na direita, inclusive sem número; formato "Nº"; nome longo com reticências; 2ª linha no celular; sem rolagem lateral).

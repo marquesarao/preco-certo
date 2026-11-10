@@ -2325,7 +2325,8 @@ function renderListaResultados(doMes, mes) {
     var outroMes = mesDe(o.criadoEm) !== mes ? ' · orçado em ' + dataBR(o.criadoEm, true) : '';
     return '<div class="item-orc' + (aberto ? ' aberto' : '') + '">' +
       '<button type="button" class="item-orc-topo" data-item="' + esc(o.id) + '" aria-expanded="' + aberto + '">' +
-        '<span class="item-linha1"><span class="item-cliente">' + esc(o.cliente || 'Sem nome') + '</span>' + (o.numero ? '<span class="item-numero">nº ' + esc(o.numero) + '</span>' : '') + chipSituacao(o.situacao) + '</span>' +
+        '<span class="item-linha1"><span class="item-cliente">' + esc(o.cliente || 'Sem nome') + '</span>' +
+          '<span class="item-dir">' + (o.numero ? '<span class="item-numero">Nº ' + esc(o.numero) + '</span>' : '') + chipSituacao(o.situacao) + '</span></span>' +
         '<span class="item-linha2">' + esc([o.servico || 'Serviço sem descrição', dataBR(dataDe(o), true), typeof valor === 'number' ? formatarCentavos(valor) : ''].filter(Boolean).join(' · ')) + esc(outroMes) + '</span>' +
       '</button>' +
       (aberto ? '<div class="item-acoes">' +

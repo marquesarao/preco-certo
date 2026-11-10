@@ -14,6 +14,9 @@
 
 ## Resultados (10/11/2026)
 
+**Número do orçamento na lista de Resultados (ajuste visual, só frontend; `sw.js` v19):**
+- **Tela:** `teste-lista-numero.js` 14/14 — 6 cards (Nº 1, 5, 42, 186 e 1234-ANO, um sem número; Aberto, Fechado e Não fechou; um nome de 56 letras): em 1280 o fim de todos os números em x = 1036 e todos os chips encostados na direita do card; em 390, x = 266 e os chips na direita; nome longo com reticências (1280) ou número + chip na 2ª linha (390); "Nº X-ANO" peso 600 na cor do texto; card Serviço com o mesmo destaque. `teste-pdf.js` passou a esperar "Nº 186-ANO" na lista.
+
 **Acabamento do PDF e da tela de envio (só frontend; `sw.js` v18):**
 - **Cálculo:** 159 casos (158 + PDF5): desconto 0% → uma linha só "Cartão em até 5x (5x de R$ 389,48) ou à vista (Pix, dinheiro ou débito): R$ 1.947,42"; com 5%, as duas linhas de antes; a chave Pix continua depois.
 - **PDF medido (PyMuPDF, `geometria-pdf.py`):** fim de todos os valores (coluna Valor, subtotais, quadro de totais e o cabeçalho "Valor") na mesma x — diferença máxima 0,37 pt (0,13 mm, só a métrica do negrito; antes: 11,3 pt, 4 mm); linhas da tabela todas com 20,98 pt e respiro 6,9 / 6,9 pt acima/abaixo do texto (antes: 0,76 / 11,34 — o "colado na linha de cima"); cabeçalho 6,69 / 6,69; cantos do logo brancos (antes: cinza-escuro, o quadrado).
