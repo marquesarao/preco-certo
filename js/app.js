@@ -549,6 +549,132 @@ function orcamentoVazio() {
   };
 }
 
+// ---------------- Preço de cada item (peças e parceiros) ----------------
+// "Preço da peça: R$ X" com lápis (toque = digitar o preço final e o app acha o %) e, com cartão, "No orçamento (com cartão): R$ Y",
+// o valor do item no PDF (já com a taxa da maquininha dividida entre os itens; valoresNoOrcamento, em calculo.js).
+
+/** Linha do cliente de uma peça ou parceiro: o preço (botão), o "No orçamento", o "↺" (extra) e o editor de preço. */
+function htmlPrecoItem(tipo, i, nome, extra) {
+  var id = 'preco-' + tipo + '-' + i;
+  return '<div class="peca-cliente" hidden>' +
+    '<div class="preco-linha"><button type="button" class="preco-item" data-editar-preco="' + tipo + '" data-indice="' + i + '"' +
+    ' aria-label="Digitar o preço de ' + nome + ' para o cliente" hidden></button>' + (extra || '') + '</div>' +
+    '<span class="no-orc-item"></span>' +
+    '<div class="preco-editor" hidden>' +
+      '<label for="' + id + '">' + (tipo === 'peca' ? 'Preço da peça' : 'Preço do serviço') + ' para o cliente (total do item)</label>' +
+      '<div class="editor-linha"><div class="entrada com-prefixo"><span class="prefixo">R$</span>' +
+      '<input type="text" id="' + id + '" class="num" inputmode="decimal" data-preco-input="' + tipo + '" data-indice="' + i + '" data-formato="dinheiro"' +
+      ' maxlength="40" autocomplete="off" placeholder="0,00"></div>' +
+      '<button type="button" class="btn btn-primario" data-preco-ok="' + tipo + '" data-indice="' + i + '">Usar</button>' +
+      '<button type="button" class="link" data-preco-cancelar="' + tipo + '" data-indice="' + i + '">Cancelar</button></div>' +
+      '<p class="erro" role="alert"></p>' +
+    '</div></div>';
+}
+
+/** Mostra o preço do item (null = sem custo ainda: nada) e, com cartão, o valor dele no orçamento (centavos). @return editor aberto */
+function mostrarPrecoItem(linha, tipo, preco, noOrcC) {
+  var b = linha.querySelector('[data-editar-preco]');
+  b.hidden = preco === null;
+  if (preco !== null) {
+    var html = (tipo === 'peca' ? 'Preço da peça' : 'Preço do serviço') + ': <strong>' + esc(formatarBRL(preco)) + '</strong>' + icone('i-lapis');
+    if (b.innerHTML !== html) b.innerHTML = html;
+  }
+  b.disabled = travado();
+  linha.querySelector('.no-orc-item').textContent = preco !== null && typeof noOrcC === 'number' ? 'No orçamento (com cartão): ' + formatarCentavos(noOrcC) : '';
+  var editor = linha.querySelector('.preco-editor');
+  if (travado() || preco === null) editor.hidden = true;
+  return !editor.hidden;
+}
+
+/** % do item é "alterado à mão" só quando é DIFERENTE do geral (igual ao geral = sem marca e sem "usar o geral"). */
+function acrescimoAlterado(item, lido, geral) {
+  if (!item || item.acrescimoTexto === null || item.acrescimoTexto === undefined) return false;
+  if (lido && lido.erroAcrescimo) return true;
+  return !(typeof geral === 'number' && lido && Math.round(lido.acrescimo * 10000) === Math.round(geral * 10000));
+}
+
+/** % digitado igual ao geral: o item volta a seguir o geral (texto null). */
+function normalizarAcrescimo(item, geral) {
+  var n = lerNumeroBR(item.acrescimoTexto);
+  if (n !== null && typeof geral === 'number' && Math.round(n * 10000) === Math.round(geral * 10000)) item.acrescimoTexto = null;
+}
+
+function geralPecasNum() { return ultimoCalc && ultimoCalc.lido.entrada ? ultimoCalc.lido.entrada.pecasAcrescimo : null; }
+function padraoTerceirosNum() { var p = parametrosEmUso(); return p && typeof p.acrescimoTerceirosPadrao === 'number' ? p.acrescimoTerceirosPadrao : 0; }
+
+function linhaDoItem(tipo, i) {
+  return document.querySelector(tipo === 'peca' ? '.peca-linha[data-peca="' + i + '"]' : '.terceiro-linha[data-terceiro="' + i + '"]');
+}
+
+/** O que você paga pelo item (peça: qtd × unitário; parceiro: o valor pago) e o % em uso, da última conta. */
+function custoDoItem(tipo, i) {
+  var l = ultimoCalc && ultimoCalc.lido;
+  var it = l && (tipo === 'peca' ? l.pecas : l.terceiros)[i];
+  if (!it) return { custo: 0, acrescimo: 0 };
+  var custo = tipo === 'peca' ? totalPecasItens([it]) : (typeof it.valor === 'number' && it.valor > 0 ? it.valor : 0);
+  return { custo: custo, acrescimo: it.acrescimo || 0 };
+}
+
+function abrirEditorPreco(tipo, i) {
+  if (travado()) return;
+  fecharEditoresPreco();
+  var linha = linhaDoItem(tipo, i);
+  if (!linha) return;
+  var c = custoDoItem(tipo, i);
+  linha.querySelector('.peca-cliente').hidden = false;
+  var editor = linha.querySelector('.preco-editor');
+  editor.hidden = false;
+  var input = editor.querySelector('input');
+  input.value = c.custo > 0 ? numeroParaCampo(centavos(c.custo * (1 + c.acrescimo / 100)) / 100, true) : '';
+  limparErroPreco(input);
+  input.focus();
+  input.select();
+}
+
+function fecharEditoresPreco() {
+  document.querySelectorAll('.preco-editor').forEach(function (ed) { ed.hidden = true; });
+}
+
+function limparErroPreco(input) {
+  input.classList.remove('invalido');
+  input.removeAttribute('aria-invalid');
+  input.closest('.preco-editor').querySelector('.erro').textContent = '';
+}
+
+/** "Usar": preço final → % = (preço ÷ custo − 1) × 100 (2 casas); o item fica com o próprio % (marca, se diferente do geral). */
+function aplicarPrecoItem(tipo, i) {
+  var linha = linhaDoItem(tipo, i);
+  var item = (tipo === 'peca' ? orc.pecas : orc.terceiros)[i];
+  if (!linha || !item || travado()) return;
+  var input = linha.querySelector('[data-preco-input]');
+  var r = percentualPeloPreco(input.value, custoDoItem(tipo, i).custo);
+  if (r.erro) {
+    input.classList.add('invalido');
+    input.setAttribute('aria-invalid', 'true');
+    linha.querySelector('.preco-editor .erro').textContent = r.erro;
+    input.focus();
+    return;
+  }
+  item.acrescimoTexto = numeroParaCampo(r.percentual, false);
+  normalizarAcrescimo(item, tipo === 'peca' ? geralPecasNum() : padraoTerceirosNum());
+  var campo = linha.querySelector(tipo === 'peca' ? '[data-peca-campo="acrescimoTexto"]' : '[data-terceiro-campo="acrescimoTexto"]');
+  if (campo) campo.value = item.acrescimoTexto !== null ? item.acrescimoTexto : tipo === 'peca' ? textoAcrescimo() : textoAcrescimoTerceiros();
+  linha.querySelector('.preco-editor').hidden = true;
+  gravarRascunho();
+  renderOrcamento();
+  var b = linha.querySelector('[data-editar-preco]');
+  if (b && !b.hidden) b.focus();
+}
+
+function cancelarEditorPreco(tipo, i) {
+  var linha = linhaDoItem(tipo, i);
+  if (!linha) return;
+  linha.querySelector('.preco-editor').hidden = true;
+  renderOrcamento();
+  var b = linha.querySelector('[data-editar-preco]');
+  if (b && !b.hidden) b.focus();
+}
+
 function pecaVazia() { return { descricao: '', qtdTexto: '1', valorTexto: '', acrescimoTexto: null }; }
 function terceiroVazio() { return { descricao: '', valorTexto: '', acrescimoTexto: null }; }
 function textoOuNulo(v) { return typeof v === 'string' ? v : null; }
@@ -628,7 +754,7 @@ function renderPecas() {
       ' placeholder="%" aria-label="% em cima de ' + nome + '" autocomplete="off" value="' + esc(p.acrescimoTexto !== null ? p.acrescimoTexto : textoAcrescimo()) + '"><span class="sufixo">%</span></div>' +
       '<button type="button" class="btn-remover" data-remover-peca="' + i + '" aria-label="Remover ' + nome + '">' + icone('i-lixeira') + '</button>' +
       '<p class="erro"></p>' +
-      '<p class="peca-cliente"><span class="peca-paga"></span><button type="button" class="link link-mini" data-voltar-acr="' + i + '" hidden></button></p>' +
+      htmlPrecoItem('peca', i, nome, '<button type="button" class="link link-mini" data-voltar-acr="' + i + '" hidden></button>') +
       '</div>';
   }).join('');
   $('lista-pecas').innerHTML = html;
@@ -667,6 +793,7 @@ function onPecaInput(el) {
   var p = orc.pecas[Number(el.dataset.indice)];
   if (!p || travado()) return;
   p[el.dataset.pecaCampo] = el.value; // "% em cima" digitado: a peça passa a ter o próprio % (borda laranja e "↺")
+  if (el.dataset.pecaCampo === 'acrescimoTexto') normalizarAcrescimo(p, geralPecasNum()); // igual ao geral = segue o geral
   gravarRascunho();
   renderOrcamento();
 }
@@ -817,7 +944,7 @@ function renderTerceiros() {
       ' placeholder="%" aria-label="% em cima de ' + nome + '" autocomplete="off" value="' + esc(s.acrescimoTexto !== null ? s.acrescimoTexto : pad) + '"><span class="sufixo">%</span></div>' +
       '<button type="button" class="btn-remover" data-remover-terceiro="' + i + '" aria-label="Remover ' + nome + '">' + icone('i-lixeira') + '</button>' +
       '<p class="erro"></p>' +
-      '<p class="peca-cliente"></p>' +
+      htmlPrecoItem('terceiro', i, nome) +
       '</div>';
   }).join('');
   $('terceiros-cabecalho').hidden = orc.terceiros.length === 0;
@@ -845,12 +972,14 @@ function onTerceiroInput(el) {
   var s = orc.terceiros[Number(el.dataset.indice)];
   if (!s || travado()) return;
   s[el.dataset.terceiroCampo] = el.value;
+  if (el.dataset.terceiroCampo === 'acrescimoTexto') normalizarAcrescimo(s, padraoTerceirosNum()); // igual ao padrão = segue o padrão
   gravarRascunho();
   renderOrcamento();
 }
 
-/** Erros e "Cliente paga" de cada serviço + totais do card. */
-function mostrarTerceiros(lidos, res) {
+/** Erros, "Preço do serviço" (e "No orçamento") de cada serviço + totais do card. noOrc: valoresNoOrcamento (null = sem cartão). */
+function mostrarTerceiros(lidos, res, noOrc) {
+  var padrao = padraoTerceirosNum();
   lidos.forEach(function (s, i) {
     var linha = document.querySelector('.terceiro-linha[data-terceiro="' + i + '"]');
     if (!linha) return;
@@ -866,14 +995,18 @@ function mostrarTerceiros(lidos, res) {
       var campo = linha.querySelector('[data-terceiro-campo="acrescimoTexto"]');
       if (campo && document.activeElement !== campo) campo.value = textoAcrescimoTerceiros();
     }
-    linha.querySelector('.peca-cliente').textContent = pago > 0 ? 'Cliente paga: ' + formatarBRL(pago * (1 + s.acrescimo / 100)) : '';
+    linha.querySelector('.terc-acr').classList.toggle('acr-proprio', acrescimoAlterado(orc.terceiros[i], s, padrao));
+    var aberto = mostrarPrecoItem(linha, 'terceiro', pago > 0 ? pago * (1 + s.acrescimo / 100) : null, noOrc ? noOrc.terceiros[i] : null);
+    linha.querySelector('.peca-cliente').hidden = !(pago > 0) && !aberto;
   });
   var tem = res.terceirosPagar > 0;
   $('terceiros-totais').hidden = !tem;
   $('terceiros-totais').innerHTML = tem
     ? '<span>Você paga: <strong>' + esc(formatarBRL(res.terceirosPagar)) + '</strong></span>' +
-      '<span>Cliente paga: <strong>' + esc(formatarBRL(res.terceirosCobrar)) + '</strong></span>'
+      '<span>Preço dos serviços: <strong>' + esc(formatarBRL(res.terceirosCobrar)) + '</strong></span>'
     : '';
+  $('terceiros-no-orc-linha').hidden = !(tem && noOrc);
+  $('terceiros-no-orc').innerHTML = tem && noOrc ? 'No orçamento: <strong>' + esc(formatarCentavos(noOrc.terceirosC)) + '</strong>' : '';
 }
 
 /** Texto do acréscimo deste orçamento: o digitado, ou o padrão dos ajustes (da foto em uso) enquanto ele não mexeu. */
@@ -951,7 +1084,8 @@ function renderOrcamento() {
 
   CAMPOS_NUMERICOS_ORC.forEach(function (id) { mostrarErroCampo($(id), calc.lido.erros[id] || ''); });
   mostrarErrosPecas(calc.lido.pecas);
-  mostrarTerceiros(calc.lido.terceiros, calc.res);
+  var noOrc = valoresNoOrcamento(calc); // "No orçamento (com cartão)": o valor de cada item no PDF
+  mostrarTerceiros(calc.lido.terceiros, calc.res, noOrc);
   mostrarErroCampo($('orc-telefone'), validarTelefone(orc.telefone));
 
   var res = calc.res;
@@ -961,30 +1095,35 @@ function renderOrcamento() {
   // Seção 17: serviços da oficina (apoio de cada linha e o total) e o veículo
   mostrarServicos(calc.lido.servicos, res, p);
   mostrarVeiculo();
-  // Peças: "Cliente paga" em cada linha e os totais do card
+  // Peças: "Preço da peça" (e "No orçamento") em cada linha e os totais do card
   if (orc.pecasModo === 'acrescimo') {
-    // Seção 16: cada peça com o seu % (sem % próprio = o geral, e o campo acompanha o geral)
+    // Seção 16: cada peça com o seu % (sem % próprio = o geral, e o campo acompanha o geral).
+    // Marca laranja e "↺ usar o geral" só quando o % da peça é DIFERENTE do geral.
     var geral = textoAcrescimo();
+    var geralNum = calc.lido.entrada.pecasAcrescimo;
     calc.lido.pecas.forEach(function (pc, i) {
       var linha = document.querySelector('.peca-linha[data-peca="' + i + '"]');
       if (!linha) return;
-      var proprio = !!(orc.pecas[i] && orc.pecas[i].acrescimoTexto !== null);
+      var digitado = !!(orc.pecas[i] && orc.pecas[i].acrescimoTexto !== null);
+      var proprio = acrescimoAlterado(orc.pecas[i], pc, geralNum);
       var campoAcr = linha.querySelector('[data-peca-campo="acrescimoTexto"]');
-      if (!proprio && campoAcr && document.activeElement !== campoAcr) campoAcr.value = geral;
+      if (!digitado && campoAcr && document.activeElement !== campoAcr) campoAcr.value = geral;
       linha.querySelector('.peca-acr').classList.toggle('acr-proprio', proprio);
       var volta = linha.querySelector('[data-voltar-acr]');
       volta.hidden = !proprio || travado();
       volta.textContent = proprio ? '↺ usar o geral (' + (geral || '0') + '%)' : '';
       volta.setAttribute('aria-label', 'Voltar ' + (pc.descricao || 'esta peça') + ' para o % geral (' + (geral || '0') + '%)');
       var pagaLinha = totalPecasItens([pc]);
-      linha.querySelector('.peca-paga').textContent = pagaLinha > 0 ? 'Cliente paga: ' + formatarBRL(pagaLinha * (1 + pc.acrescimo / 100)) : '';
-      linha.querySelector('.peca-cliente').hidden = !(pagaLinha > 0) && volta.hidden;
+      var aberto = mostrarPrecoItem(linha, 'peca', pagaLinha > 0 ? pagaLinha * (1 + pc.acrescimo / 100) : null, noOrc ? noOrc.pecas[i] : null);
+      linha.querySelector('.peca-cliente').hidden = !(pagaLinha > 0) && volta.hidden && !aberto;
     });
     $('pecas-totais').hidden = !(res.pecasPagar > 0);
     $('pecas-totais').innerHTML = res.pecasPagar > 0
       ? '<span>Você paga: <strong>' + esc(formatarBRL(res.pecasPagar)) + '</strong></span>' +
-        '<span>Cliente paga: <strong>' + esc(formatarBRL(res.pecasCobrar)) + '</strong></span>'
+        '<span>Preço das peças: <strong>' + esc(formatarBRL(res.pecasCobrar)) + '</strong></span>'
       : '';
+    $('pecas-no-orc-linha').hidden = !(res.pecasPagar > 0 && noOrc);
+    $('pecas-no-orc').innerHTML = res.pecasPagar > 0 && noOrc ? 'No orçamento: <strong>' + esc(formatarCentavos(noOrc.pecasC)) + '</strong>' : '';
   }
 
   var temValor = res.aVista.totalCentavos > 0;
@@ -1426,7 +1565,7 @@ function aplicarTrava() {
     el.disabled = t;
   });
   ['ir-pecas-valor', 'ir-pecas-acrescimo', 'btn-adicionar-servico', 'btn-adicionar-peca', 'btn-adicionar-terceiro', 'btn-entrada', 'btn-tirar-entrada', 'btn-desconto-pecas'].forEach(function (id) { $(id).disabled = t; });
-  document.querySelectorAll('#tela-orcamento [data-remover-peca], #tela-orcamento [data-remover-terceiro], #tela-orcamento [data-remover-servico], #tela-orcamento [data-combustivel], #tela-orcamento [data-bandeira-indice], #tela-orcamento [data-voltar-acr], ' +
+  document.querySelectorAll('#tela-orcamento [data-remover-peca], #tela-orcamento [data-remover-terceiro], #tela-orcamento [data-remover-servico], #tela-orcamento [data-combustivel], #tela-orcamento [data-bandeira-indice], #tela-orcamento [data-voltar-acr], #tela-orcamento [data-editar-preco], ' +
     '#tela-orcamento [data-forma-entrada], #tela-orcamento [data-parcelas-entrada]').forEach(function (b) { b.disabled = t; });
 }
 
@@ -3305,6 +3444,8 @@ var DICAS = {
     texto: 'Os gastos que se repetem todo mês. O mês atual, em Resultados, usa sempre estes valores; os meses que já passaram ficam como estavam. Se um gasto só começa no mês que vem (ex.: aumento do aluguel), lance no dia 1º.' },
   horas: { alvo: '#titulo-horas', nome: 'Horas',
     texto: 'Horas dos serviços fechados neste mês, comparadas com as horas que você pode cobrar no mês (Meus gastos → Sua rotina).' },
+  noOrcPecas: { alvo: '#pecas-no-orc', nome: 'No orçamento', texto: 'No orçamento o valor de cada item já inclui a taxa da maquininha, dividida entre os itens. Pode haver diferença de 1 centavo no último item, para o total fechar exato. No Pix com desconto, o cliente paga menos.' },
+  noOrcTerceiros: { alvo: '#terceiros-no-orc', nome: 'No orçamento', texto: 'No orçamento o valor de cada item já inclui a taxa da maquininha, dividida entre os itens. Pode haver diferença de 1 centavo no último item, para o total fechar exato. No Pix com desconto, o cliente paga menos.' },
   fechamento: { alvo: '#titulo-fechamento', nome: 'Neste fechamento',
     texto: 'Valor combinado menos a taxa da maquininha da forma escolhida, o imposto, as peças e a parte da oficina e da sua casa.' }
 };
@@ -3410,6 +3551,7 @@ function ligarEventos() {
     else if (el.dataset.terceiroCampo) onTerceiroInput(el);
     else if (el.dataset.servicoCampo) onServicoInput(el);
     else if (el.dataset.veiculo) onVeiculoInput(el);
+    else if (el.dataset.precoInput) limparErroPreco(el);
     else if (el.dataset.orc) { if (el.id === 'orc-telefone') mascararTelefone(el, e.inputType || ''); onOrcamentoInput(el); }
   });
 
@@ -3445,6 +3587,9 @@ function ligarEventos() {
     if (ds.fechCartao !== undefined && fech) { fech.cartao = ds.fechCartao; if (!fech.valorEditado) sugerirValorFechamento(); renderFechamento(); return; }
     if (ds.fechFormaEntrada && fech) { fech.formaEntrada = ds.fechFormaEntrada; renderFechamento(); return; }
     if (ds.voltarAcr !== undefined) { voltarAcrescimoPeca(Number(ds.voltarAcr)); return; }
+    if (ds.editarPreco) { abrirEditorPreco(ds.editarPreco, Number(ds.indice)); return; }
+    if (ds.precoOk) { aplicarPrecoItem(ds.precoOk, Number(ds.indice)); return; }
+    if (ds.precoCancelar) { cancelarEditorPreco(ds.precoCancelar, Number(ds.indice)); return; }
     if (ds.removerTerceiro !== undefined) { if (!travado()) removerComDesfazer('terceiro', Number(ds.removerTerceiro)); return; }
     if (ds.removerServico !== undefined) { if (!travado()) removerComDesfazer('servico', Number(ds.removerServico)); return; }
     if (ds.combustivel) { escolherCombustivel(ds.combustivel); return; }
@@ -3624,6 +3769,13 @@ function ligarEventos() {
     if (!$('caixa-copia').hidden) return; // Esc fecha primeiro a caixa de copiar, se aberta
     voltarAoOrcamento(true);
   });
+  // Editor do preço do item: Enter usa, Esc cancela (antes do Esc geral da tela).
+  document.addEventListener('keydown', function (e) {
+    var el = e.target;
+    if (!el.dataset || !el.dataset.precoInput) return;
+    if (e.key === 'Enter') { e.preventDefault(); aplicarPrecoItem(el.dataset.precoInput, Number(el.dataset.indice)); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); cancelarEditorPreco(el.dataset.precoInput, Number(el.dataset.indice)); }
+  }, true);
   $('btn-pin-entrar').addEventListener('click', conferirPin);
   $('pin-entrada').addEventListener('keydown', function (e) {
     if (e.key === 'Enter') { e.preventDefault(); conferirPin(); }

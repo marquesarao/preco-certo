@@ -313,7 +313,7 @@ input.pin { letter-spacing: 0.4em; }
    560–899 px: tudo numa linha, com cabeçalho. Seção 16: "% em cima" por peça (próprio = borda laranja + "↺"). */
 .peca-linha {
   display: grid; gap: 8px; align-items: center; margin-bottom: 12px;
-  grid-template-columns: 56px 12px minmax(0, 1fr) 84px;
+  grid-template-columns: 56px 12px minmax(0, 1fr) 96px;
   grid-template-areas: "desc desc desc rem" "qtd vezes valor acr" "erro erro erro erro" "cli cli cli cli";
 }
 .peca-linha .peca-desc { grid-area: desc; }
@@ -325,12 +325,40 @@ input.pin { letter-spacing: 0.4em; }
 .peca-linha .erro, .terceiro-linha .erro { grid-area: erro; margin: 0; }
 .peca-linha .erro:empty, .terceiro-linha .erro:empty { display: none; }
 .peca-linha .peca-cliente, .terceiro-linha .peca-cliente {
-  grid-area: cli; display: flex; flex-wrap: wrap; align-items: center; gap: 0 10px; margin: 0; font-size: 13px; color: var(--texto-3);
+  grid-area: cli; display: flex; flex-direction: column; align-items: flex-start; gap: 0; margin: -2px 0 0; font-size: 13px; color: var(--texto-3);
 }
-.peca-linha .peca-cliente[hidden], .terceiro-linha .peca-cliente:empty { display: none; }
-.peca-acr.acr-proprio input { border-color: var(--laranja); box-shadow: inset 0 0 0 1px var(--laranja); }
-.peca-acr.acr-proprio input:disabled { border-color: var(--borda); box-shadow: none; }
-.peca-acr input, .terc-acr input { padding-left: 10px; padding-right: 28px; }
+.peca-linha .peca-cliente[hidden], .terceiro-linha .peca-cliente[hidden] { display: none; }
+.peca-cliente .preco-linha { display: flex; flex-wrap: wrap; align-items: center; gap: 0 10px; }
+.preco-item {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: 14px; color: var(--texto-2); text-align: left;
+}
+.preco-item strong { font-weight: 600; color: var(--texto); }
+.preco-item .ic { width: 15px; height: 15px; color: var(--laranja-escuro); }
+.preco-item:hover strong { text-decoration: underline; }
+.preco-item:disabled { cursor: default; }
+.preco-item:disabled .ic { display: none; }
+.preco-item:disabled:hover strong { text-decoration: none; }
+.preco-item[hidden] { display: none; }
+.no-orc-item { font-size: 12.5px; color: var(--texto-3); }
+.no-orc-item:empty { display: none; }
+.preco-editor { width: 100%; margin: 6px 0 4px; padding: 10px 12px; border-radius: 10px; background: var(--laranja-claro); border: 1px solid #f6d3ad; }
+.preco-editor[hidden] { display: none; }
+.preco-editor label { display: block; margin: 0 0 6px; font-size: 13px; font-weight: 500; color: var(--texto-2); }
+.preco-editor .editor-linha { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.preco-editor .entrada { flex: 1 1 140px; max-width: 200px; }
+.preco-editor .btn { margin-top: 0; width: auto; height: 44px; padding: 0 18px; }
+.preco-editor .erro { margin: 6px 0 0; }
+.preco-editor .erro:empty { display: none; }
+.no-orc-total { display: flex; justify-content: flex-end; flex-wrap: wrap; margin-top: 4px; font-size: 13px; color: var(--texto-3); }
+.no-orc-total[hidden] { display: none; }
+.no-orc-total .rotulo-dica { margin: 0; }
+.no-orc-total .rotulo strong { font-weight: 600; color: var(--texto-2); }
+.no-orc-total .balao-dica { flex-basis: 100%; text-align: left; }
+@media (max-width: 559px) { .no-orc-total { justify-content: flex-start; } } /* celular: os totais ficam um embaixo do outro, à esquerda */
+.peca-acr.acr-proprio input, .terc-acr.acr-proprio input { border-color: var(--laranja); box-shadow: inset 0 0 0 1px var(--laranja); }
+.peca-acr.acr-proprio input:disabled, .terc-acr.acr-proprio input:disabled { border-color: var(--borda); box-shadow: none; }
+.peca-acr input, .terc-acr input { padding-left: 10px; padding-right: 26px; }
 .peca-acr .sufixo, .terc-acr .sufixo { right: 10px; }
 .link-mini { min-height: 32px; font-size: 13px; }
 .pecas-cabecalho, .terceiros-cabecalho { display: none; }
@@ -338,7 +366,7 @@ input.pin { letter-spacing: 0.4em; }
 /* Serviços de terceiros: descrição + lixeira em cima; "Valor pago · %" embaixo (560–899 px: uma linha) */
 .terceiro-linha {
   display: grid; gap: 8px; align-items: center; margin-bottom: 12px;
-  grid-template-columns: minmax(0, 1fr) 84px;
+  grid-template-columns: minmax(0, 1fr) 96px;
   grid-template-areas: "desc rem" "valor acr" "erro erro" "cli cli";
 }
 .terceiro-linha .terc-desc { grid-area: desc; }
@@ -348,11 +376,11 @@ input.pin { letter-spacing: 0.4em; }
 
 @media (min-width: 560px) and (max-width: 899px) {
   .peca-linha, .pecas-cabecalho {
-    grid-template-columns: minmax(0, 1fr) 64px 12px 132px 84px 44px;
+    grid-template-columns: minmax(0, 1fr) 64px 12px 124px 96px 44px;
     grid-template-areas: "desc qtd vezes valor acr rem" "erro erro erro erro erro erro" "cli cli cli cli cli cli";
   }
   .terceiro-linha, .terceiros-cabecalho {
-    grid-template-columns: minmax(0, 1fr) 150px 84px 44px;
+    grid-template-columns: minmax(0, 1fr) 150px 96px 44px;
     grid-template-areas: "desc valor acr rem" "erro erro erro erro" "cli cli cli cli";
   }
   .pecas-cabecalho, .terceiros-cabecalho { display: grid; gap: 8px; margin-bottom: 6px; font-size: 13px; font-weight: 500; color: var(--texto-3); }

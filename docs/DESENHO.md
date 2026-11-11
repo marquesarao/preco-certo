@@ -1413,8 +1413,8 @@ Construído **em cima da seção 15** (débito = Pix; crédito até a referênci
 ### 16.1 % de acréscimo por peça
 - Cada peça ganha "% em cima" (0 a 1000, o mesmo limite do acréscimo geral). Guardado como `pecas[i].acrescimoTexto`: `null` = segue o geral; texto = alterado à mão.
 - O % geral continua: ao mudá-lo, as peças com `null` acompanham; as alteradas à mão ficam.
-  - Marca discreta na alterada: borda laranja e um "↺" ao lado; tocar no "↺" volta a peça para o geral (`null`).
-- **Cliente paga, por peça** = qtd × unitário × (1 + %peça/100). Os totais do card somam as peças (sem arredondar no meio).
+  - Marca discreta na alterada: borda laranja e um "↺" ao lado; tocar no "↺" volta a peça para o geral (`null`). Desde a 20.7: só quando o % é **diferente** do geral (igual ao geral = `null`, sem marca).
+- **Preço da peça** (antes "Cliente paga", ver 20.7) = qtd × unitário × (1 + %peça/100). Os totais do card somam as peças (sem arredondar no meio).
 - O modo "valor direto" das peças continua como hoje.
 - **Compatibilidade:** orçamento antigo não tem `acrescimoTexto` → todas seguem o geral, e a conta é a mesma de hoje (Σ qtd×valor × (1 + geral) = (Σ qtd×valor) × (1 + geral)).
 - **Exemplo (caso PC1):**
@@ -1927,3 +1927,14 @@ A regra em negrito no topo do DEPLOY: **backend nas DUAS planilhas ANTES do push
 - **Card Serviço:** "Orçamento nº 5-2026" com o mesmo destaque (peso 600, 15 px, cor do texto principal; antes laranja 14 px).
 
 **Testes:** `teste-lista-numero.js` (390 e 1280: fim do número na mesma x em todos os cards; chip encostado na direita, inclusive sem número; formato "Nº"; nome longo com reticências; 2ª linha no celular; sem rolagem lateral).
+
+### 20.7 Ajustes após uso real: preço de cada item e "No orçamento" (só frontend; `sw.js` v20)
+Caso real: vela 3 × 105,12 a 40% → a tela dizia "Cliente paga: R$ 441,50", mas no PDF a vela saía maior (o PDF já põe a taxa da maquininha em cada item, seção 20.3). As contas estavam certas; o rótulo enganava.
+- **Rótulo por item:** "Cliente paga: R$ X" → **"Preço da peça: R$ X"** (parceiros: **"Preço do serviço: R$ X"**), com um lápis. Embaixo, menor: **"No orçamento (com cartão): R$ Y"**, Y = o valor do item no PDF (`valoresNoOrcamento`, em `calculo.js`: a MESMA `distribuirNoPreco` até a âncora, com a mesma regra de centavos — o último item de cada seção absorve o centavo). Sem âncora (sem taxa de cartão) → sem a segunda linha.
+- **Rodapés dos cards:** "Cliente paga" → **"Preço das peças"** / **"Preço dos serviços"**, e embaixo **"No orçamento: R$ …"** (peças: o subtotal de peças do PDF; parceiros: a soma das linhas "(parceiro)" do PDF) com um "?": "No orçamento o valor de cada item já inclui a taxa da maquininha, dividida entre os itens. Pode haver diferença de 1 centavo no último item, para o total fechar exato. No Pix com desconto, o cliente paga menos."
+- **Marca de % alterado (revê a 16.1):** a peça só conta como "alterada à mão" (borda laranja + "↺ usar o geral") quando o % dela é **diferente** do geral. Digitou um % igual ao geral → `acrescimoTexto` volta a `null` (segue o geral; sem marca). Parceiros ganham a mesma borda laranja quando o % é diferente do padrão dos Ajustes (sem "↺": para voltar, digita o padrão).
+- **Digitar o preço final (peças e parceiros):** tocar no "Preço da peça/do serviço" abre um campo "R$" (já com o preço atual) + **Usar** / Cancelar (Enter usa, Esc cancela). % = (preço ÷ custo − 1) × 100, **até 2 casas** (custo = qtd × unitário; parceiro: o valor pago) → vira o % do item (com a marca, se diferente do geral). Preço **abaixo do custo** → "Abaixo do que você paga (R$ custo)." e nada muda; acima de 1000% → aviso. Orçamento fechado: o lápis some e não abre.
+- **Campo de %:** 96 px (antes 84) — "66,67" + "%" aparece inteiro em 390, 700 e 1280.
+- **Conta do caso real (caso NO1):** 6 h × 150, 14 peças, 3 parceiros, 5x a 8,63%, desconto 0 → base 6.538,29, âncora 6.538,29 ÷ 0,9137 = 7.155,8389 → **7.155,84**. Serviços 985,01 · 82,08 · 109,44 · 98,50 = 1.275,03; peças 5.880,81; total 7.155,84. A vela sozinha daria 441,504 × 1,094451 = 483,2044 → 483,20, mas é a **última peça** e absorve o centavo da distribuição → **483,21**, no app e no PDF (a tela usa a mesma função do PDF).
+
+**Testes:** casos NO1 (orçamento real completo: cada item = PDF; vela 483,21; peças 5.880,81; serviços 1.275,03; total 7.155,84; sem cartão → null) e NO2 (preço → %: 100 sobre 60 = 66,67; 441,50 sobre 315,36 = 40; abaixo do custo → aviso); `teste-uso-real.js` (tela, 24 verificações em 390/700/1280).

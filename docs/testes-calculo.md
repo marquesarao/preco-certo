@@ -12,6 +12,12 @@
 - A comparação dos valores é **exata, em centavos inteiros**, sem tolerância.
 - Os casos T8–T12, do modelo antigo de bandeiras fixas, foram **substituídos** por C1–C8 (cartões cadastráveis).
 
+## Resultados (11/11/2026)
+
+**Ajustes após uso real: preço de cada item e "No orçamento" (só frontend; `sw.js` v20):**
+- **Cálculo:** + NO1 e NO2 (no Node: 110 casos, 0 falhas; antes 108). NO1 (orçamento real completo: 6 h × 150, 14 peças, 3 parceiros, 5x a 8,63%, desconto 0): âncora 7.155,84; "No orçamento" de cada peça e parceiro = valor do PDF; serviços 985,01 · 82,08 · 109,44 · 98,50 = 1.275,03; peças 5.880,81 com a vela (última peça, absorve o centavo) **483,21**; total 7.155,84; sem cartão → sem a linha. NO2: preço → % (100 sobre 60 = 66,67; abaixo do custo → "Abaixo do que você paga (R$ 60,00).").
+- **Tela:** `teste-uso-real.js` 24/24 — rótulos "Preço da peça/do serviço" e "No orçamento (com cartão)" = valor do PDF; rodapés "Preço das peças/dos serviços" + "No orçamento" com "?"; % igual ao geral → sem marca (e segue o geral); 50 → marca; torno: 50 → aviso, 100 → 66,67% marcado; vela 500 → 58,55%, 441,50 → 40 sem marca; Esc fecha o editor; campo de % mostra "66,67" inteiro e sem rolagem lateral em 390, 700 e 1280.
+
 ## Resultados (10/11/2026)
 
 **Número do orçamento na lista de Resultados (ajuste visual, só frontend; `sw.js` v19):**

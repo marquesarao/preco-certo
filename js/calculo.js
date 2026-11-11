@@ -1667,17 +1667,17 @@ function itensDoPdf(c) {
   } else if (c.res.maoDeObra > 0) {
     servicos.push({ descricao: 'Mão de obra', base: c.res.maoDeObra });
   }
-  (c.lido.terceiros || []).forEach(function (t) {
+  (c.lido.terceiros || []).forEach(function (t, i) {
     var pago = typeof t.valor === 'number' && t.valor > 0 ? t.valor : 0;
     var base = pago * (1 + (t.acrescimo || 0) / 100);
     var d = textoLimpo(t.descricao);
-    if (d || base > 0) servicos.push({ descricao: (d || 'Serviço') + ' (parceiro)', base: base, parceiro: true });
+    if (d || base > 0) servicos.push({ descricao: (d || 'Serviço') + ' (parceiro)', base: base, parceiro: true, indice: i });
   });
   if ((c.lido.pecas || []).length) {
-    c.lido.pecas.forEach(function (p) {
+    c.lido.pecas.forEach(function (p, i) {
       var base = totalPecasItens([p]) * (1 + (p.acrescimo || 0) / 100);
       var d = textoLimpo(p.descricao);
-      if (d || base > 0) pecas.push({ descricao: d || 'Peça', qtd: typeof p.qtd === 'number' && p.qtd > 0 ? p.qtd : null, base: base });
+      if (d || base > 0) pecas.push({ descricao: d || 'Peça', qtd: typeof p.qtd === 'number' && p.qtd > 0 ? p.qtd : null, base: base, indice: i });
     });
   } else if (c.res.pecasCobrar > 0) {
     pecas.push({ descricao: 'Peças', qtd: null, base: c.res.pecasCobrar });
@@ -1708,6 +1708,40 @@ function distribuirNoPreco(itens, alvoC) {
     });
   }
   return { servicos: secao(itens.servicos, subServ), pecas: secao(itens.pecas, subPec), subtotalServicosC: subServ, subtotalPecasC: subPec, totalC: subServ + subPec };
+}
+
+/**
+ * "No orçamento (com cartão)" da tela do orçamento: o valor de cada peça e de cada parceiro NO PDF (mesma conta e mesma
+ * regra de centavos de documentoDoPdf: distribuirNoPreco até a âncora). Sem âncora (sem taxa de cartão) → null.
+ * @param c resultado de calcularComFoto
+ * @return null | {pecas: {índice: centavos}, terceiros: {índice: centavos}, pecasC (subtotal das peças), terceirosC (soma dos parceiros)}
+ */
+function valoresNoOrcamento(c) {
+  if (!c || !c.preco || !c.preco.temAncora || !c.preco.ancora || !(c.preco.ancora.totalCentavos > 0)) return null;
+  var dist = distribuirNoPreco(itensDoPdf(c), c.preco.ancora.totalCentavos);
+  var r = { pecas: {}, terceiros: {}, pecasC: dist.subtotalPecasC, terceirosC: 0 };
+  dist.pecas.forEach(function (it) { if (typeof it.indice === 'number') r.pecas[it.indice] = it.valorC; });
+  dist.servicos.forEach(function (it) {
+    if (!it.parceiro) return;
+    r.terceiros[it.indice] = it.valorC;
+    r.terceirosC += it.valorC;
+  });
+  return r;
+}
+
+/**
+ * Preço final digitado para um item (o que o cliente paga por ele, sem o cartão) → o % em cima, com até 2 casas:
+ * % = (preço ÷ custo − 1) × 100. Custo = qtd × unitário (peça) ou o valor pago (parceiro).
+ * @return {percentual} ou {erro}
+ */
+function percentualPeloPreco(precoTexto, custo) {
+  var preco = lerNumeroBR(precoTexto);
+  if (preco === null) return { erro: 'Digite o preço. Ex.: 150,00' };
+  if (!(custo > 0)) return { erro: 'Preencha antes o valor que você paga.' };
+  if (centavos(preco) < centavos(custo)) return { erro: 'Abaixo do que você paga (' + formatarBRL(custo) + ').' };
+  var pct = Math.round((preco / custo - 1) * 100 * 100) / 100;
+  if (pct > MAX_ACRESCIMO) return { erro: 'Fica mais de ' + MAX_ACRESCIMO + '% em cima. Confira o valor.' };
+  return { percentual: pct < 0 ? 0 : pct };
 }
 
 /**
@@ -2689,6 +2723,39 @@ function casosDeTeste() {
         return { obtido: [l('0'), l('5')],
                  esperado: [['Cartão em até 5x (5x de R$ 389,48) ou à vista (Pix, dinheiro ou débito): R$ 1.947,42', 'Chave Pix (CNPJ): 12.345.678/0001-90'],
                             ['Cartão em até 5x: R$ 1.947,42 (5x de R$ 389,48)', 'À vista (Pix, dinheiro ou débito): R$ 1.850,05 — 5% de desconto', 'Chave Pix (CNPJ): 12.345.678/0001-90']] };
+      } },
+    { id: 'NO1', descricao: 'Ajustes de uso real — ORÇAMENTO REAL completo (6 h × 150; 14 peças; 3 parceiros; 5x a 8,63%; desconto 0): base 6.538,29 → âncora 7.155,84 (6.538,29 ÷ 0,9137 = 7.155,8389); "No orçamento" de CADA peça e parceiro = o valor do PDF; serviços 985,01 · 82,08 · 109,44 · 98,50 = 1.275,03; peças = 5.880,81 com a vela (última peça) 483,21 (sozinha seria 483,2044 → 483,20; como última absorve o centavo); sem cartão → null',
+      executar: function () {
+        var P = [['Oleo', '4', '67,41', '20'], ['Filtro de Oleo', '1', '32,22', '40'], ['Filtro combustivel', '1', '18,39', '40'], ['Filtro de cabine', '1', '29,54', '40'],
+          ['Filtro de ar do motor', '1', '42,89', '40'], ['Fluido de freio', '2', '29,68', '40'], ['Pneus 185/65/15', '4', '459,00', '10'], ['Roda liga leve aro 15', '1', '770,00', '40'],
+          ['Lanterna do porta malas LD', '1', '240,00', '40'], ['Lampada de placa', '2', '12,90', '40'], ['Pneu 175/70/13', '1', '309,00', '10'],
+          ['Jogo de pastilhas de freio D', '1', '108,03', '40'], ['Protetor de calor do escapamento', '1', '280,00', '40'], ['Vela Ignição', '3', '105,12', '40']];
+        var cen = cenarioServicos([['Mão de obra', '6', '']], { descontoTexto: '0', acrescimoTexto: '40',
+          pecas: P.map(function (x) { return { descricao: x[0], qtdTexto: x[1], valorTexto: x[2], acrescimoTexto: x[3] }; }),
+          terceiros: [{ descricao: 'troca de pneus', valorTexto: '50,00', acrescimoTexto: '50' }, { descricao: 'torno de discos', valorTexto: '60,00', acrescimoTexto: '66,66' },
+            { descricao: 'alinhamento', valorTexto: '50,00', acrescimoTexto: '80' }] });
+        cen.foto.cartoes = [cartaoDeTeste('Visa', { p5: 8.63 })];
+        var c = calcularComFoto(cen.e, cen.foto);
+        var v = valoresNoOrcamento(c);
+        var doc = documentoDoPdf({ c: c, parametros: completarParametrosPdf({}), orc: { cliente: 'x', veiculo: {} }, numero: '1-2026', hoje: '2026-11-11', opcoes: { precoPeca: true } });
+        var appPecas = P.map(function (x, i) { return formatarCentavos(v.pecas[i]); });
+        var appTerc = [0, 1, 2].map(function (i) { return formatarCentavos(v.terceiros[i]); });
+        var semCartao = cenarioServicos([['Serviço', '', '100']], { pecas: [{ descricao: 'Vela', qtdTexto: '1', valorTexto: '10', acrescimoTexto: null }] });
+        semCartao.foto.cartoes = [];
+        return { obtido: [c.res.aVista.totalCentavos, c.preco.ancora.totalCentavos, centavos(totalPecasItens([c.lido.pecas[13]]) * 1.4),
+                          JSON.stringify(appPecas) === JSON.stringify(doc.pecas.map(function (x) { return x.valor; })),
+                          JSON.stringify(appTerc) === JSON.stringify(doc.servicos.slice(1).map(function (x) { return x.valor; })),
+                          doc.servicos.map(function (x) { return x.valor; }), doc.subtotalServicos, appPecas[13], formatarCentavos(v.pecasC), doc.subtotalPecas, doc.total,
+                          Math.round(441.504 * 715584 / 6538.29) === 48320,
+                          valoresNoOrcamento(calcularComFoto(semCartao.e, semCartao.foto))],
+                 esperado: [653829, 715584, 44150, true, true, ['R$ 985,01', 'R$ 82,08', 'R$ 109,44', 'R$ 98,50'], 'R$ 1.275,03', 'R$ 483,21', 'R$ 5.880,81', 'R$ 5.880,81', 'R$ 7.155,84',
+                            true, null] };
+      } },
+    { id: 'NO2', descricao: 'Ajustes de uso real: digitar o preço final → % com até 2 casas. Torno custo 60, preço 100 → 66,67; vela 315,36 → 441,50 dá 40; abaixo do custo → aviso "abaixo do que você paga"; igual ao custo → 0; vazio/sem custo → aviso',
+      executar: function () {
+        return { obtido: [percentualPeloPreco('100', 60), percentualPeloPreco('441,50', 315.36), percentualPeloPreco('59,99', 60).erro, percentualPeloPreco('60', 60),
+                          !!percentualPeloPreco('', 60).erro, !!percentualPeloPreco('100', 0).erro],
+                 esperado: [{ percentual: 66.67 }, { percentual: 40 }, 'Abaixo do que você paga (R$ 60,00).', { percentual: 0 }, true, true] };
       } },
     { id: 'WA2', descricao: 'WhatsApp: com número, o título é "*Orçamento nº 186-2026 – Oficina*" (sem nome: "*Orçamento nº 186-2026*"); sem número, como antes',
       executar: function () {
